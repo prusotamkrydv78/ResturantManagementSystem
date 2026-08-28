@@ -75,3 +75,34 @@ public sealed class AssignRestaurantRequest
     [Required]
     public Guid RestaurantId { get; set; }
 }
+
+/// <summary>
+/// Replaces a manager password.
+///
+/// There is no self-service reset in this product and accounts are issued rather than
+/// registered, so this is the only way back in for a manager who has lost theirs. The
+/// current password is not required: the caller is the platform owner, who issued the
+/// account to begin with.
+/// </summary>
+public sealed class ResetManagerPasswordRequest
+{
+    /// <summary>The new password. Identity hashes it; it is never stored or logged.</summary>
+    [Required(ErrorMessage = "Enter the new password.")]
+    [StringLength(
+        128,
+        ErrorMessage = "A password cannot be longer than 128 characters.")]
+    public string Password { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// Suspends or restores a manager account.
+///
+/// Both sign-in and refresh check <c>IsActive</c>, so suspending takes hold within the
+/// access-token lifetime rather than only at the next sign-in.
+/// </summary>
+public sealed class SetManagerActiveRequest
+{
+    /// <summary>False suspends the account, true restores it.</summary>
+    [Required]
+    public bool IsActive { get; set; }
+}

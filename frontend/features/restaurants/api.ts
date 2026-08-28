@@ -1,13 +1,12 @@
 import { apiFetch } from "@/lib/api/client";
-import type { Manager } from "@/types/manager";
 import type {
-  AssignManagerPayload,
   CreateRestaurantPayload,
   Restaurant,
   RestaurantSettings,
   RestaurantSummary,
   TimeZoneOption,
   UpdateMyRestaurantPayload,
+  UpdateRestaurantPayload,
   UpdateRestaurantSettingsPayload,
 } from "@/types/restaurant";
 
@@ -37,18 +36,26 @@ export function getRestaurant(id: string): Promise<Restaurant> {
 }
 
 /**
- * Super Admin: give this restaurant a manager, either an existing account or a
- * new one. Delegates to the manager module server side, so it returns the
- * manager rather than the restaurant.
+ * Super Admin: edit any restaurant. The only call that can change a slug.
  */
-export function assignManager(
-  restaurantId: string,
-  payload: AssignManagerPayload,
-): Promise<Manager> {
-  return apiFetch<Manager>(`/api/restaurants/${restaurantId}/manager`, {
-    method: "POST",
+export function updateRestaurant(
+  id: string,
+  payload: UpdateRestaurantPayload,
+): Promise<Restaurant> {
+  return apiFetch<Restaurant>(`/api/restaurants/${id}`, {
+    method: "PUT",
     body: JSON.stringify(payload),
   });
+}
+
+/**
+ * Super Admin: delete a restaurant created by mistake.
+ *
+ * Rejected with 409 once it has orders, or while it still holds tables, staff,
+ * stock, customers or bookings. The thrown ApiError carries the reason.
+ */
+export function deleteRestaurant(id: string): Promise<void> {
+  return apiFetch<void>(`/api/restaurants/${id}`, { method: "DELETE" });
 }
 
 /**

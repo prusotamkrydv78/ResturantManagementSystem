@@ -12,6 +12,8 @@ export interface Manager {
   email: string;
   isAssigned: boolean;
   restaurant: AssignedRestaurant | null;
+  /** False when the account is suspended: it cannot sign in or refresh. */
+  isActive: boolean;
   createdAtUtc: string;
 }
 
@@ -34,4 +36,19 @@ export interface CreateManagerPayload {
 export interface UpdateManagerPayload {
   fullName: string;
   email: string;
+}
+
+/**
+ * Payload for replacing a manager password.
+ *
+ * The current password is not required. The caller is the platform owner, who issued
+ * the account, and there is no self-service reset for the manager to use instead.
+ */
+export interface ResetManagerPasswordPayload {
+  password: string;
+}
+
+/** Payload for suspending or restoring a manager account. */
+export interface SetManagerActivePayload {
+  isActive: boolean;
 }

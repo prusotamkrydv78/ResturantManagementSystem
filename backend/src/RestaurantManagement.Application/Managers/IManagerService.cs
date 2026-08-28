@@ -57,4 +57,28 @@ public interface IManagerService
     Task<Result<ManagerResponse>> UnassignAsync(
         Guid managerId,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Replaces a manager password.
+    ///
+    /// The product has no forgot-password flow and accounts are issued rather than
+    /// registered, so without this a manager who loses their password has no way back
+    /// in and the platform owner has no way to help.
+    /// </summary>
+    Task<Result<ManagerResponse>> ResetPasswordAsync(
+        Guid managerId,
+        ResetManagerPasswordRequest request,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Suspends or restores a manager account.
+    ///
+    /// Refuses to suspend a manager who still runs a restaurant: that would leave a
+    /// restaurant which looks staffed but cannot be opened by anybody. Unassign first,
+    /// which makes the restaurant visibly managerless.
+    /// </summary>
+    Task<Result<ManagerResponse>> SetActiveAsync(
+        Guid managerId,
+        SetManagerActiveRequest request,
+        CancellationToken cancellationToken);
 }

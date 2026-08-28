@@ -140,6 +140,43 @@ public sealed class ManagersController : ControllerBase
             : Ok(result.Value);
     }
 
+    /// <summary>Replaces the password. The only way back in for a manager who lost it.</summary>
+    [HttpPut("{id:guid}/password")]
+    [ProducesResponseType(typeof(ManagerResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ManagerResponse>> ResetPassword(
+        Guid id,
+        ResetManagerPasswordRequest request,
+        CancellationToken cancellationToken)
+    {
+        var result = await _managerService.ResetPasswordAsync(id, request, cancellationToken);
+
+        return result.IsFailure
+            ? ProblemFrom(result.Error!, StatusFor(result.Error!))
+            : Ok(result.Value);
+    }
+
+    /// <summary>Suspends or restores the account. Refused while they still run a restaurant.</summary>
+    [HttpPut("{id:guid}/status")]
+    [ProducesResponseType(typeof(ManagerResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<ManagerResponse>> SetStatus(
+        Guid id,
+        SetManagerActiveRequest request,
+        CancellationToken cancellationToken)
+    {
+        var result = await _managerService.SetActiveAsync(id, request, cancellationToken);
+
+        return result.IsFailure
+            ? ProblemFrom(result.Error!, StatusFor(result.Error!))
+            : Ok(result.Value);
+    }
+
     private static int StatusFor(Error error) =>
         error == ManagerErrors.NotFound || error == ManagerErrors.RestaurantNotFound
             ? StatusCodes.Status404NotFound

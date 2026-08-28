@@ -31,4 +31,29 @@ public static class RestaurantErrors
 
     public static readonly Error NoRestaurantAssigned =
         new("restaurant.not_assigned", "No restaurant is assigned to this account.");
+
+    /// <summary>
+    /// The restaurant has taken orders, so the record is history and not a mistake to
+    /// tidy away.
+    ///
+    /// Deleting it would strand the takings that every report is built from. A
+    /// restaurant that has traded is edited, never removed.
+    /// </summary>
+    public static readonly Error HasTraded =
+        new(
+            "restaurant.has_traded",
+            "This restaurant has orders against it and cannot be deleted.");
+
+    /// <summary>
+    /// The restaurant has been set up but has not traded yet.
+    ///
+    /// Named separately from <see cref="HasTraded"/> because the answer differs: this
+    /// one can be deleted once its setup is cleared, and saying so saves the
+    /// administrator guessing which of the two applies.
+    /// </summary>
+    public static readonly Error HasSetupData =
+        new(
+            "restaurant.has_setup_data",
+            "This restaurant still has tables, staff, stock or customers. "
+            + "Remove those first, or edit the restaurant instead of deleting it.");
 }

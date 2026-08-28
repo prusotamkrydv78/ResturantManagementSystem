@@ -3,6 +3,8 @@ import type {
   CreateManagerPayload,
   Manager,
   ManagerFilter,
+  ResetManagerPasswordPayload,
+  SetManagerActivePayload,
   UpdateManagerPayload,
 } from "@/types/manager";
 
@@ -73,5 +75,37 @@ export function assignManagerToRestaurant(
 export function unassignManager(managerId: string): Promise<Manager> {
   return apiFetch<Manager>(`/api/managers/${managerId}/assignment`, {
     method: "DELETE",
+  });
+}
+
+/**
+ * Replace a manager password.
+ *
+ * The only way back in for a manager who has lost theirs: the product has no
+ * forgot-password flow, and accounts are issued rather than registered.
+ */
+export function resetManagerPassword(
+  managerId: string,
+  payload: ResetManagerPasswordPayload,
+): Promise<Manager> {
+  return apiFetch<Manager>(`/api/managers/${managerId}/password`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
+/**
+ * Suspend or restore a manager account.
+ *
+ * Rejected with 409 while they still run a restaurant, which would otherwise leave
+ * that restaurant looking staffed but impossible to open. Unassign first.
+ */
+export function setManagerActive(
+  managerId: string,
+  payload: SetManagerActivePayload,
+): Promise<Manager> {
+  return apiFetch<Manager>(`/api/managers/${managerId}/status`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
   });
 }

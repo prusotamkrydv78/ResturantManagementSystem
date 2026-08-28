@@ -134,7 +134,14 @@ public sealed class PlatformService : IPlatformService
                     (order.CancelledAtUtc != null &&
                      order.CancelledAtUtc >= earliest &&
                      order.CancelledAtUtc < latest))
-                .Include(order => order.Payment)
+                // No Include for the payment: the projection below reaches it through
+                // the navigation, which EF turns into the join by itself. An Include
+                // in front of a Select is discarded, so leaving it here only suggests
+                // the query needs something it does not.
+                //
+                // The result set is bounded by MaxRangeDays and RestaurantLimit rather
+                // than by paging, because each restaurant service day has to be
+                // measured in its own timezone and a page boundary cannot respect that.
                 .Select(order => new
                 {
                     order.RestaurantId,

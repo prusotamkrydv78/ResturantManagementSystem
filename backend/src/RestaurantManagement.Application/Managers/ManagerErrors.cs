@@ -40,4 +40,26 @@ public static class ManagerErrors
     /// <summary>Identity rejected the updated account details.</summary>
     public static Error UpdateFailed(string message) =>
         new("manager.update_failed", message);
+
+    /// <summary>
+    /// Identity rejected the replacement password.
+    ///
+    /// Carries Identity own wording, because the only composition rule left is a
+    /// minimum length of one and anything it does refuse is worth repeating verbatim.
+    /// </summary>
+    public static Error PasswordResetFailed(string message) =>
+        new("manager.password_reset_failed", message);
+
+    /// <summary>
+    /// The account still manages a restaurant, so it cannot be deactivated.
+    ///
+    /// Deactivating in place would leave a restaurant that looks staffed and cannot be
+    /// run: no manager screen would open, and nothing in the interface would say why.
+    /// Unassigning first makes the restaurant visibly managerless, which
+    /// <c>/admin/reports</c> already flags.
+    /// </summary>
+    public static readonly Error StillAssigned =
+        new(
+            "manager.still_assigned",
+            "This manager still runs a restaurant. Unassign them from it first.");
 }

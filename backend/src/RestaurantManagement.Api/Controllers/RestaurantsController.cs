@@ -2,8 +2,6 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using RestaurantManagement.Api.Authentication;
 using RestaurantManagement.Application.Authentication;
-using RestaurantManagement.Application.Managers;
-using RestaurantManagement.Application.Managers.Dtos;
 using RestaurantManagement.Application.Restaurants;
 using RestaurantManagement.Application.Restaurants.Dtos;
 using RestaurantManagement.Shared.Results;
@@ -23,15 +21,11 @@ namespace RestaurantManagement.Api.Controllers;
 public sealed class RestaurantsController : ControllerBase
 {
     private readonly IRestaurantService _restaurantService;
-    private readonly IManagerService _managerService;
 
     /// <summary>Creates the controller.</summary>
-    public RestaurantsController(
-        IRestaurantService restaurantService,
-        IManagerService managerService)
+    public RestaurantsController(IRestaurantService restaurantService)
     {
         _restaurantService = restaurantService;
-        _managerService = managerService;
     }
 
     /// <summary>Creates a restaurant. No manager is assigned yet.</summary>
@@ -89,49 +83,67 @@ public sealed class RestaurantsController : ControllerBase
     }
 
     /// <summary>
-    /// Assigns a manager to this restaurant, either an existing account
-    /// (<c>userId</c>) or a new one (<c>fullName</c>, <c>email</c>, <c>password</c>).
-    ///
-    /// Delegates to the manager module, which owns every assignment rule, so this
-    /// route and the manager routes can never disagree.
+    /// Edits any restaurant. Super Admin only, and the only route that can change a
+    /// slug.
     /// </summary>
-    [HttpPost("{id:guid}/manager")]
+    [HttpPut("{id:guid}")]
     [Authorize(Roles = PlatformRoles.SuperAdmin)]
-    [ProducesResponseType(typeof(ManagerResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(RestaurantResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
-    public async Task<ActionResult<ManagerResponse>> AssignManager(
+    public async Task<ActionResult<RestaurantResponse>> Update(
         Guid id,
-        AssignManagerRequest request,
+        UpdateRestaurantRequest request,
         CancellationToken cancellationToken)
     {
-        var result = request.CreatesNewAccount
-            ? await _managerService.CreateAsync(
-                new CreateManagerRequest
-                {
-                    FullName = request.FullName!,
-                    Email = request.Email!,
-                    Password = request.Password!,
-                    RestaurantId = id,
-                },
-                cancellationToken)
-            : await _managerService.AssignAsync(request.UserId!.Value, id, cancellationToken);
+        var result = await _restaurantService.UpdateAsync(id, request, cancellationToken);
 
         if (result.IsFailure)
         {
             var error = result.Error!;
 
-            var status =
-                error == ManagerErrors.NotFound || error == ManagerErrors.RestaurantNotFound
+            return ProblemFrom(
+                error,
+                error == RestaurantErrors.NotFound
                     ? StatusCodes.Status404NotFound
-                    : StatusCodes.Status409Conflict;
-
-            return ProblemFrom(error, status);
+                    : StatusCodes.Status409Conflict);
         }
 
         return Ok(result.Value);
+    }
+
+    /// <summary>
+    /// Deletes a restaurant that was created by mistake. Super Admin only.
+    ///
+    /// Refused once it has orders, and refused while it still holds tables, staff,
+    /// stock, customers or bookings.
+    /// </summary>
+    [HttpDelete("{id:guid}")]
+    [Authorize(Roles = PlatformRoles.SuperAdmin)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> Delete(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var result = await _restaurantService.DeleteAsync(id, cancellationToken);
+
+        if (result.IsFailure)
+        {
+            var error = result.Error!;
+
+            return ProblemFrom(
+                error,
+                error == RestaurantErrors.NotFound
+                    ? StatusCodes.Status404NotFound
+                    : StatusCodes.Status409Conflict);
+        }
+
+        return NoContent();
     }
 
     /// <summary>
@@ -272,7 +284,7 @@ public sealed class RestaurantsController : ControllerBase
     /// Served so the settings screen offers exactly what the validation accepts.
     /// </summary>
     [HttpGet("timezones")]
-    [Authorize(Roles = PlatformRoles.RestaurantManager)]
+    [Authorize(Roles = PlatformRoles.SuperAdminOrManager)]
     [ProducesResponseType(
         typeof(IReadOnlyList<TimeZoneOptionResponse>),
         StatusCodes.Status200OK)]

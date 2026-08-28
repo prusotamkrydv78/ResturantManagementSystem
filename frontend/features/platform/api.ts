@@ -57,7 +57,11 @@ export function updateRestaurantSettings(
  *
  * Served rather than listed here, so the options and the validation come from one zone
  * database and cannot disagree.
+ *
+ * Shares the restaurant route deliberately. There was a second, identical endpoint
+ * under /api/platform for no reason other than which screen asked; the route is now
+ * authorised for a Super Admin as well as a manager, so there is one list.
  */
 export function listTimeZones(): Promise<TimeZoneOption[]> {
-  return apiFetch<TimeZoneOption[]>("/api/platform/timezones");
+  return apiFetch<TimeZoneOption[]>("/api/restaurants/timezones");
 }

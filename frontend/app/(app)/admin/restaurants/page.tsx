@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Plus, Store, UserMinus, UserPlus } from "lucide-react";
+import { Pencil, Plus, Store, Trash2, UserMinus, UserPlus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -24,11 +24,18 @@ import {
 import { Table, TableWrap, Td, Th, Tr } from "@/components/ui/table";
 import { PageBody, PageHeader } from "@/components/layout/page-header";
 import { RequireAuth } from "@/features/auth/require-auth";
-import { listManagers, unassignManager } from "@/features/managers/api";
 import {
-  assignManager,
+  assignManagerToRestaurant,
+  createManager,
+  listManagers,
+  unassignManager,
+} from "@/features/managers/api";
+import {
   createRestaurant,
+  deleteRestaurant,
+  getRestaurant,
   listRestaurants,
+  updateRestaurant,
 } from "@/features/restaurants/api";
 import type { Manager } from "@/types/manager";
 import type { RestaurantSummary } from "@/types/restaurant";
@@ -200,17 +207,27 @@ function RestaurantTable({
                 {formatDate(restaurant.createdAtUtc)}
               </Td>
               <Td className="text-right">
-                {restaurant.managerId === null ? (
-                  <AssignManagerDialog
+                <div className="flex flex-wrap items-center justify-end gap-1.5">
+                  {restaurant.managerId === null ? (
+                    <AssignManagerDialog
+                      restaurant={restaurant}
+                      onAssigned={onChanged}
+                    />
+                  ) : (
+                    <UnassignManagerButton
+                      restaurant={restaurant}
+                      onUnassigned={onChanged}
+                    />
+                  )}
+                  <EditRestaurantDialog
                     restaurant={restaurant}
-                    onAssigned={onChanged}
+                    onSaved={onChanged}
                   />
-                ) : (
-                  <UnassignManagerButton
+                  <DeleteRestaurantButton
                     restaurant={restaurant}
-                    onUnassigned={onChanged}
+                    onDeleted={onChanged}
                   />
-                )}
+                </div>
               </Td>
             </Tr>
           ))}
@@ -426,12 +443,20 @@ function AssignManagerDialog({
     setIsSubmitting(true);
 
     try {
-      await assignManager(
-        restaurant.id,
-        mode === "create"
-          ? { fullName, email, password }
-          : { userId: userId.trim() },
-      );
+      // Two calls rather than one endpoint that branches on the payload. The dialog
+      // already knows which mode it is in, so the choice belongs here; the server
+      // used to infer it from which fields were present, which meant the assignment
+      // rules had a second doorway into them.
+      if (mode === "create") {
+        await createManager({
+          fullName,
+          email,
+          password,
+          restaurantId: restaurant.id,
+        });
+      } else {
+        await assignManagerToRestaurant(userId.trim(), restaurant.id);
+      }
 
       reset();
       setIsOpen(false);
@@ -588,6 +613,296 @@ function AssignManagerDialog({
  * unassign, then assign. Moving a manager between restaurants in one atomic step
  * is done from the Managers page, where the server handles it in a single call.
  */
+/**
+ * Edit any restaurant, including its slug.
+ *
+ * The list row carries only a summary, so the full record is fetched when the dialog
+ * opens rather than kept in the table. Editing a field the form never showed would
+ * otherwise blank it: the API takes a whole object, not a patch.
+ */
+function EditRestaurantDialog({
+  restaurant,
+  onSaved,
+}: {
+  restaurant: RestaurantSummary;
+  onSaved: () => Promise<void>;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [name, setName] = useState(restaurant.name);
+  const [slug, setSlug] = useState(restaurant.slug);
+  const [city, setCity] = useState(restaurant.city ?? "");
+  const [country, setCountry] = useState("");
+  const [addressLine, setAddressLine] = useState("");
+  const [contactEmail, setContactEmail] = useState("");
+  const [contactPhone, setContactPhone] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    let cancelled = false;
+
+    async function load() {
+      setIsLoading(true);
+      setError(null);
+
+      try {
+        const full = await getRestaurant(restaurant.id);
+
+        if (cancelled) return;
+
+        setName(full.name);
+        setSlug(full.slug);
+        setCity(full.city ?? "");
+        setCountry(full.country ?? "");
+        setAddressLine(full.addressLine ?? "");
+        setContactEmail(full.contactEmail ?? "");
+        setContactPhone(full.contactPhone ?? "");
+      } catch (caught) {
+        if (!cancelled) {
+          setError(
+            caught instanceof Error
+              ? caught.message
+              : "Unable to load the restaurant.",
+          );
+        }
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    }
+
+    void load();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, restaurant.id]);
+
+  async function handleSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    setError(null);
+    setIsSubmitting(true);
+
+    try {
+      await updateRestaurant(restaurant.id, {
+        name: name.trim(),
+        // Only sent when it actually differs. The slug is what guest ordering links
+        // are built from, so an unchanged value is left out entirely rather than
+        // re-submitted.
+        ...(slug.trim() === restaurant.slug ? {} : { slug: slug.trim() }),
+        // Blanks are cleared rather than omitted here: unlike create, an edit that
+        // empties a field means the field should end up empty.
+        city: blankToNull(city),
+        country: blankToNull(country),
+        addressLine: blankToNull(addressLine),
+        contactEmail: blankToNull(contactEmail),
+        contactPhone: blankToNull(contactPhone),
+      });
+
+      setIsOpen(false);
+      await onSaved();
+    } catch (caught) {
+      setError(
+        caught instanceof Error ? caught.message : "Unable to save the restaurant.",
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  return (
+    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+      <DialogTrigger asChild>
+        <Button variant="secondary" size="sm" icon={<Pencil />}>
+          Edit
+        </Button>
+      </DialogTrigger>
+
+      <DialogContent
+        title={`Edit ${restaurant.name}`}
+        description="Changing the slug breaks any guest ordering link already handed out."
+      >
+        <form onSubmit={handleSubmit}>
+          <div className="flex flex-col gap-4 px-4 py-4">
+            {error !== null && <FormError message={error} />}
+
+            <Field htmlFor={`edit-name-${restaurant.id}`} label="Name" required>
+              <Input
+                id={`edit-name-${restaurant.id}`}
+                required
+                minLength={2}
+                autoFocus
+                disabled={isLoading}
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+              />
+            </Field>
+
+            <Field
+              htmlFor={`edit-slug-${restaurant.id}`}
+              label="Slug"
+              hint="Unique across the whole platform."
+            >
+              <Input
+                id={`edit-slug-${restaurant.id}`}
+                disabled={isLoading}
+                value={slug}
+                onChange={(event) => setSlug(event.target.value)}
+                aria-describedby={describedBy(`edit-slug-${restaurant.id}`, {
+                  hasHint: true,
+                })}
+              />
+            </Field>
+
+            <Field htmlFor={`edit-address-${restaurant.id}`} label="Address">
+              <Input
+                id={`edit-address-${restaurant.id}`}
+                disabled={isLoading}
+                value={addressLine}
+                onChange={(event) => setAddressLine(event.target.value)}
+              />
+            </Field>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Field htmlFor={`edit-city-${restaurant.id}`} label="City">
+                <Input
+                  id={`edit-city-${restaurant.id}`}
+                  disabled={isLoading}
+                  value={city}
+                  onChange={(event) => setCity(event.target.value)}
+                />
+              </Field>
+
+              <Field htmlFor={`edit-country-${restaurant.id}`} label="Country">
+                <Input
+                  id={`edit-country-${restaurant.id}`}
+                  disabled={isLoading}
+                  value={country}
+                  onChange={(event) => setCountry(event.target.value)}
+                />
+              </Field>
+
+              <Field htmlFor={`edit-email-${restaurant.id}`} label="Contact email">
+                <Input
+                  id={`edit-email-${restaurant.id}`}
+                  type="email"
+                  disabled={isLoading}
+                  value={contactEmail}
+                  onChange={(event) => setContactEmail(event.target.value)}
+                />
+              </Field>
+
+              <Field htmlFor={`edit-phone-${restaurant.id}`} label="Contact phone">
+                <Input
+                  id={`edit-phone-${restaurant.id}`}
+                  disabled={isLoading}
+                  value={contactPhone}
+                  onChange={(event) => setContactPhone(event.target.value)}
+                />
+              </Field>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="secondary">Cancel</Button>
+            </DialogClose>
+            <Button type="submit" disabled={isSubmitting || isLoading}>
+              {isSubmitting ? "Saving…" : "Save changes"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** Empty input means "clear this field", which the API expects as null. */
+function blankToNull(value: string): string | null {
+  const trimmed = value.trim();
+
+  return trimmed === "" ? null : trimmed;
+}
+
+/**
+ * Delete a restaurant that was created by mistake.
+ *
+ * The refusal is the server's to make, so nothing is disabled here on a guess about
+ * whether the restaurant has traded. A 409 comes back with the reason and it is shown
+ * as-is.
+ */
+function DeleteRestaurantButton({
+  restaurant,
+  onDeleted,
+}: {
+  restaurant: RestaurantSummary;
+  onDeleted: () => Promise<void>;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  async function handleDelete() {
+    setError(null);
+    setIsSubmitting(true);
+
+    try {
+      await deleteRestaurant(restaurant.id);
+      setIsOpen(false);
+      await onDeleted();
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Unable to delete the restaurant.",
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  return (
+    <Dialog
+      open={isOpen}
+      onOpenChange={(next) => {
+        setIsOpen(next);
+        if (!next) setError(null);
+      }}
+    >
+      <DialogTrigger asChild>
+        <Button variant="secondary" size="sm" icon={<Trash2 />}>
+          Delete
+        </Button>
+      </DialogTrigger>
+
+      <DialogContent
+        title={`Delete ${restaurant.name}?`}
+        description="This cannot be undone."
+      >
+        <div className="flex flex-col gap-3 px-4 py-4">
+          {error !== null && <FormError message={error} />}
+          <p className="text-sm text-muted">
+            Only a restaurant that has never traded can be deleted, and only once its
+            tables, staff, stock, customers and bookings are gone. Its menu goes with
+            it. Anything else is refused with a reason.
+          </p>
+        </div>
+
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button variant="secondary">Cancel</Button>
+          </DialogClose>
+          <Button variant="danger" disabled={isSubmitting} onClick={handleDelete}>
+            {isSubmitting ? "Deleting…" : "Delete restaurant"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function UnassignManagerButton({
   restaurant,
   onUnassigned,

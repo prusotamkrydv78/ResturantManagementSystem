@@ -28,6 +28,33 @@ public interface IRestaurantService
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Updates any restaurant by identifier. Super Admin only.
+    ///
+    /// The counterpart to <see cref="UpdateForManagerAsync"/>, and the only path that
+    /// can change a slug. Manager assignment is not touched here: ownership moves
+    /// through the manager endpoints so there is one way to do it.
+    /// </summary>
+    Task<Result<RestaurantResponse>> UpdateAsync(
+        Guid restaurantId,
+        UpdateRestaurantRequest request,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Deletes a restaurant. Super Admin only.
+    /// </summary>
+    /// <remarks>
+    /// An escape hatch for a record created by mistake, not a way to close a business
+    /// down. Refused once the restaurant has orders, and refused while it still holds
+    /// tables, staff, stock, customers or bookings - those are what a real restaurant
+    /// is made of, and removing them silently on its behalf would destroy more than
+    /// the caller asked for. Only the menu goes automatically, because it cannot
+    /// outlive the restaurant and the database already cascades it.
+    /// </remarks>
+    Task<Result<bool>> DeleteAsync(
+        Guid restaurantId,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Loads the restaurant managed by the given user. The identifier comes from the
     /// validated access token, so a manager cannot reach another restaurant by
     /// changing a value in the request.

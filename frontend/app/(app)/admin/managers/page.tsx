@@ -25,11 +25,13 @@ import { Table, TableWrap, Td, Th, Tr } from "@/components/ui/table";
 import { PageBody, PageHeader } from "@/components/layout/page-header";
 import { RequireAuth } from "@/features/auth/require-auth";
 import {
+  assignManagerToRestaurant,
   createManager,
   listManagers,
+  resetManagerPassword,
+  setManagerActive,
   unassignManager,
   updateManager,
-  assignManagerToRestaurant,
 } from "@/features/managers/api";
 import { listRestaurants } from "@/features/restaurants/api";
 import type { Manager, ManagerFilter } from "@/types/manager";
@@ -236,7 +238,13 @@ function Managers() {
                         )}
                       </Td>
                       <Td>
-                        {manager.isAssigned ? (
+                        {/* Suspension outranks assignment: a suspended account cannot
+                            sign in, so saying only "Assigned" would be misleading. */}
+                        {!manager.isActive ? (
+                          <Badge tone="danger" dot>
+                            Suspended
+                          </Badge>
+                        ) : manager.isAssigned ? (
                           <Badge tone="success" dot>
                             Assigned
                           </Badge>
@@ -444,24 +452,43 @@ function ManagerActionsDialog({
   const [fullName, setFullName] = useState(manager.fullName);
   const [email, setEmail] = useState(manager.email);
   const [restaurantId, setRestaurantId] = useState(manager.restaurant?.id ?? "");
+  const [newPassword, setNewPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState<"none" | "save" | "assign" | "unassign">("none");
+  const [notice, setNotice] = useState<string | null>(null);
+  const [busy, setBusy] = useState<
+    "none" | "save" | "assign" | "unassign" | "password" | "status"
+  >("none");
 
   function reset() {
     setFullName(manager.fullName);
     setEmail(manager.email);
     setRestaurantId(manager.restaurant?.id ?? "");
+    setNewPassword("");
     setError(null);
+    setNotice(null);
   }
 
-  async function run(action: "save" | "assign" | "unassign", work: () => Promise<void>) {
+  async function run(
+    action: "save" | "assign" | "unassign" | "password" | "status",
+    work: () => Promise<void>,
+    options?: { keepOpen?: boolean; notice?: string },
+  ) {
     setError(null);
+    setNotice(null);
     setBusy(action);
 
     try {
       await work();
       await onChanged();
-      setIsOpen(false);
+
+      // A password reset and a suspension keep the dialog open: there is nothing to
+      // navigate to afterwards, and closing it would leave no confirmation that
+      // anything happened.
+      if (options?.keepOpen === true) {
+        setNotice(options.notice ?? null);
+      } else {
+        setIsOpen(false);
+      }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "The action failed.");
     } finally {
@@ -496,6 +523,15 @@ function ManagerActionsDialog({
       <DialogContent title={manager.fullName} description={manager.email}>
         <div className="flex flex-col gap-5 px-4 py-4">
           {error !== null && <FormError message={error} />}
+
+          {notice !== null && (
+            <p
+              role="status"
+              className="rounded-md border border-success-border bg-success-soft px-3 py-2 text-sm text-success"
+            >
+              {notice}
+            </p>
+          )}
 
           <section className="flex flex-col gap-3">
             <div className="flex items-center justify-between gap-3">
@@ -609,6 +645,81 @@ function ManagerActionsDialog({
               }
             >
               {busy === "save" ? "Saving…" : "Save changes"}
+            </Button>
+          </section>
+
+          <section className="flex flex-col gap-3 border-t border-border pt-4">
+            <h3 className="text-sm font-semibold text-text">Password</h3>
+            <p className="text-xs text-muted">
+              There is no self-service reset. Setting one here is the only way back in
+              for a manager who has lost theirs.
+            </p>
+
+            <Field htmlFor={`password-${manager.id}`} label="New password">
+              <PasswordInput
+                id={`password-${manager.id}`}
+                autoComplete="new-password"
+                value={newPassword}
+                onChange={(event) => setNewPassword(event.target.value)}
+              />
+            </Field>
+
+            <Button
+              size="sm"
+              variant="secondary"
+              className="self-start"
+              disabled={busy !== "none" || newPassword.trim() === ""}
+              onClick={() =>
+                void run(
+                  "password",
+                  () =>
+                    resetManagerPassword(manager.id, {
+                      password: newPassword,
+                    }).then(() => {
+                      setNewPassword("");
+                    }),
+                  { keepOpen: true, notice: "Password replaced." },
+                )
+              }
+            >
+              {busy === "password" ? "Saving…" : "Replace password"}
+            </Button>
+          </section>
+
+          <section className="flex flex-col gap-3 border-t border-border pt-4">
+            <h3 className="text-sm font-semibold text-text">Account access</h3>
+            <p className="text-xs text-muted">
+              {manager.isActive
+                ? "Suspending revokes their sessions immediately. A manager who still runs a restaurant has to be unassigned first."
+                : "This account is suspended and cannot sign in."}
+            </p>
+
+            <Button
+              size="sm"
+              variant={manager.isActive ? "danger" : "secondary"}
+              className="self-start"
+              disabled={busy !== "none"}
+              onClick={() =>
+                void run(
+                  "status",
+                  () =>
+                    setManagerActive(manager.id, {
+                      isActive: !manager.isActive,
+                    }).then(() => undefined),
+                  {
+                    keepOpen: true,
+                    notice: manager.isActive
+                      ? "Account suspended."
+                      : "Account restored.",
+                  },
+                )
+              }
+            >
+              {busy === "status"
+                ? "Saving…"
+                : manager.isActive
+                  ? "Suspend account"
+                  : "Restore account"}
             </Button>
           </section>
         </div>

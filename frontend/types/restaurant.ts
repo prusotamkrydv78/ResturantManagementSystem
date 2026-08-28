@@ -54,13 +54,21 @@ export interface UpdateMyRestaurantPayload {
 }
 
 /**
- * Payload for assigning a manager from the restaurant side. Supply either
- * `userId` to assign an existing account, or the three fields that create a new
- * manager — never both.
+ * The fields a Super Admin may change on any restaurant.
+ *
+ * Separate from `UpdateMyRestaurantPayload` because only this one carries the slug.
+ * Leave `slug` undefined to keep the current value: the slug is what guest ordering
+ * links are built from, so an edit that only fixes a name should not restate it.
  */
-export type AssignManagerPayload =
-  | { userId: string }
-  | { fullName: string; email: string; password: string };
+export interface UpdateRestaurantPayload {
+  name: string;
+  slug?: string;
+  contactEmail?: string | null;
+  contactPhone?: string | null;
+  addressLine?: string | null;
+  city?: string | null;
+  country?: string | null;
+}
 
 /**
  * How a restaurant is configured to operate.

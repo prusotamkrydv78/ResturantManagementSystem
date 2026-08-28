@@ -61,6 +61,7 @@ public sealed class ManagerService : IManagerService
                 user.Id,
                 user.FullName,
                 user.Email,
+                user.IsActive,
                 user.CreatedAtUtc,
                 Restaurant = _dbContext.Restaurants
                     .Where(restaurant => restaurant.ManagerId == user.Id)
@@ -89,6 +90,7 @@ public sealed class ManagerService : IManagerService
                 row.Email ?? string.Empty,
                 row.Restaurant is not null,
                 row.Restaurant,
+                row.IsActive,
                 row.CreatedAtUtc))
             .ToList();
 
@@ -330,6 +332,9 @@ public sealed class ManagerService : IManagerService
         Guid managerId,
         CancellationToken cancellationToken)
     {
+        // Untracked on purpose: this reads the manager only to confirm it exists and to
+        // shape the response. The write is on the restaurant row, because that is where
+        // ownership lives - nothing on the account changes when it is unassigned.
         var manager = await FindManagerAsync(managerId, track: false, cancellationToken);
 
         if (manager is null)
@@ -356,6 +361,124 @@ public sealed class ManagerService : IManagerService
         // The account keeps its RestaurantManager role so it can be assigned again
         // without a second round of administration.
         return Result.Success(await ToResponseAsync(manager, cancellationToken));
+    }
+
+    /// <inheritdoc />
+    public async Task<Result<ManagerResponse>> ResetPasswordAsync(
+        Guid managerId,
+        ResetManagerPasswordRequest request,
+        CancellationToken cancellationToken)
+    {
+        var manager = await FindManagerAsync(managerId, track: true, cancellationToken);
+
+        if (manager is null)
+        {
+            return Result.Failure<ManagerResponse>(ManagerErrors.NotFound);
+        }
+
+        // Through Identity own reset rather than by writing a hash: this rotates the
+        // security stamp as a side effect, which is what makes the old password stop
+        // working everywhere rather than only at the next sign-in.
+        var token = await _userManager.GeneratePasswordResetTokenAsync(manager);
+        var result = await _userManager.ResetPasswordAsync(manager, token, request.Password);
+
+        if (!result.Succeeded)
+        {
+            var reason = string.Join(" ", result.Errors.Select(e => e.Description));
+
+            return Result.Failure<ManagerResponse>(
+                ManagerErrors.PasswordResetFailed(reason));
+        }
+
+        // Existing refresh tokens are left alone deliberately. They are revoked by
+        // suspending the account, which is the action that means "lock them out"; a
+        // password reset is usually the manager asking for help getting back in, and
+        // signing them out of a device they are holding would not help.
+        _logger.LogInformation("Reset the password for manager {ManagerId}.", managerId);
+
+        return Result.Success(await ToResponseAsync(manager, cancellationToken));
+    }
+
+    /// <inheritdoc />
+    public async Task<Result<ManagerResponse>> SetActiveAsync(
+        Guid managerId,
+        SetManagerActiveRequest request,
+        CancellationToken cancellationToken)
+    {
+        var manager = await FindManagerAsync(managerId, track: true, cancellationToken);
+
+        if (manager is null)
+        {
+            return Result.Failure<ManagerResponse>(ManagerErrors.NotFound);
+        }
+
+        if (manager.IsActive == request.IsActive)
+        {
+            return Result.Success(await ToResponseAsync(manager, cancellationToken));
+        }
+
+        if (!request.IsActive)
+        {
+            // Refusing here is what keeps a restaurant from becoming unopenable while
+            // still looking staffed. Ownership lives on the restaurant row, so this
+            // asks that rather than the account.
+            var stillRuns = await _dbContext.Restaurants.AnyAsync(
+                restaurant => restaurant.ManagerId == managerId,
+                cancellationToken);
+
+            if (stillRuns)
+            {
+                return Result.Failure<ManagerResponse>(ManagerErrors.StillAssigned);
+            }
+        }
+
+        manager.IsActive = request.IsActive;
+
+        var result = await _userManager.UpdateAsync(manager);
+
+        if (!result.Succeeded)
+        {
+            var reason = string.Join(" ", result.Errors.Select(e => e.Description));
+
+            return Result.Failure<ManagerResponse>(ManagerErrors.UpdateFailed(reason));
+        }
+
+        if (!request.IsActive)
+        {
+            // Sign-in and refresh both check IsActive, so a suspended account cannot
+            // start or continue a session. Revoking outstanding refresh tokens closes
+            // the remaining gap: without it a live access token keeps working until it
+            // expires.
+            await RevokeRefreshTokensAsync(managerId, cancellationToken);
+        }
+
+        _logger.LogInformation(
+            "Manager {ManagerId} is now {State}.",
+            managerId,
+            request.IsActive ? "active" : "suspended");
+
+        return Result.Success(await ToResponseAsync(manager, cancellationToken));
+    }
+
+    private async Task RevokeRefreshTokensAsync(
+        Guid managerId,
+        CancellationToken cancellationToken)
+    {
+        var now = DateTimeOffset.UtcNow;
+
+        var tokens = await _dbContext.RefreshTokens
+            .Where(token => token.UserId == managerId && token.RevokedAtUtc == null)
+            .ToListAsync(cancellationToken);
+
+        foreach (var token in tokens)
+        {
+            token.RevokedAtUtc = now;
+        }
+
+        if (tokens.Count > 0)
+        {
+            await _dbContext.SaveChangesAsync(cancellationToken);
+        }
     }
 
     private async Task<ApplicationUser?> FindManagerAsync(
@@ -391,6 +514,7 @@ public sealed class ManagerService : IManagerService
             manager.Email ?? string.Empty,
             restaurant is not null,
             restaurant,
+            manager.IsActive,
             manager.CreatedAtUtc);
     }
 }

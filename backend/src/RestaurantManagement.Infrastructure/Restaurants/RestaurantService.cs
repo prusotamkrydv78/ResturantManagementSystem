@@ -115,6 +115,121 @@ public sealed partial class RestaurantService : IRestaurantService
     }
 
     /// <inheritdoc />
+    public async Task<Result<RestaurantResponse>> UpdateAsync(
+        Guid restaurantId,
+        UpdateRestaurantRequest request,
+        CancellationToken cancellationToken)
+    {
+        var restaurant = await _dbContext.Restaurants
+            .Include(candidate => candidate.Manager)
+            .SingleOrDefaultAsync(candidate => candidate.Id == restaurantId, cancellationToken);
+
+        if (restaurant is null)
+        {
+            return Result.Failure<RestaurantResponse>(RestaurantErrors.NotFound);
+        }
+
+        // A null slug means "leave it", which is not the same as an empty one. Only a
+        // value that actually differs is validated, so re-saving the current slug
+        // cannot fail against the restaurant own row.
+        if (!string.IsNullOrWhiteSpace(request.Slug))
+        {
+            var slug = request.Slug.Trim().ToLowerInvariant();
+
+            if (slug != restaurant.Slug)
+            {
+                var slugTaken = await _dbContext.Restaurants.AnyAsync(
+                    candidate => candidate.Slug == slug && candidate.Id != restaurantId,
+                    cancellationToken);
+
+                if (slugTaken)
+                {
+                    return Result.Failure<RestaurantResponse>(RestaurantErrors.SlugTaken);
+                }
+
+                restaurant.Slug = slug;
+            }
+        }
+
+        restaurant.Name = request.Name.Trim();
+        restaurant.ContactEmail = Normalise(request.ContactEmail);
+        restaurant.ContactPhone = Normalise(request.ContactPhone);
+        restaurant.AddressLine = Normalise(request.AddressLine);
+        restaurant.City = Normalise(request.City);
+        restaurant.Country = Normalise(request.Country);
+        restaurant.UpdatedAtUtc = DateTimeOffset.UtcNow;
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation("Updated restaurant {RestaurantId}.", restaurant.Id);
+
+        return Result.Success(ToResponse(restaurant, restaurant.Manager));
+    }
+
+    /// <inheritdoc />
+    public async Task<Result<bool>> DeleteAsync(
+        Guid restaurantId,
+        CancellationToken cancellationToken)
+    {
+        var restaurant = await _dbContext.Restaurants.SingleOrDefaultAsync(
+            candidate => candidate.Id == restaurantId,
+            cancellationToken);
+
+        if (restaurant is null)
+        {
+            return Result.Failure<bool>(RestaurantErrors.NotFound);
+        }
+
+        // Orders first and on their own, because the answer is different: a restaurant
+        // that has traded is never deletable, however much else is cleared away.
+        var hasTraded = await _dbContext.Orders.AnyAsync(
+            order => order.RestaurantId == restaurantId,
+            cancellationToken);
+
+        if (hasTraded)
+        {
+            return Result.Failure<bool>(RestaurantErrors.HasTraded);
+        }
+
+        // Everything the database would refuse the delete on anyway, checked here so
+        // the caller gets a sentence instead of a foreign key violation. The menu is
+        // absent from this list on purpose: it cascades, and a menu cannot mean
+        // anything without the restaurant it belongs to.
+        var hasSetupData =
+            await _dbContext.RestaurantTables.AnyAsync(
+                table => table.RestaurantId == restaurantId, cancellationToken)
+            || await _dbContext.Users.AnyAsync(
+                user => user.RestaurantId == restaurantId, cancellationToken)
+            || await _dbContext.InventoryItems.AnyAsync(
+                item => item.RestaurantId == restaurantId, cancellationToken)
+            || await _dbContext.Customers.AnyAsync(
+                customer => customer.RestaurantId == restaurantId, cancellationToken)
+            || await _dbContext.Reservations.AnyAsync(
+                reservation => reservation.RestaurantId == restaurantId, cancellationToken);
+
+        if (hasSetupData)
+        {
+            return Result.Failure<bool>(RestaurantErrors.HasSetupData);
+        }
+
+        // Clear ownership before removing the row. The manager account outlives the
+        // restaurant and simply becomes unassigned, which is a state the product
+        // already understands.
+        restaurant.ManagerId = null;
+
+        _dbContext.Restaurants.Remove(restaurant);
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation(
+            "Deleted restaurant {RestaurantId} ({Slug}).",
+            restaurantId,
+            restaurant.Slug);
+
+        return Result.Success(true);
+    }
+
+    /// <inheritdoc />
     public async Task<Result<RestaurantResponse>> GetForManagerAsync(
         Guid managerUserId,
         CancellationToken cancellationToken)

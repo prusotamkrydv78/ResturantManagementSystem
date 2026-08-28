@@ -3,7 +3,6 @@ using Microsoft.AspNetCore.Mvc;
 using RestaurantManagement.Application.Authentication;
 using RestaurantManagement.Application.Platform;
 using RestaurantManagement.Application.Platform.Dtos;
-using RestaurantManagement.Application.Restaurants;
 using RestaurantManagement.Application.Restaurants.Dtos;
 using RestaurantManagement.Shared.Results;
 
@@ -28,15 +27,11 @@ namespace RestaurantManagement.Api.Controllers;
 public sealed class PlatformController : ControllerBase
 {
     private readonly IPlatformService _platformService;
-    private readonly IRestaurantService _restaurantService;
 
     /// <summary>Creates the controller.</summary>
-    public PlatformController(
-        IPlatformService platformService,
-        IRestaurantService restaurantService)
+    public PlatformController(IPlatformService platformService)
     {
         _platformService = platformService;
-        _restaurantService = restaurantService;
     }
 
     /// <summary>
@@ -107,28 +102,6 @@ public sealed class PlatformController : ControllerBase
 
         return result.IsFailure
             ? ProblemFrom(result.Error!, StatusFor(result.Error!))
-            : Ok(result.Value);
-    }
-
-    /// <summary>
-    /// The timezones this server can be configured with.
-    ///
-    /// Served from the same zone database the validation uses, so the options offered and
-    /// the values accepted cannot disagree. Delegated to the restaurant service rather
-    /// than reimplemented, because a second copy of this list is a second thing to drift.
-    /// </summary>
-    [HttpGet("timezones")]
-    [ProducesResponseType(
-        typeof(IReadOnlyList<TimeZoneOptionResponse>),
-        StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    public async Task<ActionResult<IReadOnlyList<TimeZoneOptionResponse>>> GetTimeZones(
-        CancellationToken cancellationToken)
-    {
-        var result = await _restaurantService.GetTimeZonesAsync(cancellationToken);
-
-        return result.IsFailure
-            ? ProblemFrom(result.Error!, StatusCodes.Status400BadRequest)
             : Ok(result.Value);
     }
 

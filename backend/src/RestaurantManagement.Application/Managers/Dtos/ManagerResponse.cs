@@ -17,6 +17,10 @@ public sealed record AssignedRestaurantDto(Guid Id, string Name, string Slug);
 /// <param name="Email">Email address, also the login name.</param>
 /// <param name="IsAssigned">True when the manager currently runs a restaurant.</param>
 /// <param name="Restaurant">The restaurant they run, or null when unassigned.</param>
+/// <param name="IsActive">
+/// False when the account is suspended. A suspended account cannot sign in and cannot
+/// refresh an existing session, so this is the whole story rather than a display flag.
+/// </param>
 /// <param name="CreatedAtUtc">When the account was created.</param>
 public sealed record ManagerResponse(
     Guid Id,
@@ -24,4 +28,5 @@ public sealed record ManagerResponse(
     string Email,
     bool IsAssigned,
     AssignedRestaurantDto? Restaurant,
+    bool IsActive,
     DateTimeOffset CreatedAtUtc);
