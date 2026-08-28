@@ -1,0 +1,311 @@
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using RestaurantManagement.Api.Authentication;
+using RestaurantManagement.Application.Floor;
+using RestaurantManagement.Application.Floor.Dtos;
+using RestaurantManagement.Application.Orders;
+using RestaurantManagement.Application.Orders.Dtos;
+using RestaurantManagement.Shared.Results;
+
+namespace RestaurantManagement.Api.Controllers;
+
+/// <summary>
+/// The waiter ordering workflow.
+///
+/// Gated by the Waiter policy, so a chef, a cashier, a restaurant manager and a
+/// platform admin are all refused. Nothing here accepts a restaurant identifier:
+/// the restaurant comes from the authenticated waiter.
+///
+/// The reads are purpose-built for ordering rather than reusing the manager
+/// administration endpoints, so a waiter never receives an out-of-service table or
+/// an unavailable item.
+/// </summary>
+[ApiController]
+[Route("api/waiter")]
+[Authorize(Policy = AuthorizationPolicies.Waiter)]
+public sealed class WaiterController : ControllerBase
+{
+    private readonly IOrderService _orderService;
+    private readonly IFloorService _floorService;
+
+    /// <summary>Creates the controller.</summary>
+    public WaiterController(IOrderService orderService, IFloorService floorService)
+    {
+        _orderService = orderService;
+        _floorService = floorService;
+    }
+
+    /// <summary>Restaurant name and counts for the waiter workspace.</summary>
+    [HttpGet("context")]
+    [ProducesResponseType(typeof(WaiterContextResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<ActionResult<WaiterContextResponse>> GetContext(
+        CancellationToken cancellationToken)
+    {
+        var staffId = User.GetUserId();
+
+        if (staffId is null)
+        {
+            return Unauthorized();
+        }
+
+        var result = await _orderService.GetContextAsync(staffId.Value, cancellationToken);
+
+        return result.IsFailure
+            ? ProblemFrom(result.Error!, StatusCodes.Status403Forbidden)
+            : Ok(result.Value);
+    }
+
+    /// <summary>Tables in service, the only ones that can take a new order.</summary>
+    [HttpGet("tables")]
+    [ProducesResponseType(typeof(IReadOnlyList<WaiterTableResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<ActionResult<IReadOnlyList<WaiterTableResponse>>> GetTables(
+        CancellationToken cancellationToken)
+    {
+        var staffId = User.GetUserId();
+
+        if (staffId is null)
+        {
+            return Unauthorized();
+        }
+
+        var result = await _orderService.GetTablesAsync(staffId.Value, cancellationToken);
+
+        return result.IsFailure
+            ? ProblemFrom(result.Error!, StatusCodes.Status403Forbidden)
+            : Ok(result.Value);
+    }
+
+    /// <summary>
+    /// The live floor: every table and what is happening at it right now.
+    ///
+    /// Read only, and separate from the tables route above. That one lists where a new
+    /// order may be placed and so returns only tables in service; this one shows the
+    /// whole room, including tables that are closed or already working, so a waiter
+    /// can see the floor rather than just their next options.
+    /// </summary>
+    [HttpGet("floor")]
+    [ProducesResponseType(typeof(FloorOverviewResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<ActionResult<FloorOverviewResponse>> GetFloor(
+        CancellationToken cancellationToken)
+    {
+        var staffId = User.GetUserId();
+
+        if (staffId is null)
+        {
+            return Unauthorized();
+        }
+
+        var result = await _floorService.GetForWaiterAsync(staffId.Value, cancellationToken);
+
+        return result.IsFailure
+            ? ProblemFrom(result.Error!, StatusCodes.Status403Forbidden)
+            : Ok(result.Value);
+    }
+
+    /// <summary>The orderable menu: active categories with their active items.</summary>
+    [HttpGet("menu")]
+    [ProducesResponseType(
+        typeof(IReadOnlyList<WaiterMenuCategoryResponse>),
+        StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<ActionResult<IReadOnlyList<WaiterMenuCategoryResponse>>> GetMenu(
+        CancellationToken cancellationToken)
+    {
+        var staffId = User.GetUserId();
+
+        if (staffId is null)
+        {
+            return Unauthorized();
+        }
+
+        var result = await _orderService.GetMenuAsync(staffId.Value, cancellationToken);
+
+        return result.IsFailure
+            ? ProblemFrom(result.Error!, StatusCodes.Status403Forbidden)
+            : Ok(result.Value);
+    }
+
+    /// <summary>
+    /// Places an order. The request carries no prices and no total: the server reads
+    /// the menu itself, stores name and price snapshots, and calculates the amount.
+    /// </summary>
+    [HttpPost("orders")]
+    [ProducesResponseType(typeof(OrderResponse), StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<OrderResponse>> CreateOrder(
+        CreateOrderRequest request,
+        CancellationToken cancellationToken)
+    {
+        var staffId = User.GetUserId();
+
+        if (staffId is null)
+        {
+            return Unauthorized();
+        }
+
+        var result = await _orderService.CreateAsync(staffId.Value, request, cancellationToken);
+
+        if (result.IsFailure)
+        {
+            return ProblemFrom(result.Error!, StatusFor(result.Error!));
+        }
+
+        return CreatedAtAction(
+            nameof(GetOrder),
+            new { id = result.Value.Id },
+            result.Value);
+    }
+
+    /// <summary>Loads one order placed in the caller restaurant.</summary>
+    [HttpGet("orders/{id:guid}")]
+    [ProducesResponseType(typeof(OrderResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<OrderResponse>> GetOrder(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var staffId = User.GetUserId();
+
+        if (staffId is null)
+        {
+            return Unauthorized();
+        }
+
+        var result = await _orderService.GetByIdAsync(staffId.Value, id, cancellationToken);
+
+        return result.IsFailure
+            ? ProblemFrom(result.Error!, StatusFor(result.Error!))
+            : Ok(result.Value);
+    }
+
+    /// <summary>
+    /// Open orders for this restaurant, newest first. Restaurant-wide so whoever is
+    /// on the floor can pick up a table; who placed each one is still shown.
+    /// </summary>
+    [HttpGet("orders")]
+    [ProducesResponseType(typeof(IReadOnlyList<OrderSummaryResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<ActionResult<IReadOnlyList<OrderSummaryResponse>>> GetOpenOrders(
+        [FromQuery] int limit = 50,
+        CancellationToken cancellationToken = default)
+    {
+        var staffId = User.GetUserId();
+
+        if (staffId is null)
+        {
+            return Unauthorized();
+        }
+
+        var result = await _orderService.GetOpenAsync(staffId.Value, limit, cancellationToken);
+
+        return result.IsFailure
+            ? ProblemFrom(result.Error!, StatusCodes.Status403Forbidden)
+            : Ok(result.Value);
+    }
+
+    /// <summary>
+    /// Applies the submitted state to an open order: quantities and notes on the
+    /// lines kept, removal of the ones left out, and any newly added items.
+    ///
+    /// Existing lines keep the name and price they were created with; only new items
+    /// take today prices. The server recalculates every total.
+    /// </summary>
+    [HttpPut("orders/{id:guid}")]
+    [ProducesResponseType(typeof(OrderResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<OrderResponse>> UpdateOrder(
+        Guid id,
+        UpdateOrderRequest request,
+        CancellationToken cancellationToken)
+    {
+        var staffId = User.GetUserId();
+
+        if (staffId is null)
+        {
+            return Unauthorized();
+        }
+
+        var result = await _orderService.UpdateAsync(
+            staffId.Value,
+            id,
+            request,
+            cancellationToken);
+
+        return result.IsFailure
+            ? ProblemFrom(result.Error!, StatusFor(result.Error!))
+            : Ok(result.Value);
+    }
+
+    /// <summary>
+    /// Sends every line not yet on a ticket to the kitchen as one submission.
+    ///
+    /// Returns the ticket that was created together with the refreshed order, so the
+    /// interface can show the ticket number and lock the submitted lines without a
+    /// second call.
+    /// </summary>
+    [HttpPost("orders/{id:guid}/kitchen-tickets")]
+    [ProducesResponseType(typeof(SubmitToKitchenResponse), StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<SubmitToKitchenResponse>> SubmitToKitchen(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var staffId = User.GetUserId();
+
+        if (staffId is null)
+        {
+            return Unauthorized();
+        }
+
+        var result = await _orderService.SubmitToKitchenAsync(
+            staffId.Value,
+            id,
+            cancellationToken);
+
+        if (result.IsFailure)
+        {
+            return ProblemFrom(result.Error!, StatusFor(result.Error!));
+        }
+
+        return CreatedAtAction(
+            nameof(GetOrder),
+            new { id },
+            result.Value);
+    }
+
+    private static int StatusFor(Error error)
+    {
+        if (error == OrderErrors.NotAnActiveWaiter)
+        {
+            return StatusCodes.Status403Forbidden;
+        }
+
+        if (error == OrderErrors.NotFound)
+        {
+            return StatusCodes.Status404NotFound;
+        }
+
+        // A table or item that is no longer available is a conflict with the current
+        // state of the restaurant, not a malformed request.
+        return StatusCodes.Status409Conflict;
+    }
+
+    private ObjectResult ProblemFrom(Error error, int statusCode) =>
+        Problem(
+            detail: error.Message,
+            statusCode: statusCode,
+            title: "Request failed",
+            type: null,
+            instance: Request.Path);
+}

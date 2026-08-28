@@ -1,0 +1,94 @@
+@hostAddress = http://localhost:5080
+
+### Health
+GET {{hostAddress}}/health
+Accept: application/json
+
+### Example endpoint
+GET {{hostAddress}}/api/ping
+Accept: application/json
+
+### Register (sets the refresh cookie)
+POST {{hostAddress}}/api/auth/register
+Content-Type: application/json
+
+{
+  "fullName": "Ada Lovelace",
+  "email": "ada@example.com",
+  "password": "StrongPass1"
+}
+
+### Login (sets the refresh cookie)
+# @name login
+POST {{hostAddress}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "ada@example.com",
+  "password": "StrongPass1"
+}
+
+### Current user (paste the accessToken from the login response)
+GET {{hostAddress}}/api/auth/me
+Accept: application/json
+Authorization: Bearer {{login.response.body.accessToken}}
+
+### Refresh (relies on the refresh cookie; rotates it)
+POST {{hostAddress}}/api/auth/refresh
+
+### Logout (revokes the refresh token and clears the cookie)
+POST {{hostAddress}}/api/auth/logout
+
+###
+
+# ---------------------------------------------------------------------------
+# Restaurants (Super Admin unless noted). Paste a Super Admin access token.
+# ---------------------------------------------------------------------------
+@superAdminToken = paste-access-token-here
+@managerToken = paste-manager-access-token-here
+@restaurantId = 00000000-0000-0000-0000-000000000000
+
+### Create restaurant
+POST {{hostAddress}}/api/restaurants
+Content-Type: application/json
+Authorization: Bearer {{superAdminToken}}
+
+{
+  "name": "Spice Garden",
+  "city": "Pune",
+  "contactEmail": "hello@spicegarden.example"
+}
+
+### List restaurants
+GET {{hostAddress}}/api/restaurants
+Authorization: Bearer {{superAdminToken}}
+
+### Restaurant details
+GET {{hostAddress}}/api/restaurants/{{restaurantId}}
+Authorization: Bearer {{superAdminToken}}
+
+### Assign manager - create a new account
+POST {{hostAddress}}/api/restaurants/{{restaurantId}}/manager
+Content-Type: application/json
+Authorization: Bearer {{superAdminToken}}
+
+{
+  "fullName": "Riya Manager",
+  "email": "riya@spicegarden.example",
+  "password": "StrongPass1"
+}
+
+### Assign manager - promote an existing user
+POST {{hostAddress}}/api/restaurants/{{restaurantId}}/manager
+Content-Type: application/json
+Authorization: Bearer {{superAdminToken}}
+
+{
+  "userId": "00000000-0000-0000-0000-000000000000"
+}
+
+### Manager: my restaurant (no id in the request)
+GET {{hostAddress}}/api/restaurants/mine
+Authorization: Bearer {{managerToken}}
+
+###

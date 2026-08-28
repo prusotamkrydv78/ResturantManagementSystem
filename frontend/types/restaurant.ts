@@ -1,0 +1,102 @@
+/** The manager assigned to a restaurant. */
+export interface RestaurantManager {
+  id: string;
+  fullName: string;
+  email: string;
+}
+
+/** Full restaurant detail. */
+export interface Restaurant {
+  id: string;
+  name: string;
+  slug: string;
+  contactEmail: string | null;
+  contactPhone: string | null;
+  addressLine: string | null;
+  city: string | null;
+  country: string | null;
+  manager: RestaurantManager | null;
+  createdAtUtc: string;
+  updatedAtUtc: string;
+}
+
+/** Condensed restaurant row for list views. */
+export interface RestaurantSummary {
+  id: string;
+  name: string;
+  slug: string;
+  city: string | null;
+  managerId: string | null;
+  managerName: string | null;
+  managerEmail: string | null;
+  createdAtUtc: string;
+}
+
+/** Payload for creating a restaurant. */
+export interface CreateRestaurantPayload {
+  name: string;
+  slug?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+  addressLine?: string;
+  city?: string;
+  country?: string;
+}
+
+/** The fields a manager may change on their own restaurant. */
+export interface UpdateMyRestaurantPayload {
+  name: string;
+  addressLine: string | null;
+  city: string | null;
+  country: string | null;
+  contactEmail: string | null;
+  contactPhone: string | null;
+}
+
+/**
+ * Payload for assigning a manager from the restaurant side. Supply either
+ * `userId` to assign an existing account, or the three fields that create a new
+ * manager — never both.
+ */
+export type AssignManagerPayload =
+  | { userId: string }
+  | { fullName: string; email: string; password: string };
+
+/**
+ * How a restaurant is configured to operate.
+ *
+ * Kept apart from the profile above. The profile is what a guest would recognise;
+ * these are the values the system computes with, and getting one wrong makes a
+ * figure wrong rather than a page look untidy.
+ */
+export interface RestaurantSettings {
+  /** The IANA zone the restaurant operates in, such as "Asia/Kathmandu". */
+  timeZoneId: string;
+  /** A readable name for that zone, supplied by the server. */
+  timeZoneDisplayName: string;
+  /** What the zone is worth against UTC right now, daylight saving included. */
+  currentUtcOffsetMinutes: number;
+  /** The local hour a service day begins, 0 to 23. */
+  dayStartHour: number;
+  /**
+   * When the running service day began, as the dashboard computes it. The one value
+   * that proves the configuration is doing what was intended.
+   */
+  serviceDayStartedAtUtc: string;
+}
+
+/** Payload for changing how a restaurant operates. Both values are required. */
+export interface UpdateRestaurantSettingsPayload {
+  timeZoneId: string;
+  dayStartHour: number;
+}
+
+/** One timezone the server will accept, offered so the list cannot disagree with it. */
+export interface TimeZoneOption {
+  id: string;
+  displayName: string;
+  currentUtcOffsetMinutes: number;
+}
+
+/** Bounds the API applies to the service day boundary. */
+export const DAY_START_HOURS = { min: 0, max: 23 } as const;

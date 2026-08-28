@@ -1,0 +1,367 @@
+@import "tailwindcss";
+
+/* ---------------------------------------------------------------------------
+   Design tokens.
+
+   Every colour used in the app resolves through one of these semantic names.
+   Components never reach for a raw palette value, so the whole product can be
+   retoned from this block alone.
+
+   Neutrals carry a slight cool-green bias so they sit with the pine primary
+   instead of fighting it.
+   --------------------------------------------------------------------------- */
+
+:root {
+  /* Surfaces */
+  --canvas: #f4f6f5;
+  --surface: #ffffff;
+  --surface-2: #fafbfa;
+  --surface-3: #f0f3f1;
+
+  /* Lines */
+  --border: #e0e4e2;
+  --border-strong: #c9d0cd;
+
+  /* Text */
+  --text: #141a19;
+  --text-muted: #5c6a66;
+  --text-subtle: #86928e;
+  --text-inverse: #ffffff;
+
+  /* Action */
+  --primary: #0f6e5a;
+  --primary-hover: #0b5748;
+  --primary-active: #084538;
+  --primary-fg: #ffffff;
+  --primary-soft: #e4f1ec;
+  --primary-border: #b7dbd0;
+
+  /* Status */
+  --success: #16794a;
+  --success-soft: #e3f2e9;
+  --success-border: #b3dcc4;
+
+  --warning: #9a5b06;
+  --warning-soft: #fbf0da;
+  --warning-border: #ecd39a;
+
+  --danger: #b32318;
+  --danger-hover: #92180f;
+  --danger-soft: #fdeae7;
+  --danger-border: #f2bfb8;
+
+  /* Focus */
+  --ring: #0f6e5a;
+
+  /* Elevation. Deliberately shallow: this is a dense application, not a
+     stack of floating cards. */
+  --shadow-sm: 0 1px 2px 0 rgb(16 24 22 / 0.05);
+  --shadow-md:
+    0 4px 6px -2px rgb(16 24 22 / 0.06), 0 2px 4px -2px rgb(16 24 22 / 0.06);
+  --shadow-lg:
+    0 12px 28px -8px rgb(16 24 22 / 0.18), 0 4px 10px -4px rgb(16 24 22 / 0.1);
+}
+
+/* System dark. Guarded so an explicit light choice still wins. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --canvas: #0e1211;
+    --surface: #161b1a;
+    --surface-2: #1b2120;
+    --surface-3: #212827;
+
+    --border: #262e2c;
+    --border-strong: #35403d;
+
+    --text: #e7ebea;
+    --text-muted: #98a4a0;
+    --text-subtle: #6d7a76;
+    --text-inverse: #0e1211;
+
+    --primary: #2a8c74;
+    --primary-hover: #339e83;
+    --primary-active: #3cae90;
+    --primary-fg: #ffffff;
+    --primary-soft: #16302a;
+    --primary-border: #24483f;
+
+    --success: #3faa72;
+    --success-soft: #14301f;
+    --success-border: #23492f;
+
+    --warning: #d59742;
+    --warning-soft: #33260f;
+    --warning-border: #4d3a16;
+
+    --danger: #e0685c;
+    --danger-hover: #e87d72;
+    --danger-soft: #351a18;
+    --danger-border: #4d2622;
+
+    --ring: #3faa8c;
+
+    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.4);
+    --shadow-md: 0 4px 6px -2px rgb(0 0 0 / 0.45), 0 2px 4px -2px rgb(0 0 0 / 0.4);
+    --shadow-lg: 0 12px 28px -8px rgb(0 0 0 / 0.6), 0 4px 10px -4px rgb(0 0 0 / 0.5);
+  }
+}
+
+/* Explicit dark choice wins over a light OS setting. */
+:root[data-theme="dark"] {
+  --canvas: #0e1211;
+  --surface: #161b1a;
+  --surface-2: #1b2120;
+  --surface-3: #212827;
+
+  --border: #262e2c;
+  --border-strong: #35403d;
+
+  --text: #e7ebea;
+  --text-muted: #98a4a0;
+  --text-subtle: #6d7a76;
+  --text-inverse: #0e1211;
+
+  --primary: #2a8c74;
+  --primary-hover: #339e83;
+  --primary-active: #3cae90;
+  --primary-fg: #ffffff;
+  --primary-soft: #16302a;
+  --primary-border: #24483f;
+
+  --success: #3faa72;
+  --success-soft: #14301f;
+  --success-border: #23492f;
+
+  --warning: #d59742;
+  --warning-soft: #33260f;
+  --warning-border: #4d3a16;
+
+  --danger: #e0685c;
+  --danger-hover: #e87d72;
+  --danger-soft: #351a18;
+  --danger-border: #4d2622;
+
+  --ring: #3faa8c;
+
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.4);
+  --shadow-md: 0 4px 6px -2px rgb(0 0 0 / 0.45), 0 2px 4px -2px rgb(0 0 0 / 0.4);
+  --shadow-lg: 0 12px 28px -8px rgb(0 0 0 / 0.6), 0 4px 10px -4px rgb(0 0 0 / 0.5);
+}
+
+/* ---------------------------------------------------------------------------
+   Expose tokens to Tailwind utilities: bg-surface, text-muted, border-border…
+   --------------------------------------------------------------------------- */
+
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+
+  --color-text: var(--text);
+  --color-muted: var(--text-muted);
+  --color-subtle: var(--text-subtle);
+  --color-inverse: var(--text-inverse);
+
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-active: var(--primary-active);
+  --color-primary-fg: var(--primary-fg);
+  --color-primary-soft: var(--primary-soft);
+  --color-primary-border: var(--primary-border);
+
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-success-border: var(--success-border);
+
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-warning-border: var(--warning-border);
+
+  --color-danger: var(--danger);
+  --color-danger-hover: var(--danger-hover);
+  --color-danger-soft: var(--danger-soft);
+  --color-danger-border: var(--danger-border);
+
+  --color-ring: var(--ring);
+
+  /* Type scale, tuned for an application rather than a marketing page. */
+  --text-2xs: 0.6875rem; /* 11px  uppercase labels, table meta */
+  --text-2xs--line-height: 1rem;
+  --text-xs: 0.75rem; /* 12px  helper text */
+  --text-xs--line-height: 1.0625rem;
+  --text-sm: 0.8125rem; /* 13px  dense UI, table cells */
+  --text-sm--line-height: 1.25rem;
+  --text-base: 0.875rem; /* 14px  body */
+  --text-base--line-height: 1.375rem;
+  --text-lg: 1rem; /* 16px  section titles */
+  --text-lg--line-height: 1.5rem;
+  --text-xl: 1.125rem; /* 18px  card titles */
+  --text-xl--line-height: 1.625rem;
+  --text-2xl: 1.3125rem; /* 21px  page titles */
+  --text-2xl--line-height: 1.75rem;
+  --text-3xl: 1.625rem; /* 26px  auth headings, section titles */
+  --text-3xl--line-height: 2rem;
+
+  /* Display sizes. Used only on the public landing page, which has to carry a
+     room rather than a dense table, so it needs sizes the application never
+     wants. Tracking tightens as they grow, because Inter opens up at scale. */
+  --text-4xl: 2rem; /* 32px */
+  --text-4xl--line-height: 2.375rem;
+  --text-4xl--letter-spacing: -0.02em;
+  --text-5xl: 2.5rem; /* 40px */
+  --text-5xl--line-height: 2.875rem;
+  --text-5xl--letter-spacing: -0.025em;
+  --text-6xl: 3.25rem; /* 52px */
+  --text-6xl--line-height: 3.5rem;
+  --text-6xl--letter-spacing: -0.03em;
+  --text-7xl: 4rem; /* 64px */
+  --text-7xl--line-height: 4.25rem;
+  --text-7xl--letter-spacing: -0.034em;
+
+  /* Small, consistent radii. Nothing pill-shaped except badges. */
+  --radius-sm: 0.25rem;
+  --radius-md: 0.375rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.625rem;
+
+  --shadow-sm: var(--shadow-sm);
+  --shadow-md: var(--shadow-md);
+  --shadow-lg: var(--shadow-lg);
+
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Roboto, Arial, sans-serif;
+  --font-mono: var(--font-mono-face), ui-monospace, "SFMono-Regular", Menlo,
+    Consolas, monospace;
+}
+
+/* ---------------------------------------------------------------------------
+   Base
+   --------------------------------------------------------------------------- */
+
+html {
+  color-scheme: light dark;
+}
+
+body {
+  background: var(--canvas);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: var(--text-base--line-height);
+  /* Inter: disambiguated glyphs and proper contextual alternates. */
+  font-feature-settings: "cv05", "cv11", "ss01";
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Digits that sit in columns should align. */
+table,
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  text-wrap: balance;
+  letter-spacing: -0.011em;
+}
+
+/* One focus treatment for the whole product. */
+:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+::selection {
+  background: var(--primary-soft);
+  color: var(--text);
+}
+
+/* ---------------------------------------------------------------------------
+   Landing page entrance.
+
+   One keyframe, applied with staggered delays, so the front door settles into
+   place rather than snapping. `both` matters: it holds the hidden start state
+   before the delay elapses and the visible end state afterwards, which is also
+   what makes the reduced-motion override below safe. The animation still runs,
+   just fast enough to be instant, and it finishes visible either way.
+   --------------------------------------------------------------------------- */
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(0.75rem);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.rise {
+  animation: rise 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/*
+ * Printing.
+ *
+ * Only the receipt is ever meant to reach paper, and it is the same markup shown on
+ * screen rather than a separate template that could drift from it. Everything that
+ * frames the app is marked `print:hidden` at the point it is rendered; this strips the
+ * page down to the document and makes it legible in ink.
+ */
+@media print {
+  :root {
+    /* Ink on white, whatever theme the screen was using. */
+    --bg: #ffffff;
+    --surface: #ffffff;
+    --surface-2: #ffffff;
+    --surface-3: #ffffff;
+    --text: #000000;
+    --muted: #333333;
+    --subtle: #555555;
+    --border: #999999;
+    --border-strong: #666666;
+  }
+
+  html,
+  body {
+    background: #ffffff;
+  }
+
+  /* The receipt is the page, not a card sitting on one. */
+  .receipt {
+    max-width: none;
+    margin: 0;
+    border: 0;
+    box-shadow: none;
+    padding: 0;
+  }
+
+  /* A receipt should not be split across two sheets. */
+  .receipt,
+  .receipt li {
+    break-inside: avoid;
+  }
+
+  @page {
+    margin: 12mm;
+  }
+}
