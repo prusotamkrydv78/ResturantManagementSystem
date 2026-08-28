@@ -143,8 +143,15 @@ public sealed class ManagerService : IManagerService
             }
         }
 
-        await using var transaction =
-            await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+        // Joins a transaction already in progress rather than starting a second one,
+        // which the provider would refuse. That happens when a restaurant and its first
+        // manager are created together: the caller owns the transaction so both land or
+        // neither does, and this method must not commit half of it early.
+        var joined = _dbContext.Database.CurrentTransaction is not null;
+
+        await using var transaction = joined
+            ? null
+            : await _dbContext.Database.BeginTransactionAsync(cancellationToken);
 
         var manager = new ApplicationUser
         {
@@ -162,7 +169,13 @@ public sealed class ManagerService : IManagerService
 
         if (!createResult.Succeeded)
         {
-            await transaction.RollbackAsync(cancellationToken);
+            // Only unwind what this method owns. When joined, the caller decides -
+            // rolling back their transaction from here would undo work it has not
+            // been told about.
+            if (transaction is not null)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+            }
 
             var reason = string.Join(" ", createResult.Errors.Select(e => e.Description));
 
@@ -176,7 +189,10 @@ public sealed class ManagerService : IManagerService
             await _dbContext.SaveChangesAsync(cancellationToken);
         }
 
-        await transaction.CommitAsync(cancellationToken);
+        if (transaction is not null)
+        {
+            await transaction.CommitAsync(cancellationToken);
+        }
 
         _logger.LogInformation(
             "Created restaurant manager {ManagerId}{Assignment}.",

@@ -2,6 +2,8 @@ using System.Text;
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using RestaurantManagement.Application.Managers;
+using RestaurantManagement.Application.Managers.Dtos;
 using RestaurantManagement.Application.Restaurants;
 using RestaurantManagement.Application.Restaurants.Dtos;
 using RestaurantManagement.Domain.Identity;
@@ -12,20 +14,26 @@ using RestaurantManagement.Shared.Results;
 namespace RestaurantManagement.Infrastructure.Restaurants;
 
 /// <summary>
-/// Restaurant use cases. Manager assignment is not handled here: it lives in the
-/// manager module so the rules exist in exactly one place.
+/// Restaurant use cases.
+///
+/// Assignment rules are not reimplemented here. Creating a restaurant can create or
+/// attach its manager in one transaction, but it does that by calling the manager
+/// module, which remains the only place those rules live.
 /// </summary>
 public sealed partial class RestaurantService : IRestaurantService
 {
     private readonly ApplicationDbContext _dbContext;
+    private readonly IManagerService _managerService;
     private readonly ILogger<RestaurantService> _logger;
 
     /// <summary>Creates the service.</summary>
     public RestaurantService(
         ApplicationDbContext dbContext,
+        IManagerService managerService,
         ILogger<RestaurantService> logger)
     {
         _dbContext = dbContext;
+        _managerService = managerService;
         _logger = logger;
     }
 
@@ -67,15 +75,61 @@ public sealed partial class RestaurantService : IRestaurantService
             UpdatedAtUtc = now
         };
 
+        var withManager = request.ManagerId is not null || request.CreatesManager;
+
+        // A restaurant with nobody assigned cannot trade, so when the caller named a
+        // manager the two have to land together or not at all. Without this a rejected
+        // email would leave an unusable restaurant behind and the caller looking at an
+        // error, which is the worst of both.
+        await using var transaction = withManager
+            ? await _dbContext.Database.BeginTransactionAsync(cancellationToken)
+            : null;
+
         _dbContext.Restaurants.Add(restaurant);
         await _dbContext.SaveChangesAsync(cancellationToken);
 
-        _logger.LogInformation(
-            "Created restaurant {RestaurantId} ({Slug}).",
-            restaurant.Id,
-            restaurant.Slug);
+        if (withManager)
+        {
+            // Delegated rather than reimplemented. Every rule about who may manage what
+            // lives in the manager module, and a second copy here would be the one that
+            // fell behind. It reads the restaurant inside this transaction, so the row
+            // just inserted is visible to it.
+            var assignment = request.ManagerId is { } managerId
+                ? await _managerService.AssignAsync(managerId, restaurant.Id, cancellationToken)
+                : await _managerService.CreateAsync(
+                    new CreateManagerRequest
+                    {
+                        FullName = request.ManagerFullName!,
+                        Email = request.ManagerEmail!,
+                        Password = request.ManagerPassword!,
+                        RestaurantId = restaurant.Id,
+                    },
+                    cancellationToken);
 
-        return Result.Success(ToResponse(restaurant, manager: null));
+            if (assignment.IsFailure)
+            {
+                await transaction!.RollbackAsync(cancellationToken);
+
+                // The manager module's own error, passed straight through: "that email is
+                // already in use" is what the caller needs to read, not a restaurant
+                // error invented to wrap it.
+                return Result.Failure<RestaurantResponse>(assignment.Error!);
+            }
+        }
+
+        if (transaction is not null)
+        {
+            await transaction.CommitAsync(cancellationToken);
+        }
+
+        _logger.LogInformation(
+            "Created restaurant {RestaurantId} ({Slug}){Assignment}.",
+            restaurant.Id,
+            restaurant.Slug,
+            withManager ? " with a manager" : " with no manager yet");
+
+        // Re-read so the response carries the manager the transaction just attached.
+        return await GetByIdAsync(restaurant.Id, cancellationToken);
     }
 
     /// <inheritdoc />

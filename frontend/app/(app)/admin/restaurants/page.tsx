@@ -12,7 +12,7 @@ import {
   Users,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, LinkButton } from "@/components/ui/button";
 import {
   Dialog,
   DialogClose,
@@ -40,7 +40,6 @@ import {
   unassignManager,
 } from "@/features/managers/api";
 import {
-  createRestaurant,
   getRestaurant,
   listRestaurantStaff,
   listRestaurants,
@@ -52,7 +51,9 @@ import type { RestaurantSummary } from "@/types/restaurant";
 import type { StaffMember } from "@/types/staff";
 
 /**
- * Platform restaurant management: list, create, assign the initial manager.
+ * Platform restaurant management: the list, and what can be done to a restaurant
+ * that already exists. Creating one lives on its own page, because a restaurant and
+ * its first manager are made together and that does not fit a dialog.
  *
  * The role gate here shapes the UI only. Every request is independently
  * authorised by the API, which remains the security boundary.
@@ -116,7 +117,11 @@ function AdminRestaurants() {
         title="Restaurants"
         description="Create restaurants and assign the manager who will run each one."
         crumbs={[{ label: "Platform", href: "/dashboard" }, { label: "Restaurants" }]}
-        actions={<CreateRestaurantDialog onCreated={refresh} />}
+        actions={
+          <LinkButton href="/admin/restaurants/new" icon={<Plus />}>
+            New restaurant
+          </LinkButton>
+        }
       />
 
       <PageBody>
@@ -152,8 +157,12 @@ function AdminRestaurants() {
               <EmptyState
                 icon={<Store />}
                 title="No restaurants yet"
-                description="Create the first restaurant, then assign someone to manage it."
-                action={<CreateRestaurantDialog onCreated={refresh} />}
+                description="Create the first restaurant and hand it to a manager in one step."
+                action={
+                  <LinkButton href="/admin/restaurants/new" icon={<Plus />}>
+                    New restaurant
+                  </LinkButton>
+                }
               />
             ) : (
               <RestaurantTable restaurants={restaurants} onChanged={refresh} />
@@ -269,136 +278,6 @@ function formatDate(isoString: string): string {
         day: "numeric",
       });
 }
-
-/* -------------------------------------------------------------------------- */
-/* Create                                                                     */
-/* -------------------------------------------------------------------------- */
-
-function CreateRestaurantDialog({ onCreated }: { onCreated: () => Promise<void> }) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [name, setName] = useState("");
-  const [slug, setSlug] = useState("");
-  const [city, setCity] = useState("");
-  const [contactEmail, setContactEmail] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  function reset() {
-    setName("");
-    setSlug("");
-    setCity("");
-    setContactEmail("");
-    setError(null);
-  }
-
-  async function handleSubmit(event: React.FormEvent) {
-    event.preventDefault();
-    setError(null);
-    setIsSubmitting(true);
-
-    try {
-      await createRestaurant({
-        name,
-        // Omit blanks rather than sending empty strings, which would trip the
-        // email and length validators on the API.
-        ...(slug.trim() === "" ? {} : { slug: slug.trim() }),
-        ...(city.trim() === "" ? {} : { city: city.trim() }),
-        ...(contactEmail.trim() === "" ? {} : { contactEmail: contactEmail.trim() }),
-      });
-
-      reset();
-      setIsOpen(false);
-      await onCreated();
-    } catch (caught) {
-      setError(
-        caught instanceof Error ? caught.message : "Unable to create restaurant.",
-      );
-    } finally {
-      setIsSubmitting(false);
-    }
-  }
-
-  return (
-    <Dialog
-      open={isOpen}
-      onOpenChange={(next) => {
-        setIsOpen(next);
-        if (!next) {
-          reset();
-        }
-      }}
-    >
-      <DialogTrigger asChild>
-        <Button icon={<Plus />}>New restaurant</Button>
-      </DialogTrigger>
-
-      <DialogContent
-        title="New restaurant"
-        description="A manager can be assigned once the restaurant exists."
-      >
-        <form onSubmit={handleSubmit}>
-          <div className="flex flex-col gap-4 px-4 py-4">
-            {error !== null && <FormError message={error} />}
-
-            <Field htmlFor="restaurant-name" label="Name" required>
-              <Input
-                id="restaurant-name"
-                required
-                minLength={2}
-                autoFocus
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-              />
-            </Field>
-
-            <Field
-              htmlFor="restaurant-slug"
-              label="Slug"
-              hint="Lower-case letters, digits and hyphens. Derived from the name when left blank."
-            >
-              <Input
-                id="restaurant-slug"
-                placeholder="derived from name"
-                value={slug}
-                onChange={(event) => setSlug(event.target.value)}
-                aria-describedby={describedBy("restaurant-slug", { hasHint: true })}
-              />
-            </Field>
-
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Field htmlFor="restaurant-city" label="City">
-                <Input
-                  id="restaurant-city"
-                  value={city}
-                  onChange={(event) => setCity(event.target.value)}
-                />
-              </Field>
-
-              <Field htmlFor="restaurant-email" label="Contact email">
-                <Input
-                  id="restaurant-email"
-                  type="email"
-                  value={contactEmail}
-                  onChange={(event) => setContactEmail(event.target.value)}
-                />
-              </Field>
-            </div>
-          </div>
-
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button variant="secondary">Cancel</Button>
-            </DialogClose>
-            <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? "Creating…" : "Create restaurant"}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 /* -------------------------------------------------------------------------- */
 /* Assign manager                                                             */
 /* -------------------------------------------------------------------------- */

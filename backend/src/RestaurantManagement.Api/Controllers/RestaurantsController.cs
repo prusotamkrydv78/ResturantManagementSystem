@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using RestaurantManagement.Api.Authentication;
 using RestaurantManagement.Application.Authentication;
+using RestaurantManagement.Application.Managers;
 using RestaurantManagement.Application.Restaurants;
 using RestaurantManagement.Application.Restaurants.Dtos;
 using RestaurantManagement.Application.Staff;
@@ -34,12 +35,20 @@ public sealed class RestaurantsController : ControllerBase
         _staffService = staffService;
     }
 
-    /// <summary>Creates a restaurant. No manager is assigned yet.</summary>
+    /// <summary>
+    /// Creates a restaurant, optionally with the manager who will run it.
+    ///
+    /// Supply <c>managerId</c> to hand it to an existing account, or the three
+    /// <c>manager*</c> fields to create one, or none of them to assign somebody later.
+    /// The restaurant and the manager land in one transaction, so a rejected email
+    /// leaves no half-built restaurant behind.
+    /// </summary>
     [HttpPost]
     [Authorize(Roles = PlatformRoles.SuperAdmin)]
     [ProducesResponseType(typeof(RestaurantResponse), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<ActionResult<RestaurantResponse>> Create(
         CreateRestaurantRequest request,
@@ -49,7 +58,16 @@ public sealed class RestaurantsController : ControllerBase
 
         if (result.IsFailure)
         {
-            return ProblemFrom(result.Error!, StatusCodes.Status409Conflict);
+            var error = result.Error!;
+
+            // A named manager who does not exist is a 404 about that account, not a
+            // conflict about the restaurant. Everything else here is a clash: a taken
+            // slug, a taken email, a manager who already runs somewhere.
+            return ProblemFrom(
+                error,
+                error == ManagerErrors.NotFound
+                    ? StatusCodes.Status404NotFound
+                    : StatusCodes.Status409Conflict);
         }
 
         return CreatedAtAction(

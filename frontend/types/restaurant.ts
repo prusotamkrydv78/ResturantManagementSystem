@@ -36,7 +36,14 @@ export interface RestaurantSummary {
   createdAtUtc: string;
 }
 
-/** Payload for creating a restaurant. */
+/**
+ * Payload for creating a restaurant, and optionally the manager who will run it.
+ *
+ * Send exactly one of: `managerId` for an account that already exists, the three
+ * `manager*` fields to create one, or none of them to assign somebody later. The
+ * server does both in one transaction, so a rejected email leaves no half-built
+ * restaurant behind.
+ */
 export interface CreateRestaurantPayload {
   name: string;
   slug?: string;
@@ -45,6 +52,10 @@ export interface CreateRestaurantPayload {
   addressLine?: string;
   city?: string;
   country?: string;
+  managerId?: string;
+  managerFullName?: string;
+  managerEmail?: string;
+  managerPassword?: string;
 }
 
 /** The fields a manager may change on their own restaurant. */
