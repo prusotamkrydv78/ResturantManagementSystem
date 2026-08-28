@@ -3,6 +3,19 @@
 # ---------------------------------------------------------------------------
 bin/
 obj/
+
+# Release / publish output. Carries a full copy of appsettings.Production.json,
+# so committing it leaks the database password and the JWT signing key.
+publish-out/
+publish/
+[Pp]ublish[Oo]utput/
+*.zip
+
+# Web Deploy profiles - these hold the msdeploy username and password in plain
+# XML, which is push access to the live site.
+*.publishSettings
+*.pubxml
+*.pubxml.user
 [Dd]ebug/
 [Rr]elease/
 *.user
