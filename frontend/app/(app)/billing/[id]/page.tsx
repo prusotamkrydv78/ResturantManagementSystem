@@ -9,7 +9,6 @@ import {
   CircleCheck,
   CreditCard,
   Flame,
-  Info,
   Receipt,
   Smartphone,
   StickyNote,

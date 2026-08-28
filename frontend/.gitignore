@@ -32,6 +32,9 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# ...except the template, which documents which variables exist. Without it a
+# fresh clone has no way to learn NEXT_PUBLIC_API_URL is required.
+!.env.example
 
 # vercel
 .vercel
