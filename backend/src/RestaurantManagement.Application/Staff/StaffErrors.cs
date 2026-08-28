@@ -29,4 +29,14 @@ public static class StaffErrors
     /// <summary>Identity rejected the updated account details.</summary>
     public static Error UpdateFailed(string message) =>
         new("staff.update_failed", message);
+
+    /// <summary>
+    /// The restaurant whose roster was asked for does not exist.
+    ///
+    /// Only reachable on the Super Admin path, which addresses a restaurant by
+    /// identifier. Every manager-facing method resolves the restaurant from the token
+    /// instead, and reports <see cref="NoRestaurantAssigned"/> when there is none.
+    /// </summary>
+    public static readonly Error RestaurantNotFound =
+        new("staff.restaurant_not_found", "The restaurant could not be found.");
 }

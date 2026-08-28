@@ -4,6 +4,8 @@ using RestaurantManagement.Api.Authentication;
 using RestaurantManagement.Application.Authentication;
 using RestaurantManagement.Application.Restaurants;
 using RestaurantManagement.Application.Restaurants.Dtos;
+using RestaurantManagement.Application.Staff;
+using RestaurantManagement.Application.Staff.Dtos;
 using RestaurantManagement.Shared.Results;
 
 namespace RestaurantManagement.Api.Controllers;
@@ -21,11 +23,15 @@ namespace RestaurantManagement.Api.Controllers;
 public sealed class RestaurantsController : ControllerBase
 {
     private readonly IRestaurantService _restaurantService;
+    private readonly IStaffService _staffService;
 
     /// <summary>Creates the controller.</summary>
-    public RestaurantsController(IRestaurantService restaurantService)
+    public RestaurantsController(
+        IRestaurantService restaurantService,
+        IStaffService staffService)
     {
         _restaurantService = restaurantService;
+        _staffService = staffService;
     }
 
     /// <summary>Creates a restaurant. No manager is assigned yet.</summary>
@@ -76,6 +82,31 @@ public sealed class RestaurantsController : ControllerBase
         CancellationToken cancellationToken)
     {
         var result = await _restaurantService.GetByIdAsync(id, cancellationToken);
+
+        return result.IsFailure
+            ? ProblemFrom(result.Error!, StatusCodes.Status404NotFound)
+            : Ok(result.Value);
+    }
+
+    /// <summary>
+    /// Lists the staff of one restaurant. Super Admin only, and read-only.
+    ///
+    /// The platform owner can see who works where without being able to change a
+    /// roster: hiring and suspending stay with the manager who works with these
+    /// people. The same projection the manager sees, so there is one answer to the
+    /// question rather than two that can disagree.
+    /// </summary>
+    [HttpGet("{id:guid}/staff")]
+    [Authorize(Roles = PlatformRoles.SuperAdmin)]
+    [ProducesResponseType(typeof(IReadOnlyList<StaffResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<IReadOnlyList<StaffResponse>>> GetStaff(
+        Guid id,
+        [FromQuery] string? search,
+        CancellationToken cancellationToken)
+    {
+        var result = await _staffService.GetForRestaurantAsync(id, search, cancellationToken);
 
         return result.IsFailure
             ? ProblemFrom(result.Error!, StatusCodes.Status404NotFound)

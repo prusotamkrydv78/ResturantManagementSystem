@@ -1,7 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Pencil, Plus, Store, Trash2, UserMinus, UserPlus } from "lucide-react";
+import {
+  Pencil,
+  Plus,
+  Store,
+  Trash2,
+  UserMinus,
+  UserPlus,
+  Users,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -34,11 +42,13 @@ import {
   createRestaurant,
   deleteRestaurant,
   getRestaurant,
+  listRestaurantStaff,
   listRestaurants,
   updateRestaurant,
 } from "@/features/restaurants/api";
 import type { Manager } from "@/types/manager";
 import type { RestaurantSummary } from "@/types/restaurant";
+import type { StaffMember } from "@/types/staff";
 
 /**
  * Platform restaurant management: list, create, assign the initial manager.
@@ -219,6 +229,7 @@ function RestaurantTable({
                       onUnassigned={onChanged}
                     />
                   )}
+                  <RestaurantStaffDialog restaurant={restaurant} />
                   <EditRestaurantDialog
                     restaurant={restaurant}
                     onSaved={onChanged}
@@ -897,6 +908,115 @@ function DeleteRestaurantButton({
           <Button variant="danger" disabled={isSubmitting} onClick={handleDelete}>
             {isSubmitting ? "Deleting…" : "Delete restaurant"}
           </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/**
+ * The roster of one restaurant, read-only.
+ *
+ * No add, edit or suspend here even though the Super Admin can reach the accounts:
+ * the manager works with these people and owns the roster. Two parties editing the
+ * same list is how it stops being clear who hired whom.
+ */
+function RestaurantStaffDialog({ restaurant }: { restaurant: RestaurantSummary }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [staff, setStaff] = useState<StaffMember[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    let cancelled = false;
+
+    async function load() {
+      setStaff(null);
+      setError(null);
+
+      try {
+        const loaded = await listRestaurantStaff(restaurant.id);
+
+        if (!cancelled) setStaff(loaded);
+      } catch (caught) {
+        if (!cancelled) {
+          setError(
+            caught instanceof Error ? caught.message : "Unable to load the staff.",
+          );
+        }
+      }
+    }
+
+    void load();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, restaurant.id]);
+
+  return (
+    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+      <DialogTrigger asChild>
+        <Button variant="secondary" size="sm" icon={<Users />}>
+          Staff
+        </Button>
+      </DialogTrigger>
+
+      <DialogContent
+        title={`Staff at ${restaurant.name}`}
+        description="Read-only. The manager of this restaurant hires and suspends."
+      >
+        <div className="flex flex-col gap-3 px-4 py-4">
+          {error !== null && <FormError message={error} />}
+
+          {staff === null && error === null ? (
+            <p className="text-sm text-muted">Loading…</p>
+          ) : staff !== null && staff.length === 0 ? (
+            <p className="text-sm text-muted">
+              Nobody has been added yet. Until a waiter and a chef exist, this
+              restaurant cannot take an order or cook one.
+            </p>
+          ) : (
+            staff !== null && (
+              <ul className="flex flex-col divide-y divide-border">
+                {staff.map((member) => (
+                  <li
+                    key={member.id}
+                    className="flex items-center justify-between gap-3 py-2.5"
+                  >
+                    <div className="min-w-0">
+                      <span className="block truncate font-medium text-text">
+                        {member.fullName}
+                      </span>
+                      <span className="block truncate text-2xs text-muted">
+                        {member.email}
+                      </span>
+                    </div>
+
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      <Badge tone="neutral">{member.role}</Badge>
+                      {member.isActive ? (
+                        <Badge tone="success" dot>
+                          Active
+                        </Badge>
+                      ) : (
+                        <Badge tone="danger" dot>
+                          Suspended
+                        </Badge>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )
+          )}
+        </div>
+
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button variant="secondary">Close</Button>
+          </DialogClose>
         </DialogFooter>
       </DialogContent>
     </Dialog>

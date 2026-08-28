@@ -1,4 +1,5 @@
 import { apiFetch } from "@/lib/api/client";
+import type { StaffMember } from "@/types/staff";
 import type {
   CreateRestaurantPayload,
   Restaurant,
@@ -108,4 +109,22 @@ export function updateMySettings(
  */
 export function listTimeZones(): Promise<TimeZoneOption[]> {
   return apiFetch<TimeZoneOption[]>("/api/restaurants/timezones");
+}
+
+/**
+ * Super Admin: the staff of one restaurant.
+ *
+ * Read-only. Hiring, editing and suspending stay with the manager, so there is no
+ * matching write call here.
+ */
+export function listRestaurantStaff(
+  id: string,
+  search?: string,
+): Promise<StaffMember[]> {
+  const query =
+    search === undefined || search.trim() === ""
+      ? ""
+      : `?search=${encodeURIComponent(search.trim())}`;
+
+  return apiFetch<StaffMember[]>(`/api/restaurants/${id}/staff${query}`);
 }

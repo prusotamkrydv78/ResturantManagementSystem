@@ -47,28 +47,41 @@ public sealed class StaffService : IStaffService
                 StaffErrors.NoRestaurantAssigned);
         }
 
-        var query = StaffOf(restaurant.Value.Id).AsNoTracking();
+        var members = await ListStaffAsync(
+            restaurant.Value.Id,
+            restaurant.Value.Name,
+            search,
+            cancellationToken);
 
-        if (!string.IsNullOrWhiteSpace(search))
+        return Result.Success<IReadOnlyList<StaffResponse>>(members);
+    }
+
+    /// <inheritdoc />
+    public async Task<Result<IReadOnlyList<StaffResponse>>> GetForRestaurantAsync(
+        Guid restaurantId,
+        string? search,
+        CancellationToken cancellationToken)
+    {
+        var restaurant = await _dbContext.Restaurants
+            .AsNoTracking()
+            .Where(candidate => candidate.Id == restaurantId)
+            .Select(candidate => new { candidate.Id, candidate.Name })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (restaurant is null)
         {
-            var term = search.Trim();
-
-            query = query.Where(member =>
-                member.FullName.Contains(term) ||
-                (member.Email != null && member.Email.Contains(term)));
+            return Result.Failure<IReadOnlyList<StaffResponse>>(
+                StaffErrors.RestaurantNotFound);
         }
 
-        var members = await query
-            .OrderBy(member => member.FullName)
-            .Select(member => new StaffResponse(
-                member.Id,
-                member.FullName,
-                member.Email ?? string.Empty,
-                member.StaffRole!.Value,
-                member.IsActive,
-                restaurant.Value.Name,
-                member.CreatedAtUtc))
-            .ToListAsync(cancellationToken);
+        // Same listing as the manager sees, deliberately. If the platform owner were
+        // shown a different projection it would be a second answer to the same
+        // question, and the two would drift.
+        var members = await ListStaffAsync(
+            restaurant.Id,
+            restaurant.Name,
+            search,
+            cancellationToken);
 
         return Result.Success<IReadOnlyList<StaffResponse>>(members);
     }
@@ -282,6 +295,43 @@ public sealed class StaffService : IStaffService
     }
 
     /// <summary>The staff of one restaurant, and nothing else.</summary>
+    /// <summary>
+    /// The roster of one restaurant, name-or-email filtered and ordered by name.
+    ///
+    /// Shared by the manager and Super Admin paths, which differ only in how they
+    /// arrive at the restaurant: the manager from their token, the administrator from
+    /// an identifier in the route.
+    /// </summary>
+    private async Task<List<StaffResponse>> ListStaffAsync(
+        Guid restaurantId,
+        string restaurantName,
+        string? search,
+        CancellationToken cancellationToken)
+    {
+        var query = StaffOf(restaurantId).AsNoTracking();
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = search.Trim();
+
+            query = query.Where(member =>
+                member.FullName.Contains(term) ||
+                (member.Email != null && member.Email.Contains(term)));
+        }
+
+        return await query
+            .OrderBy(member => member.FullName)
+            .Select(member => new StaffResponse(
+                member.Id,
+                member.FullName,
+                member.Email ?? string.Empty,
+                member.StaffRole!.Value,
+                member.IsActive,
+                restaurantName,
+                member.CreatedAtUtc))
+            .ToListAsync(cancellationToken);
+    }
+
     private IQueryable<ApplicationUser> StaffOf(Guid restaurantId) =>
         _dbContext.Users.Where(user =>
             user.RestaurantId == restaurantId &&

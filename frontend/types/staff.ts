@@ -10,7 +10,12 @@ export type StaffRole = "Waiter" | "Chef";
 /** Every role, in the order they are offered in the UI. */
 export const STAFF_ROLES: readonly StaffRole[] = ["Waiter", "Chef"];
 
-/** A staff member, as seen by their restaurant manager. */
+/**
+ * A staff member.
+ *
+ * Returned identically to the restaurant manager who administers the roster and to
+ * a Super Admin reading it, so the two cannot show different answers.
+ */
 export interface StaffMember {
   id: string;
   fullName: string;

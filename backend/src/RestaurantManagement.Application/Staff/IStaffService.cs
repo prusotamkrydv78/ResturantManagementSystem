@@ -22,6 +22,21 @@ public interface IStaffService
         string? search,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Lists the staff of a named restaurant. Super Admin only.
+    /// </summary>
+    /// <remarks>
+    /// The one method here that takes a restaurant identifier, because the caller owns
+    /// the platform rather than a restaurant and so has nothing to resolve from their
+    /// token. Read-only on purpose: hiring and suspending belong to the manager who
+    /// works with these people, and a second party editing the same roster is how two
+    /// sources of truth start.
+    /// </remarks>
+    Task<Result<IReadOnlyList<StaffResponse>>> GetForRestaurantAsync(
+        Guid restaurantId,
+        string? search,
+        CancellationToken cancellationToken);
+
     /// <summary>Loads one staff member from the caller restaurant.</summary>
     Task<Result<StaffResponse>> GetByIdAsync(
         Guid managerUserId,
