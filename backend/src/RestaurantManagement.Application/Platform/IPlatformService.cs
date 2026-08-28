@@ -1,5 +1,4 @@
 using RestaurantManagement.Application.Platform.Dtos;
-using RestaurantManagement.Application.Restaurants.Dtos;
 using RestaurantManagement.Shared.Results;
 
 namespace RestaurantManagement.Application.Platform;
@@ -39,16 +38,5 @@ public interface IPlatformService
     Task<Result<PlatformOverviewResponse>> GetOverviewAsync(
         CancellationToken cancellationToken);
 
-    /// <summary>
-    /// Changes how one restaurant operates: its timezone and the hour its day begins.
-    ///
-    /// The same two values a manager can set for themselves, reachable here because a
-    /// restaurant set up in the wrong zone reports wrong figures from the first day and
-    /// may have no manager yet to fix it. The timezone is checked against the zones this
-    /// machine actually knows.
-    /// </summary>
-    Task<Result<PlatformRestaurantSettingsResponse>> UpdateRestaurantSettingsAsync(
-        Guid restaurantId,
-        UpdateRestaurantSettingsRequest request,
-        CancellationToken cancellationToken);
+
 }

@@ -3,7 +3,6 @@ using Microsoft.AspNetCore.Mvc;
 using RestaurantManagement.Application.Authentication;
 using RestaurantManagement.Application.Platform;
 using RestaurantManagement.Application.Platform.Dtos;
-using RestaurantManagement.Application.Restaurants.Dtos;
 using RestaurantManagement.Shared.Results;
 
 namespace RestaurantManagement.Api.Controllers;
@@ -73,35 +72,6 @@ public sealed class PlatformController : ControllerBase
 
         return result.IsFailure
             ? ProblemFrom(result.Error!, StatusCodes.Status400BadRequest)
-            : Ok(result.Value);
-    }
-
-    /// <summary>
-    /// Changes how one restaurant operates: its timezone and the hour its day begins.
-    ///
-    /// The same two values a manager can set for themselves. Reachable here because a
-    /// restaurant set up in the wrong zone reports wrong figures from its first day, and
-    /// may not have a manager yet to correct it.
-    /// </summary>
-    [HttpPut("restaurants/{id:guid}/settings")]
-    [ProducesResponseType(
-        typeof(PlatformRestaurantSettingsResponse),
-        StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<PlatformRestaurantSettingsResponse>> UpdateRestaurantSettings(
-        Guid id,
-        UpdateRestaurantSettingsRequest request,
-        CancellationToken cancellationToken)
-    {
-        var result = await _platformService.UpdateRestaurantSettingsAsync(
-            id,
-            request,
-            cancellationToken);
-
-        return result.IsFailure
-            ? ProblemFrom(result.Error!, StatusFor(result.Error!))
             : Ok(result.Value);
     }
 

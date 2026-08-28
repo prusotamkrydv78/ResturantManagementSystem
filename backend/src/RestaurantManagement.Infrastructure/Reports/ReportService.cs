@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using RestaurantManagement.Application.Reports;
 using RestaurantManagement.Application.Reports.Dtos;
 using RestaurantManagement.Domain.Orders;
+using RestaurantManagement.Domain.Restaurants;
 using RestaurantManagement.Domain.Payments;
 using RestaurantManagement.Infrastructure.Persistence;
 using RestaurantManagement.Shared.Results;
@@ -66,7 +67,7 @@ public sealed class ReportService : IReportService
                 ReportErrors.NoRestaurantAssigned);
         }
 
-        var today = restaurant.LocalToday(DateTimeOffset.UtcNow);
+        var today = ServiceDay.LocalToday(DateTimeOffset.UtcNow);
 
         // Nothing asked for means today. One end asked for means that single day, which
         // is what a manager typing one date almost always wants.
@@ -89,8 +90,8 @@ public sealed class ReportService : IReportService
         // Half open: from the boundary of the first day up to the boundary of the day
         // after the last, so every service day is covered once and no boundary is
         // counted twice.
-        var start = restaurant.ServiceDayStartOn(first);
-        var end = restaurant.ServiceDayStartOn(last.AddDays(1));
+        var start = ServiceDay.StartOn(first);
+        var end = ServiceDay.StartOn(last.AddDays(1));
 
         // Selected by when they ended rather than when they were placed, so a table
         // that opened before a boundary and settled after it belongs to the day it was
@@ -133,7 +134,6 @@ public sealed class ReportService : IReportService
         return Result.Success(new ReportSummaryResponse(
             first,
             last,
-            restaurant.TimeZoneId,
             start,
             end,
             dayCount,

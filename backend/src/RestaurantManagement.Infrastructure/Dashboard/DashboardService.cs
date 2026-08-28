@@ -61,7 +61,7 @@ public sealed class DashboardService : IDashboardService
         // Asked of the restaurant, so the figures do not move with whoever is looking
         // at them. Previously this came from the viewer browser offset, which meant
         // two managers in different places saw different takings for the same day.
-        var dayStart = restaurant.ServiceDayStart(now);
+        var dayStart = ServiceDay.Start(now);
 
         // Open orders, with what the panels need to count. Loaded rather than
         // aggregated in SQL because the same set answers five different questions,

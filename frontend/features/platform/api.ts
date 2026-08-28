@@ -1,6 +1,5 @@
 import { apiFetch } from "@/lib/api/client";
-import type { PlatformOverview, PlatformReport, PlatformRestaurantSettings } from "@/types/platform";
-import type { TimeZoneOption } from "@/types/restaurant";
+import type { PlatformOverview, PlatformReport } from "@/types/platform";
 
 /**
  * Platform administration calls.
@@ -36,32 +35,8 @@ export function getPlatformReport(options?: {
   return apiFetch<PlatformReport>(`/api/platform/reports${suffix}`);
 }
 
-/** The shape of the estate, and how each restaurant is configured to operate. */
+/** The shape of the estate: how many restaurants, who runs them, how big they are. */
 export function getPlatformOverview(): Promise<PlatformOverview> {
   return apiFetch<PlatformOverview>("/api/platform/overview");
 }
 
-/** Changes one restaurant timezone and the hour its service day begins. */
-export function updateRestaurantSettings(
-  restaurantId: string,
-  payload: { timeZoneId: string; dayStartHour: number },
-): Promise<PlatformRestaurantSettings> {
-  return apiFetch<PlatformRestaurantSettings>(
-    `/api/platform/restaurants/${restaurantId}/settings`,
-    { method: "PUT", body: JSON.stringify(payload) },
-  );
-}
-
-/**
- * The timezones the server will accept.
- *
- * Served rather than listed here, so the options and the validation come from one zone
- * database and cannot disagree.
- *
- * Shares the restaurant route deliberately. There was a second, identical endpoint
- * under /api/platform for no reason other than which screen asked; the route is now
- * authorised for a Super Admin as well as a manager, so there is one list.
- */
-export function listTimeZones(): Promise<TimeZoneOption[]> {
-  return apiFetch<TimeZoneOption[]>("/api/restaurants/timezones");
-}

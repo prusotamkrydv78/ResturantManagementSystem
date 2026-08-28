@@ -57,9 +57,9 @@ public sealed class ReservationService : IReservationService
 
         // Read in the restaurant own calendar, so "today" means the day the restaurant
         // is having rather than the day the server is having.
-        var today = restaurant.LocalToday(now);
-        var todayStart = restaurant.ServiceDayStartOn(today);
-        var todayEnd = restaurant.ServiceDayStartOn(today.AddDays(1));
+        var today = ServiceDay.LocalToday(now);
+        var todayStart = ServiceDay.StartOn(today);
+        var todayEnd = ServiceDay.StartOn(today.AddDays(1));
 
         var all = await ReservationsOf(restaurant.Id)
             .AsNoTracking()
@@ -79,8 +79,8 @@ public sealed class ReservationService : IReservationService
 
         if (onDate is not null)
         {
-            var dayStart = restaurant.ServiceDayStartOn(onDate.Value);
-            var dayEnd = restaurant.ServiceDayStartOn(onDate.Value.AddDays(1));
+            var dayStart = ServiceDay.StartOn(onDate.Value);
+            var dayEnd = ServiceDay.StartOn(onDate.Value.AddDays(1));
 
             shown = all.Where(reservation =>
                 reservation.ReservedForUtc >= dayStart &&

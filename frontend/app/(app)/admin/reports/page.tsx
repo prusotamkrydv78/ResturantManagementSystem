@@ -266,10 +266,6 @@ function PlatformReports() {
                           </Td>
                           <Td className="text-xs whitespace-nowrap text-muted">
                             {formatDateTime(row.rangeStartUtc)}
-                            <p className="text-subtle">
-                              {row.timeZoneId} · day starts{" "}
-                              {String(row.dayStartHour).padStart(2, "0")}:00
-                            </p>
                           </Td>
                           <Td className="text-right tabular text-muted">
                             {row.completedCount}

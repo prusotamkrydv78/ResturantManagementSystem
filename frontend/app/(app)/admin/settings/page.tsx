@@ -1,38 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Clock, Info, Store } from "lucide-react";
+import { Info, Store } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogFooter,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import { Field, describedBy } from "@/components/ui/field";
-import { Input, Select } from "@/components/ui/input";
 import { DetailRow, Surface, SurfaceHeader } from "@/components/ui/surface";
-import {
-  EmptyState,
-  ErrorState,
-  FormError,
-  TableSkeleton,
-} from "@/components/ui/states";
+import { EmptyState, ErrorState, TableSkeleton } from "@/components/ui/states";
 import { Table, TableWrap, Td, Th, Tr } from "@/components/ui/table";
 import { PageBody, PageHeader } from "@/components/layout/page-header";
 import { RequireAuth } from "@/features/auth/require-auth";
 import { useAuth } from "@/features/auth/auth-context";
-import {
-  getPlatformOverview,
-  listTimeZones,
-  updateRestaurantSettings,
-} from "@/features/platform/api";
-import { ApiError } from "@/lib/api/client";
-import { DAY_START_HOURS } from "@/types/restaurant";
-import type { PlatformOverview, PlatformRestaurantSettings } from "@/types/platform";
-import type { TimeZoneOption } from "@/types/restaurant";
+import { getPlatformOverview } from "@/features/platform/api";
+import type { PlatformOverview } from "@/types/platform";
 
 /**
  * Platform settings.
@@ -40,13 +18,12 @@ import type { TimeZoneOption } from "@/types/restaurant";
  * Honest about what it is. There is no platform-wide configuration in this product — no
  * global currency, no global tax, no feature flags — so this screen does not invent a
  * form for one. What it does instead is the genuinely useful thing an administrator needs
- * from a settings page: see the shape of the estate, and correct the operational
- * configuration a restaurant was set up with.
+ * from a settings page: see the shape of the estate - how many restaurants exist, who
+ * runs them, and which ones nobody has been assigned to yet.
  *
- * That configuration is the timezone and the hour a service day begins, and it matters
- * more than it looks. Get it wrong and every dashboard figure, every report boundary and
- * every "today" in that restaurant is quietly wrong from its first day — and a restaurant
- * with no manager assigned yet has nobody who can fix it for themselves.
+ * It used to edit each restaurant timezone and the hour its service day began. Those are
+ * gone: the product is hosted for Nepal only, so the day boundary is a constant and a
+ * setting that can hold exactly one correct value is only a way to get it wrong.
  */
 export default function PlatformSettingsPage() {
   return (
@@ -60,7 +37,6 @@ function PlatformSettings() {
   const { user } = useAuth();
 
   const [overview, setOverview] = useState<PlatformOverview | null>(null);
-  const [zones, setZones] = useState<TimeZoneOption[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
 
@@ -69,16 +45,10 @@ function PlatformSettings() {
 
     async function load() {
       try {
-        // Both at once: the list is unusable without the zones, so failing to load
-        // either is one failure rather than a screen that half works.
-        const [loadedOverview, loadedZones] = await Promise.all([
-          getPlatformOverview(),
-          listTimeZones(),
-        ]);
+        const loadedOverview = await getPlatformOverview();
 
         if (!cancelled) {
           setOverview(loadedOverview);
-          setZones(loadedZones);
           setError(null);
         }
       } catch (caught) {
@@ -103,7 +73,7 @@ function PlatformSettings() {
     <>
       <PageHeader
         title="Platform settings"
-        description="The shape of the estate, and how each restaurant is configured to operate."
+        description="How many restaurants exist, who runs them, and how big they are."
         crumbs={[{ label: "Platform", href: "/dashboard" }, { label: "Settings" }]}
       />
 
@@ -156,14 +126,8 @@ function PlatformSettings() {
 
             <Surface>
               <SurfaceHeader
-                title="Operational configuration"
-                description="The timezone and service day each restaurant runs on. Every figure in that restaurant is counted against these."
-                actions={
-                  <Badge tone={overview.distinctTimeZoneCount > 1 ? "primary" : "neutral"}>
-                    {overview.distinctTimeZoneCount}{" "}
-                    {overview.distinctTimeZoneCount === 1 ? "timezone" : "timezones"}
-                  </Badge>
-                }
+                title="Restaurants on the platform"
+                description="Who runs each one, and how big it is."
               />
 
               {overview.restaurants.length === 0 ? (
@@ -179,12 +143,6 @@ function PlatformSettings() {
                       <tr>
                         <Th>Restaurant</Th>
                         <Th>Manager</Th>
-                        <Th>Timezone</Th>
-                        <Th>Day starts</Th>
-                        <Th>Current day began</Th>
-                        <Th>
-                          <span className="sr-only">Actions</span>
-                        </Th>
                       </tr>
                     </thead>
                     <tbody>
@@ -214,27 +172,6 @@ function PlatformSettings() {
                                 </p>
                               </>
                             )}
-                          </Td>
-                          <Td className="text-muted">
-                            <span className="font-mono text-xs">
-                              {restaurant.timeZoneId}
-                            </span>
-                            <p className="text-2xs text-subtle">
-                              {formatOffset(restaurant.currentUtcOffsetMinutes)}
-                            </p>
-                          </Td>
-                          <Td className="tabular text-muted">
-                            {String(restaurant.dayStartHour).padStart(2, "0")}:00
-                          </Td>
-                          <Td className="text-xs whitespace-nowrap text-muted">
-                            {formatDateTime(restaurant.serviceDayStartedAtUtc)}
-                          </Td>
-                          <Td className="text-right">
-                            <SettingsDialog
-                              restaurant={restaurant}
-                              zones={zones}
-                              onSaved={refresh}
-                            />
                           </Td>
                         </Tr>
                       ))}
@@ -300,168 +237,6 @@ function Stat({
  * pair half-applied. The zone list comes from the server, so the options offered can
  * never include something the validation would reject.
  */
-function SettingsDialog({
-  restaurant,
-  zones,
-  onSaved,
-}: {
-  restaurant: PlatformRestaurantSettings;
-  zones: TimeZoneOption[] | null;
-  onSaved: () => void;
-}) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [zoneId, setZoneId] = useState(restaurant.timeZoneId);
-  const [hour, setHour] = useState(String(restaurant.dayStartHour));
-  const [error, setError] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  function reset() {
-    setZoneId(restaurant.timeZoneId);
-    setHour(String(restaurant.dayStartHour));
-    setError(null);
-  }
-
-  async function handleSubmit(event: React.FormEvent) {
-    event.preventDefault();
-    setError(null);
-    setIsSubmitting(true);
-
-    try {
-      await updateRestaurantSettings(restaurant.id, {
-        timeZoneId: zoneId,
-        dayStartHour: Number(hour),
-      });
-
-      setIsOpen(false);
-      onSaved();
-    } catch (caught) {
-      setError(
-        caught instanceof ApiError
-          ? caught.message
-          : caught instanceof Error
-            ? caught.message
-            : "Unable to save these settings.",
-      );
-    } finally {
-      setIsSubmitting(false);
-    }
-  }
-
-  const isDirty =
-    zoneId !== restaurant.timeZoneId || hour !== String(restaurant.dayStartHour);
-
-  return (
-    <Dialog
-      open={isOpen}
-      onOpenChange={(next) => {
-        setIsOpen(next);
-        if (!next) reset();
-      }}
-    >
-      <DialogTrigger asChild>
-        <Button variant="secondary" size="sm" icon={<Clock />}>
-          Configure
-        </Button>
-      </DialogTrigger>
-
-      <DialogContent
-        title={restaurant.name}
-        description="Every figure in this restaurant is counted against these two values."
-      >
-        <form onSubmit={handleSubmit}>
-          <div className="flex flex-col gap-4 px-4 py-4">
-            {error !== null && <FormError message={error} />}
-
-            {restaurant.managerName === null && (
-              <p className="rounded-md border border-warning-border bg-warning-soft px-2.5 py-2 text-sm text-warning">
-                This restaurant has no manager yet, so nobody else can correct these
-                settings for it.
-              </p>
-            )}
-
-            <Field
-              htmlFor={`zone-${restaurant.id}`}
-              label="Timezone"
-              required
-              hint="Only zones this server recognises are offered."
-            >
-              <Select
-                id={`zone-${restaurant.id}`}
-                required
-                value={zoneId}
-                onChange={(event) => setZoneId(event.target.value)}
-                aria-describedby={describedBy(`zone-${restaurant.id}`, {
-                  hasHint: true,
-                })}
-              >
-                {zones === null ? (
-                  <option value={zoneId}>Loading…</option>
-                ) : (
-                  zones.map((zone) => (
-                    <option key={zone.id} value={zone.id}>
-                      {zone.id} · {formatOffset(zone.currentUtcOffsetMinutes)}
-                    </option>
-                  ))
-                )}
-              </Select>
-            </Field>
-
-            <Field
-              htmlFor={`hour-${restaurant.id}`}
-              label="A service day starts at"
-              required
-              hint="Local hour, 0 to 23. An order at 02:00 belongs to the previous day when this is set to 6."
-            >
-              <Input
-                id={`hour-${restaurant.id}`}
-                type="number"
-                inputMode="numeric"
-                required
-                min={DAY_START_HOURS.min}
-                max={DAY_START_HOURS.max}
-                className="sm:max-w-32"
-                value={hour}
-                onChange={(event) => setHour(event.target.value)}
-                aria-describedby={describedBy(`hour-${restaurant.id}`, {
-                  hasHint: true,
-                })}
-              />
-            </Field>
-
-            <dl className="divide-y divide-border rounded-md border border-border bg-surface-2">
-              <DetailRow label="In force now">
-                {restaurant.timeZoneDisplayName}
-              </DetailRow>
-              <DetailRow label="Current day began" mono>
-                {formatDateTime(restaurant.serviceDayStartedAtUtc)}
-              </DetailRow>
-            </dl>
-          </div>
-
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button variant="secondary">Cancel</Button>
-            </DialogClose>
-            <Button type="submit" disabled={isSubmitting || !isDirty}>
-              {isSubmitting ? "Saving…" : "Save settings"}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-/** An offset in minutes, as somebody would write it. */
-function formatOffset(minutes: number): string {
-  const sign = minutes < 0 ? "-" : "+";
-  const total = Math.abs(minutes);
-  const hours = String(Math.floor(total / 60)).padStart(2, "0");
-  const rest = String(total % 60).padStart(2, "0");
-
-  return `UTC${sign}${hours}:${rest}`;
-}
-
 function formatDateTime(isoString: string): string {
   const parsed = new Date(isoString);
 

@@ -27,8 +27,6 @@ export interface PlatformRestaurantRow {
   slug: string;
   /** Who runs it, or null while nobody has been assigned. */
   managerName: string | null;
-  timeZoneId: string;
-  dayStartHour: number;
   /** The instant this restaurant range opened, in its own calendar. */
   rangeStartUtc: string;
   /** The instant it closes, exclusive. */
@@ -63,19 +61,19 @@ export interface PlatformReport {
   restaurants: PlatformRestaurantRow[];
 }
 
-/** One restaurant operational configuration, as the platform lists it. */
-export interface PlatformRestaurantSettings {
+/**
+ * One restaurant as the platform overview lists it: who runs it, and how big it is.
+ *
+ * It used to carry a timezone and the hour a service day began, when each restaurant
+ * configured its own. The product is hosted for Nepal only, so the day boundary is a
+ * constant and there is nothing per-restaurant left to show.
+ */
+export interface PlatformRestaurantOverviewRow {
   id: string;
   name: string;
   slug: string;
   managerName: string | null;
   managerEmail: string | null;
-  timeZoneId: string;
-  timeZoneDisplayName: string;
-  currentUtcOffsetMinutes: number;
-  dayStartHour: number;
-  /** When its running service day began. The figure that proves the setting works. */
-  serviceDayStartedAtUtc: string;
   tableCount: number;
   staffCount: number;
 }
@@ -85,8 +83,8 @@ export interface PlatformRestaurantSettings {
  *
  * There is deliberately no platform-wide configuration in this response, because the
  * product has none: no global currency, no global tax, no feature flags. What an
- * administrator can usefully do is see the shape of the estate and correct a restaurant
- * that was set up in the wrong timezone.
+ * administrator gets here is the shape of the estate: how many restaurants, who runs
+ * them, and which ones nobody has been assigned to yet.
  */
 export interface PlatformOverview {
   restaurantCount: number;
@@ -96,9 +94,7 @@ export interface PlatformOverview {
   unassignedManagerCount: number;
   staffCount: number;
   tableCount: number;
-  /** How many different zones the estate spans. */
-  distinctTimeZoneCount: number;
   /** The server clock, so an odd figure can be told apart from a wrong machine. */
   serverUtcNow: string;
-  restaurants: PlatformRestaurantSettings[];
+  restaurants: PlatformRestaurantOverviewRow[];
 }

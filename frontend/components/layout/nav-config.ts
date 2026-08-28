@@ -158,12 +158,6 @@ const MANAGER_NAV: NavGroup[] = [
         icon: Users,
         status: "available",
       },
-      {
-        label: "Settings",
-        href: "/settings",
-        icon: Cog,
-        status: "available",
-      },
     ],
   },
 ];

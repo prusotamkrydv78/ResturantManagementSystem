@@ -86,7 +86,6 @@ describe("navigation by role", () => {
     expect(hrefs).toContain("/menu");
     expect(hrefs).toContain("/tables");
     expect(hrefs).toContain("/staff");
-    expect(hrefs).toContain("/settings");
     expect(hrefs).toContain("/reports");
     expect(hrefs).toContain("/inventory");
     expect(hrefs).toContain("/reservations");

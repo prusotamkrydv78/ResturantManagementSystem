@@ -32,15 +32,5 @@ public static class PlatformErrors
             "platform.range_too_long",
             $"A platform report covers at most {maximumDays} days at a time. Narrow the range.");
 
-    /// <summary>
-    /// The timezone identifier is not one this machine knows.
-    ///
-    /// Refused rather than stored: an identifier that merely looks plausible would be
-    /// accepted and then ignored by every day boundary computed afterwards, which is a
-    /// far worse failure than a rejected save.
-    /// </summary>
-    public static readonly Error UnknownTimeZone =
-        new(
-            "platform.unknown_timezone",
-            "That timezone is not one this server recognises.");
+
 }

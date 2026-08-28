@@ -22,12 +22,10 @@ namespace RestaurantManagement.Infrastructure.Platform;
 ///
 /// Two decisions worth knowing before reading a figure out of this file:
 ///
-/// Every restaurant range is read in that restaurant own timezone and service day. The
-/// platform total is therefore the sum of exactly what each manager sees on their own
-/// report, at the price of two rows covering slightly different absolute windows when
-/// their zones differ. The alternative was one absolute window for everybody, which
-/// produces a headline that disagrees with every manager in the estate, and a number
-/// nobody can reconcile is worse than no number.
+/// Every range is read against the one service day boundary the product has, so a
+/// platform total is exactly the sum of what each manager sees on their own report. This
+/// used to be a window per restaurant in its own timezone, reconciled afterwards; the
+/// product is hosted for Nepal only, so there is one calendar and nothing to reconcile.
 ///
 /// Nothing is stored or rolled up. Every figure is computed from the orders and payments
 /// themselves at the moment of asking, which is the only way this report and the billing
@@ -98,14 +96,13 @@ public sealed class PlatformService : IPlatformService
                 PlatformErrors.RangeTooLong(MaxRangeDays));
         }
 
-        // One window per restaurant, in its own calendar. The widest of them bounds the
-        // single query below, so the whole report is one round trip rather than one per
-        // restaurant.
-        var windows = restaurants.ToDictionary(
-            restaurant => restaurant.Id,
-            restaurant => (
-                Start: restaurant.ServiceDayStartOn(first),
-                End: restaurant.ServiceDayStartOn(last.AddDays(1))));
+        // One window for the whole platform. This used to be a window per restaurant in
+        // its own calendar, with a widest-of-them bound on the query and a second pass
+        // to trim each restaurant back to its own dates. With a single day boundary
+        // across the estate there is nothing to reconcile: the query bound and every
+        // restaurant window are the same two instants.
+        var start = ServiceDay.StartOn(first);
+        var end = ServiceDay.StartOn(last.AddDays(1));
 
         var rows = new List<PlatformRestaurantRowResponse>(restaurants.Count);
         var byMethod = new Dictionary<PaymentMethod, (int Count, decimal Total)>();
@@ -117,11 +114,8 @@ public sealed class PlatformService : IPlatformService
         var platformCancelledValue = 0m;
         var trading = 0;
 
-        if (windows.Count > 0)
+        if (restaurants.Count > 0)
         {
-            var earliest = windows.Values.Min(window => window.Start);
-            var latest = windows.Values.Max(window => window.End);
-
             // Selected by when they ended rather than when they were placed, so a table
             // that opened before a boundary and settled after it belongs to the day it
             // was paid on. The same rule the dashboard and the manager report use.
@@ -129,19 +123,18 @@ public sealed class PlatformService : IPlatformService
                 .AsNoTracking()
                 .Where(order =>
                     (order.CompletedAtUtc != null &&
-                     order.CompletedAtUtc >= earliest &&
-                     order.CompletedAtUtc < latest) ||
+                     order.CompletedAtUtc >= start &&
+                     order.CompletedAtUtc < end) ||
                     (order.CancelledAtUtc != null &&
-                     order.CancelledAtUtc >= earliest &&
-                     order.CancelledAtUtc < latest))
+                     order.CancelledAtUtc >= start &&
+                     order.CancelledAtUtc < end))
                 // No Include for the payment: the projection below reaches it through
                 // the navigation, which EF turns into the join by itself. An Include
                 // in front of a Select is discarded, so leaving it here only suggests
                 // the query needs something it does not.
                 //
-                // The result set is bounded by MaxRangeDays and RestaurantLimit rather
-                // than by paging, because each restaurant service day has to be
-                // measured in its own timezone and a page boundary cannot respect that.
+                // Bounded by MaxRangeDays and RestaurantLimit rather than by paging,
+                // because the totals below are computed across the whole result.
                 .Select(order => new
                 {
                     order.RestaurantId,
@@ -164,27 +157,18 @@ public sealed class PlatformService : IPlatformService
 
             foreach (var restaurant in restaurants)
             {
-                var window = windows[restaurant.Id];
-
-                // The widest window was only a bound for the query. Each restaurant now
-                // keeps just the orders that fall inside its own, or a restaurant in a
-                // later zone would pick up somebody else early morning.
+                // The query window is already this restaurant's window, so the rows it
+                // returned need no second date filter - only splitting by status.
                 var mine = byRestaurant.TryGetValue(restaurant.Id, out var found)
                     ? found
                     : [];
 
                 var completed = mine
-                    .Where(order =>
-                        order.Status == OrderStatus.Completed &&
-                        order.CompletedAtUtc >= window.Start &&
-                        order.CompletedAtUtc < window.End)
+                    .Where(order => order.Status == OrderStatus.Completed)
                     .ToList();
 
                 var cancelled = mine
-                    .Where(order =>
-                        order.Status == OrderStatus.Cancelled &&
-                        order.CancelledAtUtc >= window.Start &&
-                        order.CancelledAtUtc < window.End)
+                    .Where(order => order.Status == OrderStatus.Cancelled)
                     .ToList();
 
                 var payments = completed
@@ -224,10 +208,8 @@ public sealed class PlatformService : IPlatformService
                     restaurant.Name,
                     restaurant.Slug,
                     restaurant.Manager?.FullName,
-                    restaurant.TimeZoneId,
-                    restaurant.DayStartHour,
-                    window.Start,
-                    window.End,
+                    start,
+                    end,
                     completed.Count,
                     cancelled.Count,
                     takings,
@@ -311,132 +293,27 @@ public sealed class PlatformService : IPlatformService
             managers.Count(id => !assignedManagers.Contains(id)),
             staffCounts.Values.Sum(),
             tableCounts.Values.Sum(),
-            restaurants
-                .Select(restaurant => restaurant.TimeZoneId)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .Count(),
             DateTimeOffset.UtcNow,
             restaurants
-                .Select(restaurant => ToSettings(
+                .Select(restaurant => ToOverviewRow(
                     restaurant,
                     tableCounts.GetValueOrDefault(restaurant.Id),
                     staffCounts.GetValueOrDefault(restaurant.Id)))
                 .ToList()));
     }
 
-    /// <inheritdoc />
-    public async Task<Result<PlatformRestaurantSettingsResponse>> UpdateRestaurantSettingsAsync(
-        Guid restaurantId,
-        UpdateRestaurantSettingsRequest request,
-        CancellationToken cancellationToken)
-    {
-        var restaurant = await _dbContext.Restaurants
-            .Include(candidate => candidate.Manager)
-            .SingleOrDefaultAsync(
-                candidate => candidate.Id == restaurantId,
-                cancellationToken);
-
-        if (restaurant is null)
-        {
-            return Result.Failure<PlatformRestaurantSettingsResponse>(
-                PlatformErrors.RestaurantNotFound);
-        }
-
-        var zoneId = request.TimeZoneId.Trim();
-
-        // Checked against the zone database rather than a pattern, for the same reason
-        // the manager path checks it: a well-formed identifier nothing recognises would
-        // pass validation and then be silently replaced by UTC on every later
-        // calculation.
-        if (!TryFindZone(zoneId, out var zone))
-        {
-            return Result.Failure<PlatformRestaurantSettingsResponse>(
-                PlatformErrors.UnknownTimeZone);
-        }
-
-        restaurant.TimeZoneId = zone.Id;
-        restaurant.DayStartHour = request.DayStartHour;
-        restaurant.UpdatedAtUtc = DateTimeOffset.UtcNow;
-
-        await _dbContext.SaveChangesAsync(cancellationToken);
-
-        _logger.LogInformation(
-            "A platform administrator set restaurant {RestaurantId} to {TimeZoneId} " +
-            "with a service day starting at {DayStartHour}.",
-            restaurant.Id,
-            restaurant.TimeZoneId,
-            restaurant.DayStartHour);
-
-        var tableCount = await _dbContext.RestaurantTables
-            .AsNoTracking()
-            .CountAsync(table => table.RestaurantId == restaurant.Id, cancellationToken);
-
-        var staffCount = await _dbContext.Users
-            .AsNoTracking()
-            .CountAsync(
-                user =>
-                    user.RestaurantId == restaurant.Id &&
-                    user.PlatformRole == PlatformRole.Staff,
-                cancellationToken);
-
-        return Result.Success(ToSettings(restaurant, tableCount, staffCount));
-    }
-
-    /* ------------------------------------------------------------------- Helpers */
-
-    /// <summary>
-    /// The settings, plus what they currently amount to.
-    ///
-    /// The offset and the day boundary are derived on each read rather than stored, so
-    /// they cannot go stale against the zone rules or against the clock. The day boundary
-    /// in particular is the one figure that proves a configuration is doing what somebody
-    /// intended.
-    /// </summary>
-    private static PlatformRestaurantSettingsResponse ToSettings(
+    private static PlatformRestaurantOverviewResponse ToOverviewRow(
         Restaurant restaurant,
         int tableCount,
-        int staffCount)
-    {
-        var now = DateTimeOffset.UtcNow;
-        var zone = restaurant.ResolveTimeZone();
-
-        return new PlatformRestaurantSettingsResponse(
+        int staffCount) =>
+        new(
             restaurant.Id,
             restaurant.Name,
             restaurant.Slug,
             restaurant.Manager?.FullName,
             restaurant.Manager?.Email,
-            restaurant.TimeZoneId,
-            zone.DisplayName,
-            (int)zone.GetUtcOffset(now).TotalMinutes,
-            restaurant.DayStartHour,
-            restaurant.ServiceDayStart(now),
             tableCount,
             staffCount);
-    }
-
-    /// <summary>
-    /// Whether this machine knows the identifier, and the zone if it does.
-    ///
-    /// Wrapped because the lookup signals an unknown zone by throwing, and an unknown
-    /// zone here is an ordinary validation failure rather than an exceptional event.
-    /// </summary>
-    private static bool TryFindZone(string id, out TimeZoneInfo zone)
-    {
-        try
-        {
-            zone = TimeZoneInfo.FindSystemTimeZoneById(id);
-            return true;
-        }
-        catch (Exception exception) when (
-            exception is TimeZoneNotFoundException
-                or InvalidTimeZoneException
-                or ArgumentException)
-        {
-            zone = TimeZoneInfo.Utc;
-            return false;
-        }
-    }
 
     /// <summary>
     /// An average that does not divide by nothing.

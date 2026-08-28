@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { requireApi } from "./support/client";
-import { expectInstant, expectNumber, expectText, only } from "./support/expect";
+import { expectInstant, expectNumber, only } from "./support/expect";
 import { seedRestaurant, seedUnassignedManager, type Seeded } from "./support/seed";
 import { PAYMENT_METHODS } from "./support/unions";
 import type { Order } from "@/types/order";
@@ -28,7 +28,6 @@ describe("reports", () => {
 
     expect(report.dayCount).toBe(1);
     expect(report.fromLocalDate).toBe(report.toLocalDate);
-    expectText(report.timeZoneId, "report.timeZoneId");
     // The boundaries are sent so what was counted is auditable rather than implied.
     expectInstant(report.rangeStartUtc, "report.rangeStartUtc");
     expectInstant(report.rangeEndUtc, "report.rangeEndUtc");
@@ -223,61 +222,25 @@ describe("reports", () => {
     expect(report.byMethod).toHaveLength(PAYMENT_METHODS.length);
   });
 
-  it("reads the range in the restaurant timezone rather than the server one", async () => {
-    const zoned = await seedRestaurant("ReportZone");
-
-    await zoned.manager.put("/api/restaurants/mine/settings", {
-      timeZoneId: "UTC",
-      dayStartHour: 0,
-    });
-    const utc = await zoned.manager.get<ReportSummary>(
+  it("reads every range against the one Nepal service day", async () => {
+    // The boundary used to be two columns on the restaurant, a timezone and the hour
+    // its day began. It is a constant now, so the only thing left worth pinning is
+    // that a named date starts where Nepal midnight is and not where the server is.
+    const report = await seeded.manager.get<ReportSummary>(
       "/api/reports/summary?from=2026-08-10&to=2026-08-10",
     );
 
-    await zoned.manager.put("/api/restaurants/mine/settings", {
-      timeZoneId: "Asia/Kathmandu",
-      dayStartHour: 0,
-    });
-    const kathmandu = await zoned.manager.get<ReportSummary>(
-      "/api/reports/summary?from=2026-08-10&to=2026-08-10",
+    // 2026-08-10T00:00 at UTC+05:45 is 2026-08-09T18:15Z.
+    expect(new Date(report.rangeStartUtc).toISOString()).toBe(
+      "2026-08-09T18:15:00.000Z",
     );
 
-    // The same requested date resolves to a different instant, because the restaurant
-    // day is not the server day.
-    const difference =
-      new Date(utc.rangeStartUtc).getTime() -
-      new Date(kathmandu.rangeStartUtc).getTime();
+    // Exactly one day wide, measured the same way.
+    const width =
+      new Date(report.rangeEndUtc).getTime() -
+      new Date(report.rangeStartUtc).getTime();
 
-    expect(difference).toBe(345 * 60 * 1000);
-    expect(kathmandu.timeZoneId).toBe("Asia/Kathmandu");
-  });
-
-  it("honours the day start hour in the range boundary", async () => {
-    const zoned = await seedRestaurant("ReportDayStart");
-
-    await zoned.manager.put("/api/restaurants/mine/settings", {
-      timeZoneId: "UTC",
-      dayStartHour: 0,
-    });
-    const midnight = await zoned.manager.get<ReportSummary>(
-      "/api/reports/summary?from=2026-08-10&to=2026-08-10",
-    );
-
-    await zoned.manager.put("/api/restaurants/mine/settings", {
-      timeZoneId: "UTC",
-      dayStartHour: 5,
-    });
-    const fiveAm = await zoned.manager.get<ReportSummary>(
-      "/api/reports/summary?from=2026-08-10&to=2026-08-10",
-    );
-
-    const shift =
-      new Date(fiveAm.rangeStartUtc).getTime() -
-      new Date(midnight.rangeStartUtc).getTime();
-
-    // A restaurant whose day starts at five counts from five, so late takings land on
-    // the evening that earned them.
-    expect(shift).toBe(5 * 3600_000);
+    expect(width).toBe(24 * 3600_000);
   });
 
   it("refuses a range that runs backwards", async () => {

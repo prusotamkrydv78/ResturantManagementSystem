@@ -24,17 +24,11 @@ public sealed class RestaurantConfiguration : IEntityTypeConfiguration<Restauran
 
         builder.HasIndex(restaurant => restaurant.Slug).IsUnique();
 
-        // Long enough for any IANA identifier, and defaulted so every restaurant that
-        // already exists gets a boundary it can be reasoned about rather than a null
-        // the day calculation would have to guess around.
-        builder.Property(restaurant => restaurant.TimeZoneId)
-            .IsRequired()
-            .HasMaxLength(64)
-            .HasDefaultValue(Restaurant.DefaultTimeZoneId);
-
-        builder.Property(restaurant => restaurant.DayStartHour)
-            .IsRequired()
-            .HasDefaultValue(Restaurant.DefaultDayStartHour);
+        builder.Property(restaurant => restaurant.ContactEmail).HasMaxLength(256);
+        builder.Property(restaurant => restaurant.ContactPhone).HasMaxLength(32);
+        builder.Property(restaurant => restaurant.AddressLine).HasMaxLength(256);
+        builder.Property(restaurant => restaurant.City).HasMaxLength(100);
+        builder.Property(restaurant => restaurant.Country).HasMaxLength(100);
 
         // Defaulted true so the column arrives on existing rows as trading rather than
         // suspended. A migration that quietly stopped every restaurant on the platform
@@ -42,19 +36,6 @@ public sealed class RestaurantConfiguration : IEntityTypeConfiguration<Restauran
         builder.Property(restaurant => restaurant.IsActive)
             .IsRequired()
             .HasDefaultValue(true);
-
-        // An hour outside the clock is not a configuration mistake to be corrected
-        // later, it is a value the day calculation cannot use at all.
-        builder.ToTable(table => table.HasCheckConstraint(
-            "CK_Restaurants_DayStartHour",
-            $"[DayStartHour] >= {Restaurant.MinDayStartHour} " +
-            $"AND [DayStartHour] <= {Restaurant.MaxDayStartHour}"));
-
-        builder.Property(restaurant => restaurant.ContactEmail).HasMaxLength(256);
-        builder.Property(restaurant => restaurant.ContactPhone).HasMaxLength(32);
-        builder.Property(restaurant => restaurant.AddressLine).HasMaxLength(256);
-        builder.Property(restaurant => restaurant.City).HasMaxLength(100);
-        builder.Property(restaurant => restaurant.Country).HasMaxLength(100);
 
         // One manager per restaurant, and one restaurant per manager. The filter is
         // required because SQL Server treats multiple NULLs in a unique index as

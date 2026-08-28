@@ -3,13 +3,10 @@ import type { StaffMember } from "@/types/staff";
 import type {
   CreateRestaurantPayload,
   Restaurant,
-  RestaurantSettings,
   RestaurantSummary,
   SetRestaurantActivePayload,
-  TimeZoneOption,
   UpdateMyRestaurantPayload,
   UpdateRestaurantPayload,
-  UpdateRestaurantSettingsPayload,
 } from "@/types/restaurant";
 
 /**
@@ -87,36 +84,6 @@ export function updateMyRestaurant(
     method: "PUT",
     body: JSON.stringify(payload),
   });
-}
-
-/**
- * How the caller restaurant is configured to operate.
- *
- * Separate from the profile call: the two are edited on different screens and mean
- * different things.
- */
-export function getMySettings(): Promise<RestaurantSettings> {
-  return apiFetch<RestaurantSettings>("/api/restaurants/mine/settings");
-}
-
-/** Change how the restaurant operates. Sends no restaurant id. */
-export function updateMySettings(
-  payload: UpdateRestaurantSettingsPayload,
-): Promise<RestaurantSettings> {
-  return apiFetch<RestaurantSettings>("/api/restaurants/mine/settings", {
-    method: "PUT",
-    body: JSON.stringify(payload),
-  });
-}
-
-/**
- * The timezones the server will accept.
- *
- * Fetched rather than listed here so the options are exactly what validation allows,
- * on whatever machine the API happens to be running.
- */
-export function listTimeZones(): Promise<TimeZoneOption[]> {
-  return apiFetch<TimeZoneOption[]>("/api/restaurants/timezones");
 }
 
 /**

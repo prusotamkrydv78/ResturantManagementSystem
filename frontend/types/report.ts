@@ -36,7 +36,6 @@ export interface ReportSummary {
   fromLocalDate: string;
   toLocalDate: string;
   /** The zone those dates were read in. */
-  timeZoneId: string;
   /** The instant the range opened, so what was counted is auditable. */
   rangeStartUtc: string;
   /** The instant it closes, exclusive. */

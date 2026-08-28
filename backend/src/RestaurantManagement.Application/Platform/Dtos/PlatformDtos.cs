@@ -14,8 +14,6 @@ namespace RestaurantManagement.Application.Platform.Dtos;
 /// <param name="Name">What the restaurant is called.</param>
 /// <param name="Slug">Its platform-wide handle.</param>
 /// <param name="ManagerName">Who runs it, or null while nobody has been assigned.</param>
-/// <param name="TimeZoneId">The zone its days were read in.</param>
-/// <param name="DayStartHour">The local hour its service day begins.</param>
 /// <param name="RangeStartUtc">The instant its range opened.</param>
 /// <param name="RangeEndUtc">The instant its range closes, exclusive.</param>
 /// <param name="CompletedCount">Orders paid for and closed in the range.</param>
@@ -28,8 +26,6 @@ public sealed record PlatformRestaurantRowResponse(
     string Name,
     string Slug,
     string? ManagerName,
-    string TimeZoneId,
-    int DayStartHour,
     DateTimeOffset RangeStartUtc,
     DateTimeOffset RangeEndUtc,
     int CompletedCount,
@@ -91,36 +87,25 @@ public sealed record PlatformReportResponse(
     IReadOnlyList<PlatformRestaurantRowResponse> Restaurants);
 
 /// <summary>
-/// One restaurant operational configuration, as the platform settings screen lists it.
+/// One restaurant as the platform overview lists it: who runs it and how big it is.
 ///
-/// The same three derived values the manager own settings screen shows, because the
-/// point of them is identical: a zone identifier is unreadable on its own, and what
-/// proves a configuration is doing what somebody intended is the instant its current
-/// service day began.
+/// This used to carry a timezone and the hour a service day began, back when each
+/// restaurant configured its own. The product is hosted for Nepal only, so the day
+/// boundary is a constant now and there is nothing per-restaurant left to show.
 /// </summary>
 /// <param name="Id">Identifier.</param>
 /// <param name="Name">What the restaurant is called.</param>
 /// <param name="Slug">Its handle.</param>
 /// <param name="ManagerName">Who runs it, or null.</param>
 /// <param name="ManagerEmail">How to reach them, or null.</param>
-/// <param name="TimeZoneId">The IANA zone it operates in.</param>
-/// <param name="TimeZoneDisplayName">A readable name for that zone.</param>
-/// <param name="CurrentUtcOffsetMinutes">What the zone is worth against UTC right now.</param>
-/// <param name="DayStartHour">The local hour a service day begins.</param>
-/// <param name="ServiceDayStartedAtUtc">When its running service day began.</param>
 /// <param name="TableCount">Tables it has, in service or not.</param>
 /// <param name="StaffCount">Staff accounts attached to it.</param>
-public sealed record PlatformRestaurantSettingsResponse(
+public sealed record PlatformRestaurantOverviewResponse(
     Guid Id,
     string Name,
     string Slug,
     string? ManagerName,
     string? ManagerEmail,
-    string TimeZoneId,
-    string TimeZoneDisplayName,
-    int CurrentUtcOffsetMinutes,
-    int DayStartHour,
-    DateTimeOffset ServiceDayStartedAtUtc,
     int TableCount,
     int StaffCount);
 
@@ -128,11 +113,10 @@ public sealed record PlatformRestaurantSettingsResponse(
 /// The platform as a whole: what exists on it, and how each restaurant is configured.
 ///
 /// This is the closest thing this product has to platform settings, and it is honest
-/// about that. There is no platform-wide configuration to edit — no global currency, no
-/// global tax, no feature flags — because none of those exist. What a platform
-/// administrator can usefully do here is see the shape of the estate and fix a
-/// restaurant that was set up in the wrong timezone, which is the setting most likely to
-/// be wrong and the one that quietly makes every figure wrong with it.
+/// about that. There is nothing platform-wide to edit — no global currency, no global
+/// tax, no feature flags — because none of those exist. What a platform administrator
+/// gets here is the shape of the estate: how many restaurants, who runs them, and which
+/// ones nobody has been assigned to yet.
 /// </summary>
 /// <param name="RestaurantCount">Restaurants on the platform.</param>
 /// <param name="WithoutManagerCount">Restaurants nobody has been assigned to yet.</param>
@@ -143,10 +127,6 @@ public sealed record PlatformRestaurantSettingsResponse(
 /// </param>
 /// <param name="StaffCount">Staff accounts across every restaurant.</param>
 /// <param name="TableCount">Tables across every restaurant.</param>
-/// <param name="DistinctTimeZoneCount">
-/// How many different zones the estate spans. One is the simple case; more than one is
-/// why the platform report reads each restaurant range in its own calendar.
-/// </param>
 /// <param name="ServerUtcNow">
 /// The server clock, so a reader can tell the difference between a restaurant being
 /// configured oddly and the machine itself being wrong.
@@ -159,6 +139,5 @@ public sealed record PlatformOverviewResponse(
     int UnassignedManagerCount,
     int StaffCount,
     int TableCount,
-    int DistinctTimeZoneCount,
     DateTimeOffset ServerUtcNow,
-    IReadOnlyList<PlatformRestaurantSettingsResponse> Restaurants);
+    IReadOnlyList<PlatformRestaurantOverviewResponse> Restaurants);

@@ -184,8 +184,6 @@ function Reports() {
               {" · "}
               <span className="tabular">{report.dayCount}</span>{" "}
               {report.dayCount === 1 ? "day" : "days"}
-              {" · "}
-              <span className="text-subtle">{report.timeZoneId}</span>
             </p>
 
             {/* Money that arrived, then the counts, then money that did not. */}

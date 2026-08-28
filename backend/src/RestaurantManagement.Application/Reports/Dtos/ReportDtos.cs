@@ -48,7 +48,6 @@ public sealed record ReportOrderResponse(
 /// </summary>
 /// <param name="FromLocalDate">First day covered, in the restaurant own calendar.</param>
 /// <param name="ToLocalDate">Last day covered, inclusive.</param>
-/// <param name="TimeZoneId">The zone those dates were read in.</param>
 /// <param name="RangeStartUtc">The instant the range opened.</param>
 /// <param name="RangeEndUtc">
 /// The instant it closes, exclusive. Sent so the boundaries are auditable rather than
@@ -77,7 +76,6 @@ public sealed record ReportOrderResponse(
 public sealed record ReportSummaryResponse(
     DateOnly FromLocalDate,
     DateOnly ToLocalDate,
-    string TimeZoneId,
     DateTimeOffset RangeStartUtc,
     DateTimeOffset RangeEndUtc,
     int DayCount,

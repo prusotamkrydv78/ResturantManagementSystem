@@ -18,9 +18,4 @@ public static class PlatformRoles
     /// <summary>Works in a single restaurant.</summary>
     public const string Staff = nameof(PlatformRole.Staff);
 
-    /// <summary>
-    /// Either role that configures a restaurant, for the handful of reference lookups
-    /// both need. A comma-separated list in <c>Roles</c> means "any of these".
-    /// </summary>
-    public const string SuperAdminOrManager = SuperAdmin + "," + RestaurantManager;
 }
