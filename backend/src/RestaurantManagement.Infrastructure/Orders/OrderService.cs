@@ -162,6 +162,21 @@ public sealed class OrderService : IOrderService
 
         var restaurantId = waiter.Value.RestaurantId;
 
+        // Checked at the one point an order begins. Every later step - adding a line,
+        // sending to the kitchen, settling - is deliberately left alone, so a
+        // suspension part-way through service cannot leave food cooking for a bill
+        // nobody is allowed to close.
+        var isTrading = await _dbContext.Restaurants
+            .AsNoTracking()
+            .AnyAsync(
+                restaurant => restaurant.Id == restaurantId && restaurant.IsActive,
+                cancellationToken);
+
+        if (!isTrading)
+        {
+            return Result.Failure<OrderResponse>(OrderErrors.RestaurantSuspended);
+        }
+
         // The table must be ours and in service. Checked again here even though the
         // list endpoint already filters, because the request is not to be trusted.
         //

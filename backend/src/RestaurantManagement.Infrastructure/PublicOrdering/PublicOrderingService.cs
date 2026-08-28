@@ -287,7 +287,11 @@ public sealed class PublicOrderingService : IPublicOrderingService
             .Where(table =>
                 table.PublicOrderingToken == token &&
                 table.IsActive &&
-                table.IsOrderingEnabled);
+                table.IsOrderingEnabled &&
+                // A suspended restaurant is filtered here with the rest, so the link
+                // simply stops working. A guest holding a printed code is owed a dead
+                // page, not an explanation of the restaurant commercial standing.
+                table.Restaurant.IsActive);
 
         return tracked
             ? await query.SingleOrDefaultAsync(cancellationToken)

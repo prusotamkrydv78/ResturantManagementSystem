@@ -33,27 +33,15 @@ public static class RestaurantErrors
         new("restaurant.not_assigned", "No restaurant is assigned to this account.");
 
     /// <summary>
-    /// The restaurant has taken orders, so the record is history and not a mistake to
-    /// tidy away.
+    /// The restaurant is suspended, so it may not take new business.
     ///
-    /// Deleting it would strand the takings that every report is built from. A
-    /// restaurant that has traded is edited, never removed.
+    /// Raised where an order would start - a waiter opening one, or a guest scanning a
+    /// table. Never raised on work already underway: a ticket in the kitchen still
+    /// cooks and an open bill still settles, because suspending mid-service must not
+    /// strand food or money.
     /// </summary>
-    public static readonly Error HasTraded =
+    public static readonly Error Suspended =
         new(
-            "restaurant.has_traded",
-            "This restaurant has orders against it and cannot be deleted.");
-
-    /// <summary>
-    /// The restaurant has been set up but has not traded yet.
-    ///
-    /// Named separately from <see cref="HasTraded"/> because the answer differs: this
-    /// one can be deleted once its setup is cleared, and saying so saves the
-    /// administrator guessing which of the two applies.
-    /// </summary>
-    public static readonly Error HasSetupData =
-        new(
-            "restaurant.has_setup_data",
-            "This restaurant still has tables, staff, stock or customers. "
-            + "Remove those first, or edit the restaurant instead of deleting it.");
+            "restaurant.suspended",
+            "This restaurant is suspended and cannot take new orders.");
 }

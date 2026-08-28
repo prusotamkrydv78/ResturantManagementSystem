@@ -93,6 +93,23 @@ public class Restaurant
     /// </summary>
     public int DayStartHour { get; set; } = DefaultDayStartHour;
 
+    /// <summary>
+    /// Whether the restaurant may take new business.
+    ///
+    /// The state between trading and gone. A restaurant that stops paying, or is being
+    /// looked into, has to be stoppable without destroying the orders and takings
+    /// every report is built from - so this is what the platform uses instead of
+    /// deleting the record.
+    ///
+    /// Suspension deliberately blocks only the start of new business: a waiter cannot
+    /// open an order and a guest cannot scan a table. Work already underway carries on
+    /// to the till, because suspending at eight in the evening must not strand food
+    /// that is cooking or a bill nobody can settle. Signing in still works for the
+    /// same reason - the manager and their staff need to close the night out and read
+    /// their own history afterwards.
+    /// </summary>
+    public bool IsActive { get; set; } = true;
+
     /// <summary>When the restaurant was created.</summary>
     public DateTimeOffset CreatedAtUtc { get; set; }
 

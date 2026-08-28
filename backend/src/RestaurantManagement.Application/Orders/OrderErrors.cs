@@ -16,6 +16,23 @@ public static class OrderErrors
         new("order.not_an_active_waiter", "This account cannot take orders.");
 
     /// <summary>
+    /// The restaurant is suspended, so no new order may be opened.
+    ///
+    /// Said plainly rather than folded into <see cref="TableUnavailable"/>: a waiter
+    /// standing at a table needs to know the problem is not the table, or they will
+    /// try the next one and the one after that.
+    ///
+    /// Only ever raised when an order starts. Orders already open still take items,
+    /// still go to the kitchen and still settle, so suspending during service cannot
+    /// strand food or a bill.
+    /// </summary>
+    public static readonly Error RestaurantSuspended =
+        new(
+            "order.restaurant_suspended",
+            "This restaurant is suspended and cannot take new orders. "
+            + "Orders already open can still be completed.");
+
+    /// <summary>
     /// The table does not exist in the caller restaurant, or is not in service.
     /// A table from another restaurant reports the same thing.
     /// </summary>

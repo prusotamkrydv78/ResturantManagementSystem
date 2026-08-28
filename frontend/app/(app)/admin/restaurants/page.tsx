@@ -2,10 +2,11 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
+  Ban,
   Pencil,
   Plus,
+  RotateCcw,
   Store,
-  Trash2,
   UserMinus,
   UserPlus,
   Users,
@@ -40,10 +41,10 @@ import {
 } from "@/features/managers/api";
 import {
   createRestaurant,
-  deleteRestaurant,
   getRestaurant,
   listRestaurantStaff,
   listRestaurants,
+  setRestaurantActive,
   updateRestaurant,
 } from "@/features/restaurants/api";
 import type { Manager } from "@/types/manager";
@@ -193,7 +194,16 @@ function RestaurantTable({
           {restaurants.map((restaurant) => (
             <Tr key={restaurant.id}>
               <Td>
-                <span className="font-medium text-text">{restaurant.name}</span>
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-text">{restaurant.name}</span>
+                  {/* Against the name rather than in the manager column: a suspended
+                      restaurant is not trading at all, which outranks who runs it. */}
+                  {!restaurant.isActive && (
+                    <Badge tone="danger" dot>
+                      Suspended
+                    </Badge>
+                  )}
+                </div>
                 <span className="block font-mono text-2xs text-subtle">
                   {restaurant.slug}
                 </span>
@@ -234,9 +244,9 @@ function RestaurantTable({
                     restaurant={restaurant}
                     onSaved={onChanged}
                   />
-                  <DeleteRestaurantButton
+                  <RestaurantStatusButton
                     restaurant={restaurant}
-                    onDeleted={onChanged}
+                    onChanged={onChanged}
                   />
                 </div>
               </Td>
@@ -838,36 +848,38 @@ function blankToNull(value: string): string | null {
 }
 
 /**
- * Delete a restaurant that was created by mistake.
+ * Suspend or restore a restaurant.
  *
- * The refusal is the server's to make, so nothing is disabled here on a guess about
- * whether the restaurant has traded. A 409 comes back with the reason and it is shown
- * as-is.
+ * This is how a restaurant leaves service; there is no delete. The confirmation spells
+ * out what suspending does and does not do, because "suspended" on its own reads as
+ * harsher than it is: nobody is locked out and nothing in the kitchen is abandoned.
  */
-function DeleteRestaurantButton({
+function RestaurantStatusButton({
   restaurant,
-  onDeleted,
+  onChanged,
 }: {
   restaurant: RestaurantSummary;
-  onDeleted: () => Promise<void>;
+  onChanged: () => Promise<void>;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  async function handleDelete() {
+  const suspending = restaurant.isActive;
+
+  async function handleConfirm() {
     setError(null);
     setIsSubmitting(true);
 
     try {
-      await deleteRestaurant(restaurant.id);
+      await setRestaurantActive(restaurant.id, { isActive: !restaurant.isActive });
       setIsOpen(false);
-      await onDeleted();
+      await onChanged();
     } catch (caught) {
       setError(
         caught instanceof Error
           ? caught.message
-          : "Unable to delete the restaurant.",
+          : "Unable to change the restaurant status.",
       );
     } finally {
       setIsSubmitting(false);
@@ -883,30 +895,63 @@ function DeleteRestaurantButton({
       }}
     >
       <DialogTrigger asChild>
-        <Button variant="secondary" size="sm" icon={<Trash2 />}>
-          Delete
+        <Button
+          variant="secondary"
+          size="sm"
+          icon={suspending ? <Ban /> : <RotateCcw />}
+        >
+          {suspending ? "Suspend" : "Restore"}
         </Button>
       </DialogTrigger>
 
       <DialogContent
-        title={`Delete ${restaurant.name}?`}
-        description="This cannot be undone."
+        title={
+          suspending ? `Suspend ${restaurant.name}?` : `Restore ${restaurant.name}?`
+        }
+        description={
+          suspending
+            ? "It will stop taking new orders."
+            : "It will be able to take orders again."
+        }
       >
         <div className="flex flex-col gap-3 px-4 py-4">
           {error !== null && <FormError message={error} />}
-          <p className="text-sm text-muted">
-            Only a restaurant that has never traded can be deleted, and only once its
-            tables, staff, stock, customers and bookings are gone. Its menu goes with
-            it. Anything else is refused with a reason.
-          </p>
+
+          {suspending ? (
+            <>
+              <p className="text-sm text-muted">
+                No waiter will be able to open an order and the guest QR links will
+                stop working.
+              </p>
+              <p className="text-sm text-muted">
+                Everything already running still finishes: open orders take items, go
+                to the kitchen and settle as normal. Nobody is signed out, so the
+                manager and staff can still close the night and read their history.
+                Nothing is deleted, and this can be undone at any time.
+              </p>
+            </>
+          ) : (
+            <p className="text-sm text-muted">
+              Waiters will be able to open orders again and the guest QR links will
+              start working.
+            </p>
+          )}
         </div>
 
         <DialogFooter>
           <DialogClose asChild>
             <Button variant="secondary">Cancel</Button>
           </DialogClose>
-          <Button variant="danger" disabled={isSubmitting} onClick={handleDelete}>
-            {isSubmitting ? "Deleting…" : "Delete restaurant"}
+          <Button
+            variant={suspending ? "danger" : "primary"}
+            disabled={isSubmitting}
+            onClick={handleConfirm}
+          >
+            {isSubmitting
+              ? "Saving…"
+              : suspending
+                ? "Suspend restaurant"
+                : "Restore restaurant"}
           </Button>
         </DialogFooter>
       </DialogContent>

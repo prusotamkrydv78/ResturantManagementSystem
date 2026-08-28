@@ -16,6 +16,8 @@ export interface Restaurant {
   city: string | null;
   country: string | null;
   manager: RestaurantManager | null;
+  /** False when suspended: no new order may be opened, staff or guest. */
+  isActive: boolean;
   createdAtUtc: string;
   updatedAtUtc: string;
 }
@@ -29,6 +31,8 @@ export interface RestaurantSummary {
   managerId: string | null;
   managerName: string | null;
   managerEmail: string | null;
+  /** False when suspended: no new order may be opened, staff or guest. */
+  isActive: boolean;
   createdAtUtc: string;
 }
 
@@ -108,3 +112,13 @@ export interface TimeZoneOption {
 
 /** Bounds the API applies to the service day boundary. */
 export const DAY_START_HOURS = { min: 0, max: 23 } as const;
+
+/**
+ * Payload for suspending or restoring a restaurant.
+ *
+ * Suspending stops new orders, staff-placed and guest alike. Sign-in and work already
+ * running are untouched, so a night can be closed out and read back.
+ */
+export interface SetRestaurantActivePayload {
+  isActive: boolean;
+}

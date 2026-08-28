@@ -146,35 +146,32 @@ public sealed class RestaurantsController : ControllerBase
     }
 
     /// <summary>
-    /// Deletes a restaurant that was created by mistake. Super Admin only.
+    /// Suspends or restores a restaurant. Super Admin only.
     ///
-    /// Refused once it has orders, and refused while it still holds tables, staff,
-    /// stock, customers or bookings.
+    /// How the platform takes a restaurant out of service. There is no delete: the
+    /// orders and takings are what every report is built from, and a business that
+    /// stops paying still has a history somebody may have to answer for.
+    ///
+    /// Suspending blocks new orders, staff-placed and guest alike. It does not block
+    /// sign-in and does not touch work already running, so a night can still be closed
+    /// out and read back afterwards.
     /// </summary>
-    [HttpDelete("{id:guid}")]
+    [HttpPut("{id:guid}/status")]
     [Authorize(Roles = PlatformRoles.SuperAdmin)]
-    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(typeof(RestaurantResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status409Conflict)]
-    public async Task<IActionResult> Delete(
+    public async Task<ActionResult<RestaurantResponse>> SetStatus(
         Guid id,
+        SetRestaurantActiveRequest request,
         CancellationToken cancellationToken)
     {
-        var result = await _restaurantService.DeleteAsync(id, cancellationToken);
+        var result = await _restaurantService.SetActiveAsync(id, request, cancellationToken);
 
-        if (result.IsFailure)
-        {
-            var error = result.Error!;
-
-            return ProblemFrom(
-                error,
-                error == RestaurantErrors.NotFound
-                    ? StatusCodes.Status404NotFound
-                    : StatusCodes.Status409Conflict);
-        }
-
-        return NoContent();
+        return result.IsFailure
+            ? ProblemFrom(result.Error!, StatusCodes.Status404NotFound)
+            : Ok(result.Value);
     }
 
     /// <summary>

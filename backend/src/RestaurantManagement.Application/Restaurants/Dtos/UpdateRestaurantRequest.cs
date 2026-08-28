@@ -50,3 +50,17 @@ public sealed class UpdateRestaurantRequest
     [StringLength(100)]
     public string? Country { get; set; }
 }
+
+/// <summary>
+/// Suspends or restores a restaurant.
+///
+/// Suspending stops new orders, staff-placed and guest alike, and leaves everything
+/// already running able to finish. Sign-in is untouched: the manager and their staff
+/// still need to close the night out and read their own history.
+/// </summary>
+public sealed class SetRestaurantActiveRequest
+{
+    /// <summary>False suspends the restaurant, true puts it back in service.</summary>
+    [Required]
+    public bool IsActive { get; set; }
+}

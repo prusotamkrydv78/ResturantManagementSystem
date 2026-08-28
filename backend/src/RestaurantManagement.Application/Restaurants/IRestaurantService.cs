@@ -40,18 +40,21 @@ public interface IRestaurantService
         CancellationToken cancellationToken);
 
     /// <summary>
-    /// Deletes a restaurant. Super Admin only.
+    /// Suspends or restores a restaurant. Super Admin only.
     /// </summary>
     /// <remarks>
-    /// An escape hatch for a record created by mistake, not a way to close a business
-    /// down. Refused once the restaurant has orders, and refused while it still holds
-    /// tables, staff, stock, customers or bookings - those are what a real restaurant
-    /// is made of, and removing them silently on its behalf would destroy more than
-    /// the caller asked for. Only the menu goes automatically, because it cannot
-    /// outlive the restaurant and the database already cascades it.
+    /// The platform's way of taking a restaurant out of service. Deliberately not a
+    /// delete: the orders and takings are what every report is built from, and a
+    /// restaurant that stops paying still has a history somebody may need to answer
+    /// for.
+    ///
+    /// Allowed at any moment, including mid-service, because the state it produces is
+    /// safe: no new order can be opened, while everything already running still
+    /// reaches the till.
     /// </remarks>
-    Task<Result<bool>> DeleteAsync(
+    Task<Result<RestaurantResponse>> SetActiveAsync(
         Guid restaurantId,
+        SetRestaurantActiveRequest request,
         CancellationToken cancellationToken);
 
     /// <summary>

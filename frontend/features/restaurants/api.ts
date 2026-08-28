@@ -5,6 +5,7 @@ import type {
   Restaurant,
   RestaurantSettings,
   RestaurantSummary,
+  SetRestaurantActivePayload,
   TimeZoneOption,
   UpdateMyRestaurantPayload,
   UpdateRestaurantPayload,
@@ -50,13 +51,20 @@ export function updateRestaurant(
 }
 
 /**
- * Super Admin: delete a restaurant created by mistake.
+ * Super Admin: suspend or restore a restaurant.
  *
- * Rejected with 409 once it has orders, or while it still holds tables, staff,
- * stock, customers or bookings. The thrown ApiError carries the reason.
+ * There is no delete. Suspending stops new orders, staff-placed and guest alike,
+ * and leaves sign-in and work already running untouched, so the takings every
+ * report is built from survive and a night in progress can still be closed out.
  */
-export function deleteRestaurant(id: string): Promise<void> {
-  return apiFetch<void>(`/api/restaurants/${id}`, { method: "DELETE" });
+export function setRestaurantActive(
+  id: string,
+  payload: SetRestaurantActivePayload,
+): Promise<Restaurant> {
+  return apiFetch<Restaurant>(`/api/restaurants/${id}/status`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
 }
 
 /**

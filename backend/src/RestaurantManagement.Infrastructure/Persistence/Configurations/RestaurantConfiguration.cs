@@ -36,6 +36,13 @@ public sealed class RestaurantConfiguration : IEntityTypeConfiguration<Restauran
             .IsRequired()
             .HasDefaultValue(Restaurant.DefaultDayStartHour);
 
+        // Defaulted true so the column arrives on existing rows as trading rather than
+        // suspended. A migration that quietly stopped every restaurant on the platform
+        // would be discovered by a waiter, not by whoever applied it.
+        builder.Property(restaurant => restaurant.IsActive)
+            .IsRequired()
+            .HasDefaultValue(true);
+
         // An hour outside the clock is not a configuration mistake to be corrected
         // later, it is a value the day calculation cannot use at all.
         builder.ToTable(table => table.HasCheckConstraint(

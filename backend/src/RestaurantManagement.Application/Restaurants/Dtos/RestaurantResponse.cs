@@ -16,6 +16,7 @@ public sealed record RestaurantManagerDto(Guid Id, string FullName, string Email
 /// <param name="City">Optional city.</param>
 /// <param name="Country">Optional country.</param>
 /// <param name="Manager">The assigned manager, or null when none is assigned yet.</param>
+/// <param name="IsActive">False when suspended: no new order may be opened, staff or guest.</param>
 /// <param name="CreatedAtUtc">Creation timestamp.</param>
 /// <param name="UpdatedAtUtc">Last modification timestamp.</param>
 public sealed record RestaurantResponse(
@@ -28,6 +29,7 @@ public sealed record RestaurantResponse(
     string? City,
     string? Country,
     RestaurantManagerDto? Manager,
+    bool IsActive,
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset UpdatedAtUtc);
 
@@ -39,6 +41,7 @@ public sealed record RestaurantResponse(
 /// <param name="ManagerId">Identifier of the assigned manager, or null when unassigned.</param>
 /// <param name="ManagerName">Name of the assigned manager, or null when unassigned.</param>
 /// <param name="ManagerEmail">Email of the assigned manager, or null when unassigned.</param>
+/// <param name="IsActive">False when suspended: no new order may be opened, staff or guest.</param>
 /// <param name="CreatedAtUtc">Creation timestamp.</param>
 public sealed record RestaurantSummaryResponse(
     Guid Id,
@@ -48,4 +51,5 @@ public sealed record RestaurantSummaryResponse(
     Guid? ManagerId,
     string? ManagerName,
     string? ManagerEmail,
+    bool IsActive,
     DateTimeOffset CreatedAtUtc);
