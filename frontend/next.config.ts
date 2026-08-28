@@ -1,5 +1,21 @@
 import type { NextConfig } from "next";
 
+/**
+ * Where to forward /api/* when the browser must not reach the API directly.
+ *
+ * The deployed frontend is served over HTTPS and the API host offers no TLS, and
+ * a browser refuses to let an HTTPS page call an HTTP endpoint - it blocks the
+ * request as mixed active content before CORS is ever considered. Proxying sends
+ * the browser to this origin over HTTPS and lets the server make the plain-HTTP
+ * hop, which no such rule applies to.
+ *
+ * It also makes the API same-origin, which removes the CORS exchange entirely and
+ * turns the refresh cookie back into a first-party one.
+ *
+ * Leave unset to have the browser call the API directly (the localhost setup).
+ */
+const apiProxyTarget = process.env.API_PROXY_TARGET?.trim().replace(/\/$/, "");
+
 const nextConfig: NextConfig = {
   // The dev tools badge defaults to bottom-left, which sits on top of the
   // sidebar account area. Move it out of the way; development only.
@@ -10,6 +26,17 @@ const nextConfig: NextConfig = {
   // Nothing is gained by announcing the framework and version to anyone
   // scanning for known issues.
   poweredByHeader: false,
+
+  async rewrites() {
+    if (!apiProxyTarget) return [];
+
+    return [
+      {
+        source: "/api/:path*",
+        destination: `${apiProxyTarget}/api/:path*`,
+      },
+    ];
+  },
 
   async headers() {
     return [

@@ -21,7 +21,22 @@ if (!apiUrl && process.env.NODE_ENV === "production") {
   );
 }
 
+/**
+ * Set NEXT_PUBLIC_API_URL to this when the API is reached through the /api/*
+ * rewrite in next.config.ts rather than called directly.
+ *
+ * Requests then go out as relative paths, so they land on whatever host is
+ * serving the page. That is what keeps preview deployments working: every one
+ * gets its own hostname, and a baked-in absolute URL would point them all at
+ * production.
+ */
+const SAME_ORIGIN = "same-origin";
+
 export const env = {
-  /** Base URL of the backend Web API, without a trailing slash. */
-  apiUrl: (apiUrl || "http://localhost:5080").replace(/\/$/, ""),
+  /**
+   * Base URL of the backend Web API, without a trailing slash. Empty when the
+   * API is same-origin, which makes every request path relative.
+   */
+  apiUrl:
+    apiUrl === SAME_ORIGIN ? "" : (apiUrl || "http://localhost:5080").replace(/\/$/, ""),
 } as const;
