@@ -5,10 +5,10 @@
  * once ordering and kitchen features exist, not what part of the product they can
  * reach today.
  */
-export type StaffRole = "Waiter" | "Chef" | "Cashier";
+export type StaffRole = "Waiter" | "Chef";
 
 /** Every role, in the order they are offered in the UI. */
-export const STAFF_ROLES: readonly StaffRole[] = ["Waiter", "Chef", "Cashier"];
+export const STAFF_ROLES: readonly StaffRole[] = ["Waiter", "Chef"];
 
 /** A staff member, as seen by their restaurant manager. */
 export interface StaffMember {

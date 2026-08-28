@@ -12,7 +12,7 @@ namespace RestaurantManagement.Api.Controllers;
 /// <summary>
 /// The waiter ordering workflow.
 ///
-/// Gated by the Waiter policy, so a chef, a cashier, a restaurant manager and a
+/// Gated by the Waiter policy, so a chef, a restaurant manager and a
 /// platform admin are all refused. Nothing here accepts a restaurant identifier:
 /// the restaurant comes from the authenticated waiter.
 ///

@@ -62,7 +62,7 @@ public sealed class CreateStaffRequest
         ErrorMessage = "A password cannot be longer than 128 characters.")]
     public string Password { get; set; } = string.Empty;
 
-    /// <summary>Waiter, Chef or Cashier. Any other value is rejected.</summary>
+    /// <summary>Waiter or Chef. Any other value is rejected.</summary>
     [Required(ErrorMessage = "Choose a role.")]
     [EnumDataType(typeof(StaffRole), ErrorMessage = "Choose a valid role.")]
     public StaffRole Role { get; set; }
@@ -90,7 +90,7 @@ public sealed class UpdateStaffRequest
     [StringLength(256, ErrorMessage = "The email cannot be longer than 256 characters.")]
     public string Email { get; set; } = string.Empty;
 
-    /// <summary>Waiter, Chef or Cashier.</summary>
+    /// <summary>Waiter or Chef.</summary>
     [Required(ErrorMessage = "Choose a role.")]
     [EnumDataType(typeof(StaffRole), ErrorMessage = "Choose a valid role.")]
     public StaffRole Role { get; set; }

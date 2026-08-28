@@ -251,9 +251,9 @@ export function navigationFor(
     case "RestaurantManager":
       return MANAGER_NAV;
     case "Staff":
-      // A cashier falls through to the basic navigation: the role exists on the
-      // staff record, but nothing has been built for it, and a disabled row would
-      // only promise otherwise.
+      // The default still stands rather than being exhaustive over StaffRole: a
+      // staff account read back from an older record could carry a role this
+      // build no longer knows, and basic navigation is the safe landing for it.
       switch (staffRole) {
         case "Waiter":
           return WAITER_NAV;

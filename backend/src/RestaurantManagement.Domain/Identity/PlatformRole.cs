@@ -2,8 +2,8 @@ namespace RestaurantManagement.Domain.Identity;
 
 /// <summary>
 /// Platform-level role of a user. This is deliberately a single coarse flag rather
-/// than a role-management system: fine-grained restaurant roles (waiter, chef,
-/// cashier) and permissions belong to later phases and are not modelled here.
+/// than a role-management system: fine-grained restaurant roles and
+/// permissions belong to later phases and are not modelled here.
 /// </summary>
 public enum PlatformRole
 {

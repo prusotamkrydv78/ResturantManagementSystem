@@ -215,7 +215,7 @@ describe("restaurant operational settings", () => {
   });
 
   it("refuses every role that does not own a restaurant", async () => {
-    for (const caller of [seeded.waiter, seeded.chef, seeded.cashier]) {
+    for (const caller of [seeded.waiter, seeded.chef]) {
       expect((await caller.attempt("GET", "/api/restaurants/mine/settings")).status)
         .toBeGreaterThanOrEqual(400);
       expect(

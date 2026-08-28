@@ -13,7 +13,7 @@ import type { StaffRole } from "@/types/staff";
  * way into their own shift.
  *
  * They also pin the thing that actually broke once: staff branch on their operational
- * role, not their platform role, and a cashier has nothing built yet.
+ * role, not their platform role, and an unrecognised role has nothing built for it.
  */
 describe("navigation by role", () => {
   /** Every href a role is offered, flattened across groups. */
@@ -137,11 +137,14 @@ describe("navigation by role", () => {
     expect(hrefs).not.toContain("/admin/settings");
   });
 
-  it("gives a cashier only the overview, because nothing is built for one", () => {
-    // The role exists on the staff record. Listing a disabled row for it would
-    // promise a screen that does not exist.
-    expect(hrefsFor("Staff", "Cashier")).toEqual(["/dashboard"]);
-    expect(plannedFor("Staff", "Cashier")).toHaveLength(0);
+  it("gives a staff role this build does not know only the overview", () => {
+    // Cashier was removed, but a record written by an older build can still carry
+    // a role that is no longer in the union. The cast is the point of the test:
+    // it reproduces what arrives from the API, which TypeScript cannot police.
+    const unknown = "Cashier" as unknown as StaffRole;
+
+    expect(hrefsFor("Staff", unknown)).toEqual(["/dashboard"]);
+    expect(plannedFor("Staff", unknown)).toHaveLength(0);
   });
 
   it("gives staff with no operational role only the overview", () => {

@@ -832,8 +832,9 @@ function NoAccessOverview() {
 /**
  * Staff branch on what they do on the floor, not on their platform role.
  *
- * A cashier reaches the fallback: the role exists on the staff record, but nothing
- * has been built for it yet and inventing a screen would be pretending.
+ * Anything other than a waiter or a chef reaches the fallback. Cashier was removed,
+ * but a record written by an older build can still carry it, and inventing a screen
+ * for a role this build does not know would be pretending.
  */
 function StaffWorkspace({ role }: { role: string | null | undefined }) {
   switch (role) {
@@ -982,7 +983,7 @@ function StaffOverview() {
       <EmptyState
         icon={<Store />}
         title="Nothing to do here yet"
-        description="Your account is set up and active. There are no cashier tools in this version, so nothing has been assigned to you."
+        description="Your account is set up and active, but no role with its own screens has been assigned to it. Ask your manager to set you up as a waiter or a chef."
       />
     </Surface>
   );

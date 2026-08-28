@@ -12,7 +12,7 @@ namespace RestaurantManagement.Api.Controllers;
 /// <summary>
 /// Billing and order closure for a restaurant manager.
 ///
-/// Restaurant Manager only, so a waiter, a chef, a cashier and a platform admin are
+/// Restaurant Manager only, so a waiter, a chef and a platform admin are
 /// all refused. No action accepts a restaurant identifier: ownership comes from the
 /// restaurant record the caller manages.
 ///

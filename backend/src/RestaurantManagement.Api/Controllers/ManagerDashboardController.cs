@@ -11,7 +11,7 @@ namespace RestaurantManagement.Api.Controllers;
 /// <summary>
 /// The manager operational overview.
 ///
-/// Restaurant Manager only, so a waiter, a chef, a cashier and a platform admin are
+/// Restaurant Manager only, so a waiter, a chef and a platform admin are
 /// all refused. There is deliberately no platform-wide equivalent of this: the
 /// question it answers is about one restaurant floor.
 ///

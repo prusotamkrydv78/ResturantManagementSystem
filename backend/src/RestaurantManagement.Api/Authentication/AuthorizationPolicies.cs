@@ -11,7 +11,7 @@ public static class AuthorizationPolicies
 {
     /// <summary>
     /// A waiter taking orders. Requires the Staff platform role and a staff role of
-    /// Waiter, so a chef, a cashier, a restaurant manager and a platform admin are
+    /// Waiter, so a chef, a restaurant manager and a platform admin are
     /// all refused.
     ///
     /// A manager is deliberately excluded. They configure the restaurant; giving
@@ -22,7 +22,7 @@ public static class AuthorizationPolicies
 
     /// <summary>
     /// A chef working the kitchen. Requires the Staff platform role and a staff role
-    /// of Chef, so a waiter, a cashier, a restaurant manager and a platform admin
+    /// of Chef, so a waiter, a restaurant manager and a platform admin
     /// are all refused.
     ///
     /// A manager is excluded for the same reason as above. Configuring a restaurant

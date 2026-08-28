@@ -179,7 +179,7 @@ describe("receipts", () => {
       method: "Cash",
     });
 
-    for (const caller of [seeded.waiter, seeded.chef, seeded.cashier]) {
+    for (const caller of [seeded.waiter, seeded.chef]) {
       const refused = await caller.attempt(
         "GET",
         `/api/billing/orders/${order.id}/receipt`,

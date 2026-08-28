@@ -3,7 +3,7 @@ import type { StaffRole } from "@/types/staff";
 /**
  * Platform-level role: what part of the product an account can reach.
  *
- * Distinct from a staff member operational role (Waiter, Chef, Cashier), which
+ * Distinct from a staff member operational role (Waiter, Chef), which
  * lives in types/staff.ts and describes what they do on the floor.
  */
 export type PlatformRole = "User" | "SuperAdmin" | "RestaurantManager" | "Staff";

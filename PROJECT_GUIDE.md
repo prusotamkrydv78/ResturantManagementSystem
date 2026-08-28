@@ -349,7 +349,10 @@ Ordered by how often each one catches people.
 | **Manager** | Overview, My restaurant, Floor, Billing, Reservations, Customers, Reports, Menu, Inventory, Tables, Staff, Settings | take orders or work the kitchen |
 | **Waiter** | Overview, Floor, Orders, New order | see billing, menu setup, staff or reports |
 | **Chef** | Overview, Kitchen | see prices, or anything but the rail |
-| **Cashier** | Overview only | *nothing is built for this role yet* |
+
+There were three staff roles; **Cashier has been removed** while nothing was built for it.
+Billing is the manager's job. `StaffRole` is now Waiter or Chef only, and value 3 is left
+unused rather than reassigned.
 
 Enforced by the API on every request, not by hiding links. Typing a URL directly gets a
 **403**, not the page.

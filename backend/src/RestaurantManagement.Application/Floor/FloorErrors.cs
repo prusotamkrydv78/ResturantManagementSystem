@@ -8,8 +8,8 @@ public static class FloorErrors
     /// <summary>
     /// The caller is not a waiter attached to an active restaurant account.
     ///
-    /// Covers a deactivated account, a staff member with no restaurant, and a chef or
-    /// cashier reaching the waiter route, all as one message: none of those needs to
+    /// Covers a deactivated account, a staff member with no restaurant, and a chef
+    /// reaching the waiter route, all as one message: none of those needs to
     /// be told apart, and separating them would confirm which condition applied.
     /// </summary>
     public static readonly Error NotAnActiveWaiter =

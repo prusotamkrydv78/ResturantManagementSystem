@@ -48,7 +48,7 @@ export const PLATFORM_ROLES = [
   "User",
 ] as const satisfies readonly PlatformRole[];
 
-export const STAFF_ROLES = ["Waiter", "Chef", "Cashier"] as const satisfies
+export const STAFF_ROLES = ["Waiter", "Chef"] as const satisfies
   readonly StaffRole[];
 
 export const ACTIVITY_KINDS = [

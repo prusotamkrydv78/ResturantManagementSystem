@@ -9,7 +9,7 @@ public static class KitchenErrors
     /// The caller is not a chef attached to an active restaurant account.
     ///
     /// Covers a deactivated account, a staff member with no restaurant, and a
-    /// waiter, cashier or manager reaching the endpoint, all as one message. None of
+    /// waiter or manager reaching the endpoint, all as one message. None of
     /// those need to be told apart by the client, and separating them would confirm
     /// which condition applied.
     /// </summary>

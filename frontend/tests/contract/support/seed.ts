@@ -35,7 +35,6 @@ export interface Seeded {
   manager: Caller;
   waiter: Caller;
   chef: Caller;
-  cashier: Caller;
   /** The waiter login, so a test can exercise sign-in itself rather than assume it. */
   waiterEmail: string;
   password: string;
@@ -43,7 +42,7 @@ export interface Seeded {
 
 /**
  * Seeds a restaurant ready to trade: two tables in service, one orderable item, and
- * a waiter, chef and cashier.
+ * a waiter and a chef.
  *
  * The label only has to be unique within a run; a suffix keeps the restaurant slug
  * and the staff emails from colliding with earlier runs against the same database.
@@ -100,7 +99,7 @@ export async function seedRestaurant(label: string): Promise<Seeded> {
     },
   );
 
-  async function addStaff(role: "Waiter" | "Chef" | "Cashier") {
+  async function addStaff(role: "Waiter" | "Chef") {
     const email = `${role.toLowerCase()}.${suffix}@contract.test`;
 
     await manager.post("/api/staff", {
@@ -113,10 +112,9 @@ export async function seedRestaurant(label: string): Promise<Seeded> {
     return { email, caller: await signIn(role.toLowerCase(), email, seededPassword) };
   }
 
-  const [waiter, chef, cashier] = await Promise.all([
+  const [waiter, chef] = await Promise.all([
     addStaff("Waiter"),
     addStaff("Chef"),
-    addStaff("Cashier"),
   ]);
 
   return {
@@ -133,7 +131,6 @@ export async function seedRestaurant(label: string): Promise<Seeded> {
     manager,
     waiter: waiter.caller,
     chef: chef.caller,
-    cashier: cashier.caller,
     waiterEmail: waiter.email,
     password: seededPassword,
   };

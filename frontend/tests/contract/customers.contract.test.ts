@@ -338,9 +338,7 @@ describe("customer authorisation", () => {
   it("keeps the customer book away from staff", async () => {
     for (const [label, caller] of [
       ["waiter", seeded.waiter],
-      ["chef", seeded.chef],
-      ["cashier", seeded.cashier],
-    ] as const) {
+      ["chef", seeded.chef],    ] as const) {
       const list = await caller.attempt("GET", "/api/customers");
       const create = await caller.attempt("POST", "/api/customers", {
         name: "Should Not Exist",

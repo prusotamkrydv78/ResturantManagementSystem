@@ -52,7 +52,7 @@ describe("role boundaries over HTTP", () => {
   });
 
   it.each(surfaces)("$path refuses every other role", async ({ path, owner }) => {
-    const others = (["waiter", "chef", "manager", "cashier"] as const).filter(
+    const others = (["waiter", "chef", "manager"] as const).filter(
       (role) => role !== owner,
     );
 
@@ -72,18 +72,6 @@ describe("role boundaries over HTTP", () => {
       const response = await fetch(`${process.env.RMS_API_URL ?? "http://localhost:5080"}${path}`);
 
       expect(response.status, `${path} should require a token`).toBe(401);
-    }
-  });
-
-  it("keeps a cashier out of every operational surface", async () => {
-    // The role exists on the staff record and nothing is built for it. It must not
-    // inherit another role surface by default.
-    for (const { path } of surfaces) {
-      const response = await seeded.cashier.attempt("GET", path);
-
-      expect(response.status, `a cashier should not reach ${path}`).toBeGreaterThanOrEqual(
-        400,
-      );
     }
   });
 
@@ -170,12 +158,11 @@ describe("role boundaries over HTTP", () => {
     expect(floor.tables.every((table) => table.name.startsWith("Table "))).toBe(true);
   });
 
-  function callerFor(role: "waiter" | "chef" | "manager" | "cashier"): Caller {
+  function callerFor(role: "waiter" | "chef" | "manager"): Caller {
     return {
       waiter: seeded.waiter,
       chef: seeded.chef,
       manager: seeded.manager,
-      cashier: seeded.cashier,
     }[role];
   }
 });

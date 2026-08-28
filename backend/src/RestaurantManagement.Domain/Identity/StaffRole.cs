@@ -20,6 +20,8 @@ public enum StaffRole
     /// <summary>Works in the kitchen.</summary>
     Chef = 2,
 
-    /// <summary>Handles payment at the counter.</summary>
-    Cashier = 3,
+    // 3 was Cashier, removed while nothing was built for it. Billing is the
+    // manager's job today. Leave 3 unused rather than reassigning it: the value
+    // is persisted as its name, so a reused number is harmless in the database
+    // but would make old records and logs read as the wrong role.
 }

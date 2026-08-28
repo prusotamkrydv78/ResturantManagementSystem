@@ -145,7 +145,7 @@ function PlatformSettings() {
               <Stat
                 label="Staff accounts"
                 value={overview.staffCount}
-                hint="Waiters, chefs and cashiers"
+                hint="Waiters and chefs"
               />
               <Stat
                 label="Tables"
