@@ -26,7 +26,9 @@ import { PageBody, PageHeader } from "@/components/layout/page-header";
 import { RequireAuth } from "@/features/auth/require-auth";
 import {
   createStaff,
+  deleteStaff,
   listStaff,
+  resetStaffPassword,
   setStaffActive,
   updateStaff,
 } from "@/features/staff/api";
@@ -394,25 +396,43 @@ function StaffActionsDialog({
   const [role, setRole] = useState<StaffRole>(member.role);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
-  const [busy, setBusy] = useState<"none" | "save" | "status">("none");
+  const [newPassword, setNewPassword] = useState("");
+  const [notice, setNotice] = useState<string | null>(null);
+  const [busy, setBusy] = useState<
+    "none" | "save" | "status" | "password" | "delete"
+  >("none");
 
   function reset() {
     setFullName(member.fullName);
     setEmail(member.email);
     setRole(member.role);
+    setNewPassword("");
+    setNotice(null);
     setError(null);
     setFieldErrors({});
   }
 
-  async function run(action: "save" | "status", work: () => Promise<unknown>) {
+  async function run(
+    action: "save" | "status" | "password" | "delete",
+    work: () => Promise<unknown>,
+    options?: { keepOpen?: boolean; notice?: string },
+  ) {
     setError(null);
     setFieldErrors({});
+    setNotice(null);
     setBusy(action);
 
     try {
       await work();
       await onChanged();
-      setIsOpen(false);
+
+      // A password reset keeps the dialog open: there is nothing to navigate to
+      // afterwards, and closing it would leave no sign that anything happened.
+      if (options?.keepOpen === true) {
+        setNotice(options.notice ?? null);
+      } else {
+        setIsOpen(false);
+      }
     } catch (caught) {
       if (caught instanceof ApiError) {
         setError(caught.message);
@@ -443,6 +463,15 @@ function StaffActionsDialog({
       </DialogTrigger>
 
       <DialogContent title={member.fullName} description={member.email}>
+
+          {notice !== null && (
+            <p
+              role="status"
+              className="rounded-md border border-success-border bg-success-soft px-3 py-2 text-sm text-success"
+            >
+              {notice}
+            </p>
+          )}
         <div className="flex flex-col gap-5 px-4 py-4">
           {error !== null && <FormError message={error} />}
 
@@ -542,6 +571,64 @@ function StaffActionsDialog({
               }
             >
               {busy === "save" ? "Saving…" : "Save changes"}
+            </Button>
+          </section>
+
+          <section className="flex flex-col gap-3 border-t border-border pt-4">
+            <h3 className="text-sm font-semibold text-text">Password</h3>
+            <p className="text-xs text-muted">
+              There is no self-service reset. Setting one here is the only way back in
+              for somebody who has forgotten theirs.
+            </p>
+
+            <Field htmlFor={`password-${member.id}`} label="New password">
+              <PasswordInput
+                id={`password-${member.id}`}
+                autoComplete="new-password"
+                value={newPassword}
+                onChange={(event) => setNewPassword(event.target.value)}
+              />
+            </Field>
+
+            <Button
+              size="sm"
+              variant="secondary"
+              className="self-start"
+              disabled={busy !== "none" || newPassword.trim() === ""}
+              onClick={() =>
+                void run(
+                  "password",
+                  () =>
+                    resetStaffPassword(member.id, newPassword).then(() => {
+                      setNewPassword("");
+                    }),
+                  { keepOpen: true, notice: "Password replaced." },
+                )
+              }
+            >
+              {busy === "password" ? "Saving…" : "Replace password"}
+            </Button>
+          </section>
+
+          <section className="flex flex-col gap-3 border-t border-border pt-4">
+            <h3 className="text-sm font-semibold text-text">Remove</h3>
+            <p className="text-xs text-muted">
+              Deleting is only for an account added by mistake. Once somebody has taken
+              an order, recorded a payment or moved stock it is refused, because those
+              records name who did the work. Deactivate instead for somebody who worked
+              and then left.
+            </p>
+
+            <Button
+              size="sm"
+              variant="danger"
+              className="self-start"
+              disabled={busy !== "none"}
+              onClick={() =>
+                void run("delete", () => deleteStaff(member.id))
+              }
+            >
+              {busy === "delete" ? "Deleting…" : "Delete account"}
             </Button>
           </section>
 

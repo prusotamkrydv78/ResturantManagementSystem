@@ -63,3 +63,17 @@ export interface UpdateMenuItemPayload {
   price: number;
   categoryId: string;
 }
+
+/**
+ * One line of a bulk item creation.
+ *
+ * No category: the whole batch goes into one, chosen once.
+ */
+export interface MenuItemLine {
+  name: string;
+  description?: string;
+  price: number;
+}
+
+/** The largest batch the API will take in one request. */
+export const MAX_BULK_ITEMS = 100;

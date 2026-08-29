@@ -103,3 +103,20 @@ public sealed class SetStaffActiveRequest
     [Required]
     public bool IsActive { get; set; }
 }
+
+/// <summary>
+/// Replaces a staff member password.
+///
+/// There is no self-service reset and staff accounts are issued rather than
+/// registered, so without this a waiter who forgets their password is locked out for
+/// good: the manager could not help them and neither could the platform owner.
+/// </summary>
+public sealed class ResetStaffPasswordRequest
+{
+    /// <summary>The new password. Identity hashes it; it is never stored or logged.</summary>
+    [Required(ErrorMessage = "Enter the new password.")]
+    [StringLength(
+        128,
+        ErrorMessage = "A password cannot be longer than 128 characters.")]
+    public string Password { get; set; } = string.Empty;
+}

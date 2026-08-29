@@ -33,6 +33,7 @@ import { PageBody, PageHeader } from "@/components/layout/page-header";
 import { RequireAuth } from "@/features/auth/require-auth";
 import {
   createTable,
+  deleteTable,
   listTables,
   regenerateOrderingToken,
   setTableActive,
@@ -351,7 +352,7 @@ function TableActionsDialog({
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
   const [busy, setBusy] = useState<
-    "none" | "save" | "status" | "ordering" | "token"
+    "none" | "save" | "status" | "ordering" | "token" | "delete"
   >("none");
 
   function reset() {
@@ -362,7 +363,7 @@ function TableActionsDialog({
   }
 
   async function run(
-    action: "save" | "status" | "ordering" | "token",
+    action: "save" | "status" | "ordering" | "token" | "delete",
     work: () => Promise<unknown>,
     options?: { keepOpen?: boolean },
   ) {
@@ -507,6 +508,26 @@ function TableActionsDialog({
               {busy === "save" ? "Saving…" : "Save changes"}
             </Button>
           </section>
+
+          <section className="flex flex-col gap-2 border-t border-border pt-4">
+            <h3 className="text-sm font-semibold text-text">Remove</h3>
+            <p className="text-xs text-muted">
+              Deleting is only for a table added by mistake. Once an order or a booking
+              has been made against it the request is refused, because those records
+              name the table. Take it out of service instead for a table that genuinely
+              existed.
+            </p>
+
+            <Button
+              size="sm"
+              variant="danger"
+              className="self-start"
+              disabled={busy !== "none"}
+              onClick={() => void run("delete", () => deleteTable(table.id))}
+            >
+              {busy === "delete" ? "Deleting…" : "Delete table"}
+            </Button>
+          </section>
         </div>
 
         <DialogFooter>
@@ -541,9 +562,9 @@ function OrderingSection({
   run,
 }: {
   table: RestaurantTable;
-  busy: "none" | "save" | "status" | "ordering" | "token";
+  busy: "none" | "save" | "status" | "ordering" | "token" | "delete";
   run: (
-    action: "save" | "status" | "ordering" | "token",
+    action: "save" | "status" | "ordering" | "token" | "delete",
     work: () => Promise<unknown>,
     options?: { keepOpen?: boolean },
   ) => Promise<void>;

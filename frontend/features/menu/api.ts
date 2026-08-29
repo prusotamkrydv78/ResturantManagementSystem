@@ -4,6 +4,7 @@ import type {
   CreateMenuItemPayload,
   MenuCategory,
   MenuItem,
+  MenuItemLine,
   UpdateMenuCategoryPayload,
   UpdateMenuItemPayload,
 } from "@/types/menu";
@@ -103,4 +104,43 @@ export function setItemActive(id: string, isActive: boolean): Promise<MenuItem> 
     method: "PUT",
     body: JSON.stringify({ isActive }),
   });
+}
+
+/**
+ * Add several items to one category at once.
+ *
+ * The batch saves together, so a rejected row takes the whole paste back rather than
+ * leaving half a course entered.
+ */
+export function createItems(
+  categoryId: string,
+  items: MenuItemLine[],
+): Promise<MenuItem[]> {
+  return apiFetch<MenuItem[]>("/api/menu/items/bulk", {
+    method: "POST",
+    body: JSON.stringify({ categoryId, items }),
+  });
+}
+
+/**
+ * Set the order categories appear in.
+ *
+ * Send every category, in the order wanted. A place only means anything relative to
+ * the others, so this is one decision rather than a series of them.
+ */
+export function reorderCategories(categoryIds: string[]): Promise<MenuCategory[]> {
+  return apiFetch<MenuCategory[]>("/api/menu/categories/order", {
+    method: "PUT",
+    body: JSON.stringify({ categoryIds }),
+  });
+}
+
+/** Delete an item added by mistake. Rejected with 409 once it has been ordered. */
+export function deleteItem(id: string): Promise<void> {
+  return apiFetch<void>(`/api/menu/items/${id}`, { method: "DELETE" });
+}
+
+/** Delete an empty category. Rejected with 409 while it still holds items. */
+export function deleteCategory(id: string): Promise<void> {
+  return apiFetch<void>(`/api/menu/categories/${id}`, { method: "DELETE" });
 }

@@ -277,6 +277,107 @@ public sealed class StaffService : IStaffService
         return Result.Success(ToResponse(member, restaurant.Value.Name));
     }
 
+    /// <inheritdoc />
+    public async Task<Result<StaffResponse>> ResetPasswordAsync(
+        Guid managerUserId,
+        Guid staffId,
+        ResetStaffPasswordRequest request,
+        CancellationToken cancellationToken)
+    {
+        var restaurant = await ResolveRestaurantAsync(managerUserId, cancellationToken);
+
+        if (restaurant is null)
+        {
+            return Result.Failure<StaffResponse>(StaffErrors.NoRestaurantAssigned);
+        }
+
+        var member = await StaffOf(restaurant.Value.Id)
+            .SingleOrDefaultAsync(candidate => candidate.Id == staffId, cancellationToken);
+
+        if (member is null)
+        {
+            return Result.Failure<StaffResponse>(StaffErrors.NotFound);
+        }
+
+        // Through Identity own reset rather than by writing a hash: this rotates the
+        // security stamp as a side effect, which is what makes the old password stop
+        // working everywhere rather than only at the next sign-in.
+        var token = await _userManager.GeneratePasswordResetTokenAsync(member);
+        var result = await _userManager.ResetPasswordAsync(member, token, request.Password);
+
+        if (!result.Succeeded)
+        {
+            var reason = string.Join(" ", result.Errors.Select(error => error.Description));
+
+            return Result.Failure<StaffResponse>(StaffErrors.PasswordResetFailed(reason));
+        }
+
+        // Sessions are left alone deliberately. Deactivating is the action that means
+        // "lock them out" and it revokes tokens; a reset is usually somebody standing
+        // in front of the manager asking to get back in, and signing out the handset
+        // they are holding would not help.
+        _logger.LogInformation("Reset the password for staff account {StaffId}.", staffId);
+
+        return Result.Success(ToResponse(member, restaurant.Value.Name));
+    }
+
+    /// <inheritdoc />
+    public async Task<Result<bool>> DeleteAsync(
+        Guid managerUserId,
+        Guid staffId,
+        CancellationToken cancellationToken)
+    {
+        var restaurant = await ResolveRestaurantAsync(managerUserId, cancellationToken);
+
+        if (restaurant is null)
+        {
+            return Result.Failure<bool>(StaffErrors.NoRestaurantAssigned);
+        }
+
+        var member = await StaffOf(restaurant.Value.Id)
+            .SingleOrDefaultAsync(candidate => candidate.Id == staffId, cancellationToken);
+
+        if (member is null)
+        {
+            return Result.Failure<bool>(StaffErrors.NotFound);
+        }
+
+        // Checked here because the database will not check it for us. These three
+        // columns record who did the work but are plain indexed Guids rather than
+        // foreign keys, so a delete would succeed and quietly leave every one of them
+        // pointing at an account that no longer exists.
+        var hasWorked =
+            await _dbContext.Orders.AnyAsync(
+                order => order.CreatedByStaffId == staffId, cancellationToken)
+            || await _dbContext.Payments.AnyAsync(
+                payment => payment.RecordedByUserId == staffId, cancellationToken)
+            || await _dbContext.StockMovements.AnyAsync(
+                movement => movement.RecordedByUserId == staffId, cancellationToken);
+
+        if (hasWorked)
+        {
+            return Result.Failure<bool>(StaffErrors.HasHistory);
+        }
+
+        // Refresh tokens go with the row through the cascade already configured on the
+        // user, so no session can outlive the account.
+        var result = await _userManager.DeleteAsync(member);
+
+        if (!result.Succeeded)
+        {
+            var reason = string.Join(" ", result.Errors.Select(error => error.Description));
+
+            return Result.Failure<bool>(StaffErrors.UpdateFailed(reason));
+        }
+
+        _logger.LogInformation(
+            "Deleted staff account {StaffId} from restaurant {RestaurantId}.",
+            staffId,
+            restaurant.Value.Id);
+
+        return Result.Success(true);
+    }
+
     /// <summary>
     /// Finds the restaurant the caller manages. Ownership is read from the
     /// restaurant record, which is the only place it is stored.

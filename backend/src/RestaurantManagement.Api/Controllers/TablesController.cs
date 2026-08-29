@@ -228,6 +228,35 @@ public sealed class TablesController : ControllerBase
             : Ok(result.Value);
     }
 
+    /// <summary>
+    /// Deletes a table added by mistake.
+    ///
+    /// Refused once an order or a booking has been made against it. Take it out of
+    /// service instead for a table that genuinely existed.
+    /// </summary>
+    [HttpDelete("{id:guid}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> Delete(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var managerId = User.GetUserId();
+
+        if (managerId is null)
+        {
+            return Unauthorized();
+        }
+
+        var result = await _tableService.DeleteAsync(managerId.Value, id, cancellationToken);
+
+        return result.IsFailure
+            ? ProblemFrom(result.Error!, StatusFor(result.Error!))
+            : NoContent();
+    }
+
     private static int StatusFor(Error error) =>
         error == TableErrors.NotFound || error == TableErrors.NoRestaurantAssigned
             ? StatusCodes.Status404NotFound

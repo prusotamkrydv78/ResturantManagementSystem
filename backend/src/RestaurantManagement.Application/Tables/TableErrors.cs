@@ -21,4 +21,18 @@ public static class TableErrors
     /// <summary>Another table in the same restaurant already uses this name.</summary>
     public static readonly Error NameTaken =
         new("table.name_taken", "This restaurant already has a table with that name.");
+
+    /// <summary>
+    /// The table has been used, so the record is history rather than a mistake.
+    ///
+    /// Orders and bookings both point at the table by foreign key, so the database
+    /// would refuse this anyway - it is checked here so the answer is a sentence about
+    /// the table instead of a constraint violation. Withdrawing it from service takes
+    /// it off the floor without breaking what already happened on it.
+    /// </summary>
+    public static readonly Error HasHistory =
+        new(
+            "table.has_history",
+            "This table has orders or bookings against it and cannot be deleted. "
+            + "Take it out of service instead.");
 }

@@ -1,7 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Pencil, Plus, Search, ScrollText, Tags } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronUp,
+  ListPlus,
+  Pencil,
+  Plus,
+  Search,
+  ScrollText,
+  Tags,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -27,8 +36,12 @@ import { RecipeDialog } from "@/features/inventory/recipe-dialog";
 import {
   createCategory,
   createItem,
+  createItems,
+  deleteCategory,
+  deleteItem,
   listCategories,
   listItems,
+  reorderCategories,
   setCategoryActive,
   setItemActive,
   updateCategory,
@@ -57,6 +70,7 @@ function MenuManager() {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
+  const [isReordering, setIsReordering] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -105,6 +119,44 @@ function MenuManager() {
   const isFiltering = search.trim() !== "" || categoryFilter !== "";
   const hasCategories = categories !== null && categories.length > 0;
 
+  /**
+   * Moves one category up or down and sends the whole resulting order.
+   *
+   * The API takes the full list rather than a position, because a place only means
+   * anything relative to the others: sending "this one is now third" would pass
+   * through a state where two categories claim third.
+   */
+  async function moveCategory(categoryId: string, direction: -1 | 1) {
+    if (categories === null) return;
+
+    const from = categories.findIndex((category) => category.id === categoryId);
+    const to = from + direction;
+
+    if (from === -1 || to < 0 || to >= categories.length) return;
+
+    // Swapped through a temporary rather than a destructuring swap: indexed access
+    // on an array is typed as possibly-undefined under noUncheckedIndexedAccess, and
+    // the bounds are already established above.
+    const order = categories.map((category) => category.id);
+    const moved = order[from]!;
+    order[from] = order[to]!;
+    order[to] = moved;
+
+    setIsReordering(true);
+
+    try {
+      const reordered = await reorderCategories(order);
+      setCategories(reordered);
+      setError(null);
+    } catch (caught) {
+      setError(
+        caught instanceof Error ? caught.message : "Unable to reorder the menu.",
+      );
+    } finally {
+      setIsReordering(false);
+    }
+  }
+
   return (
     <>
       <PageHeader
@@ -115,7 +167,10 @@ function MenuManager() {
           <div className="flex flex-wrap items-center gap-2">
             <CategoryDialog categories={categories ?? []} onSaved={refresh} />
             {hasCategories && (
-              <ItemDialog categories={categories ?? []} onSaved={refresh} />
+              <>
+                <BulkItemsDialog categories={categories ?? []} onSaved={refresh} />
+                <ItemDialog categories={categories ?? []} onSaved={refresh} />
+              </>
             )}
           </div>
         }
@@ -163,7 +218,7 @@ function MenuManager() {
                   </tr>
                 </thead>
                 <tbody>
-                  {categories.map((category) => (
+                  {categories.map((category, index) => (
                     <Tr key={category.id}>
                       <Td>
                         <span className="font-medium text-text">{category.name}</span>
@@ -199,8 +254,31 @@ function MenuManager() {
                           </Badge>
                         )}
                       </Td>
-                      <Td className="text-right text-muted tabular">
-                        {category.displayOrder}
+                      <Td className="text-right">
+                        {/* Buttons rather than an editable number. Position is
+                            relative, so "move this one up" is the operation a
+                            manager actually has in mind; typing 3 into a box means
+                            working out what everything else should become. */}
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            aria-label={`Move ${category.name} up`}
+                            disabled={isReordering || index === 0}
+                            onClick={() => void moveCategory(category.id, -1)}
+                          >
+                            <ChevronUp className="size-3.5" aria-hidden="true" />
+                          </Button>
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            aria-label={`Move ${category.name} down`}
+                            disabled={isReordering || index === categories.length - 1}
+                            onClick={() => void moveCategory(category.id, 1)}
+                          >
+                            <ChevronDown className="size-3.5" aria-hidden="true" />
+                          </Button>
+                        </div>
                       </Td>
                       <Td className="text-right">
                         <CategoryDialog
@@ -400,6 +478,213 @@ function firstError(
 /* Category create / edit                                                     */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * Adds several items to one category at once.
+ *
+ * Entering a real menu a dish at a time is the longest job in setting a restaurant up,
+ * and it is the same three fields over and over. This takes them as lines of text -
+ * `Name | Price | Description` - because that is what a menu already looks like when
+ * somebody has it written down or pasted from elsewhere.
+ *
+ * The batch saves together, so a bad price takes the whole paste back rather than
+ * leaving half a course entered and the manager working out where they got to.
+ */
+function BulkItemsDialog({
+  categories,
+  onSaved,
+}: {
+  categories: MenuCategory[];
+  onSaved: () => Promise<void>;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [categoryId, setCategoryId] = useState(categories[0]?.id ?? "");
+  const [text, setText] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const parsed = parseItemLines(text);
+  const valid = parsed.filter((line) => line.error === null);
+  const invalid = parsed.filter((line) => line.error !== null);
+
+  function reset() {
+    setCategoryId(categories[0]?.id ?? "");
+    setText("");
+    setError(null);
+  }
+
+  async function handleSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    setError(null);
+    setIsSubmitting(true);
+
+    try {
+      await createItems(
+        categoryId,
+        valid.map((line) => ({
+          name: line.name,
+          price: line.price,
+          ...(line.description === undefined ? {} : { description: line.description }),
+        })),
+      );
+
+      reset();
+      setIsOpen(false);
+      await onSaved();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to add the items.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  return (
+    <Dialog
+      open={isOpen}
+      onOpenChange={(next) => {
+        setIsOpen(next);
+        if (!next) reset();
+      }}
+    >
+      <DialogTrigger asChild>
+        <Button variant="secondary" icon={<ListPlus />}>
+          Add many
+        </Button>
+      </DialogTrigger>
+
+      <DialogContent
+        title="Add several items"
+        description="One item per line, into a single category."
+      >
+        <form onSubmit={handleSubmit}>
+          <div className="flex flex-col gap-4 px-4 py-4">
+            {error !== null && <FormError message={error} />}
+
+            <Field htmlFor="bulk-category" label="Category" required>
+              <Select
+                id="bulk-category"
+                required
+                value={categoryId}
+                onChange={(event) => setCategoryId(event.target.value)}
+              >
+                {categories.map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+
+            <Field
+              htmlFor="bulk-items"
+              label="Items"
+              required
+              hint="One per line: Name | Price | Description. The description is optional."
+            >
+              <Textarea
+                id="bulk-items"
+                rows={10}
+                required
+                placeholder={"Veg Momo | 180 | Steamed dumplings\nChicken Momo | 220\nPaneer Tikka | 280"}
+                value={text}
+                onChange={(event) => setText(event.target.value)}
+                aria-describedby={describedBy("bulk-items", { hasHint: true })}
+              />
+            </Field>
+
+            {/* Counted before sending rather than after refusing: a paste of thirty
+                lines with one typo should show the typo, not fail as a whole. */}
+            {parsed.length > 0 && (
+              <div className="flex flex-col gap-1.5 text-xs">
+                <p className="text-muted">
+                  <span className="font-medium text-text">{valid.length}</span> ready to
+                  add
+                  {invalid.length > 0 && (
+                    <>
+                      {" · "}
+                      <span className="text-danger">
+                        {invalid.length} need fixing
+                      </span>
+                    </>
+                  )}
+                </p>
+
+                {invalid.slice(0, 5).map((line) => (
+                  <p key={line.lineNumber} className="text-danger">
+                    Line {line.lineNumber}: {line.error}
+                  </p>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="secondary">Cancel</Button>
+            </DialogClose>
+            <Button
+              type="submit"
+              disabled={
+                isSubmitting ||
+                categoryId === "" ||
+                valid.length === 0 ||
+                invalid.length > 0
+              }
+            >
+              {isSubmitting
+                ? "Adding…"
+                : `Add ${valid.length} ${valid.length === 1 ? "item" : "items"}`}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** One parsed line of the bulk box, valid or not. */
+interface ParsedItemLine {
+  lineNumber: number;
+  name: string;
+  price: number;
+  description?: string;
+  error: string | null;
+}
+
+/**
+ * Reads `Name | Price | Description` lines.
+ *
+ * Blank lines are skipped rather than reported: a paste usually carries them, and
+ * complaining about whitespace would be noise.
+ */
+function parseItemLines(text: string): ParsedItemLine[] {
+  return text
+    .split("\n")
+    .map((raw, index) => ({ raw: raw.trim(), lineNumber: index + 1 }))
+    .filter((line) => line.raw !== "")
+    .map(({ raw, lineNumber }) => {
+      const [name = "", price = "", ...rest] = raw.split("|").map((part) => part.trim());
+      const description = rest.join(" | ").trim();
+      const parsedPrice = Number(price);
+
+      const error =
+        name === ""
+          ? "needs a name."
+          : price === ""
+            ? "needs a price, after a | character."
+            : !Number.isFinite(parsedPrice) || parsedPrice < 0
+              ? `"${price}" is not a price.`
+              : null;
+
+      return {
+        lineNumber,
+        name,
+        price: Number.isFinite(parsedPrice) ? parsedPrice : 0,
+        ...(description === "" ? {} : { description }),
+        error,
+      };
+    });
+}
+
 function CategoryDialog({
   categories,
   category,
@@ -419,7 +704,7 @@ function CategoryDialog({
   );
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
-  const [busy, setBusy] = useState<"none" | "save" | "status">("none");
+  const [busy, setBusy] = useState<"none" | "save" | "status" | "delete">("none");
 
   function reset() {
     setName(category?.name ?? "");
@@ -429,7 +714,10 @@ function CategoryDialog({
     setFieldErrors({});
   }
 
-  async function run(action: "save" | "status", work: () => Promise<unknown>) {
+  async function run(
+    action: "save" | "status" | "delete",
+    work: () => Promise<unknown>,
+  ) {
     setError(null);
     setFieldErrors({});
     setBusy(action);
@@ -600,6 +888,30 @@ function CategoryDialog({
                 aria-describedby={describedBy("category-order", { hasHint: true })}
               />
             </Field>
+
+            {isEditing && (
+              <section className="flex flex-col gap-2 border-t border-border pt-4">
+                <h3 className="text-sm font-semibold text-text">Remove</h3>
+                <p className="text-xs text-muted">
+                  {category.itemCount > 0
+                    ? "This category still has items. Move or delete them first, or hide the category instead."
+                    : "Deleting is only for a category added by mistake. Hiding takes it off the menu without removing it."}
+                </p>
+
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="danger"
+                  className="self-start"
+                  disabled={busy !== "none" || category.itemCount > 0}
+                  onClick={() =>
+                    void run("delete", () => deleteCategory(category.id))
+                  }
+                >
+                  {busy === "delete" ? "Deleting…" : "Delete category"}
+                </Button>
+              </section>
+            )}
           </div>
 
           <DialogFooter>
@@ -640,7 +952,7 @@ function ItemDialog({
   );
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
-  const [busy, setBusy] = useState<"none" | "save" | "status">("none");
+  const [busy, setBusy] = useState<"none" | "save" | "status" | "delete">("none");
 
   function reset() {
     setName(item?.name ?? "");
@@ -651,7 +963,10 @@ function ItemDialog({
     setFieldErrors({});
   }
 
-  async function run(action: "save" | "status", work: () => Promise<unknown>) {
+  async function run(
+    action: "save" | "status" | "delete",
+    work: () => Promise<unknown>,
+  ) {
     setError(null);
     setFieldErrors({});
     setBusy(action);
@@ -816,6 +1131,28 @@ function ItemDialog({
                 onChange={(event) => setDescription(event.target.value)}
               />
             </Field>
+
+            {isEditing && (
+              <section className="flex flex-col gap-2 border-t border-border pt-4">
+                <h3 className="text-sm font-semibold text-text">Remove</h3>
+                <p className="text-xs text-muted">
+                  Deleting is only for an item added by mistake. Once it has been
+                  ordered it is refused, because the sales history points at it. Hide it
+                  instead to take it off the menu.
+                </p>
+
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="danger"
+                  className="self-start"
+                  disabled={busy !== "none"}
+                  onClick={() => void run("delete", () => deleteItem(item.id))}
+                >
+                  {busy === "delete" ? "Deleting…" : "Delete item"}
+                </Button>
+              </section>
+            )}
           </div>
 
           <DialogFooter>

@@ -301,6 +301,52 @@ public sealed class TableService : ITableService
             : Result.Success(table);
     }
 
+    /// <inheritdoc />
+    public async Task<Result<bool>> DeleteAsync(
+        Guid managerUserId,
+        Guid tableId,
+        CancellationToken cancellationToken)
+    {
+        var restaurantId = await ResolveRestaurantIdAsync(managerUserId, cancellationToken);
+
+        if (restaurantId is null)
+        {
+            return Result.Failure<bool>(TableErrors.NoRestaurantAssigned);
+        }
+
+        var table = await TablesOf(restaurantId.Value)
+            .SingleOrDefaultAsync(candidate => candidate.Id == tableId, cancellationToken);
+
+        if (table is null)
+        {
+            return Result.Failure<bool>(TableErrors.NotFound);
+        }
+
+        // Both of these are real foreign keys, so the database would refuse the delete
+        // regardless. Asking first turns a constraint violation into a sentence that
+        // says which table and what to do instead.
+        var hasHistory =
+            await _dbContext.Orders.AnyAsync(
+                order => order.TableId == tableId, cancellationToken)
+            || await _dbContext.Reservations.AnyAsync(
+                reservation => reservation.TableId == tableId, cancellationToken);
+
+        if (hasHistory)
+        {
+            return Result.Failure<bool>(TableErrors.HasHistory);
+        }
+
+        _dbContext.RestaurantTables.Remove(table);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation(
+            "Deleted table {TableId} from restaurant {RestaurantId}.",
+            tableId,
+            restaurantId.Value);
+
+        return Result.Success(true);
+    }
+
     /// <summary>
     /// Finds the restaurant the caller manages. Ownership is read from the
     /// restaurant record, which is the only place it is stored.

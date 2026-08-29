@@ -39,4 +39,27 @@ public static class StaffErrors
     /// </summary>
     public static readonly Error RestaurantNotFound =
         new("staff.restaurant_not_found", "The restaurant could not be found.");
+
+    /// <summary>
+    /// Identity rejected the replacement password.
+    ///
+    /// Carries Identity own wording, because the only composition rule left is a
+    /// minimum length of one and anything it does refuse is worth repeating verbatim.
+    /// </summary>
+    public static Error PasswordResetFailed(string message) =>
+        new("staff.password_reset_failed", message);
+
+    /// <summary>
+    /// The account has worked, so the record is history rather than a mistake.
+    ///
+    /// Orders, payments and stock movements record who did them by id, and those
+    /// columns are indexed rather than foreign keys - nothing in the database would
+    /// stop the delete, it would just leave every one of them pointing at somebody who
+    /// no longer exists. Deactivating keeps the answer to "who took this order".
+    /// </summary>
+    public static readonly Error HasHistory =
+        new(
+            "staff.has_history",
+            "This account has taken orders or recorded work and cannot be deleted. "
+            + "Deactivate it instead.");
 }

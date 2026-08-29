@@ -56,3 +56,29 @@ export function setStaffActive(id: string, isActive: boolean): Promise<StaffMemb
     body: JSON.stringify({ isActive }),
   });
 }
+
+/**
+ * Replace a staff member password.
+ *
+ * The only way back in for somebody who has forgotten theirs: the product has no
+ * forgot-password flow and these accounts are issued rather than registered.
+ */
+export function resetStaffPassword(
+  id: string,
+  password: string,
+): Promise<StaffMember> {
+  return apiFetch<StaffMember>(`/api/staff/${id}/password`, {
+    method: "PUT",
+    body: JSON.stringify({ password }),
+  });
+}
+
+/**
+ * Delete a staff account added by mistake.
+ *
+ * Rejected with 409 once the account has taken an order, recorded a payment or moved
+ * stock. Deactivate somebody who actually worked and then left.
+ */
+export function deleteStaff(id: string): Promise<void> {
+  return apiFetch<void>(`/api/staff/${id}`, { method: "DELETE" });
+}

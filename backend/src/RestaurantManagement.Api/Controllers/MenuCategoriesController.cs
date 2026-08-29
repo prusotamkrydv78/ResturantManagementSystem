@@ -164,6 +164,77 @@ public sealed class MenuCategoriesController : ControllerBase
             : Ok(result.Value);
     }
 
+    /// <summary>
+    /// Sets the order categories appear in, from the full list of identifiers.
+    ///
+    /// The whole order rather than one position: a place only means anything relative
+    /// to the others, so moving them one at a time passes through states where two
+    /// categories claim the same spot.
+    /// </summary>
+    [HttpPut("order")]
+    [ProducesResponseType(typeof(IReadOnlyList<MenuCategoryResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<IReadOnlyList<MenuCategoryResponse>>> Reorder(
+        ReorderCategoriesRequest request,
+        CancellationToken cancellationToken)
+    {
+        var managerId = User.GetUserId();
+
+        if (managerId is null)
+        {
+            return Unauthorized();
+        }
+
+        var result = await _menuService.ReorderCategoriesAsync(
+            managerId.Value,
+            request,
+            cancellationToken);
+
+        return result.IsFailure
+            ? ProblemFrom(result.Error!, StatusCodes.Status404NotFound)
+            : Ok(result.Value);
+    }
+
+    /// <summary>
+    /// Deletes an empty category. Refused while it still holds items.
+    /// </summary>
+    [HttpDelete("{id:guid}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> Delete(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var managerId = User.GetUserId();
+
+        if (managerId is null)
+        {
+            return Unauthorized();
+        }
+
+        var result = await _menuService.DeleteCategoryAsync(
+            managerId.Value,
+            id,
+            cancellationToken);
+
+        if (result.IsFailure)
+        {
+            var error = result.Error!;
+
+            return ProblemFrom(
+                error,
+                error == MenuErrors.CategoryNotEmpty
+                    ? StatusCodes.Status409Conflict
+                    : StatusCodes.Status404NotFound);
+        }
+
+        return NoContent();
+    }
+
     private static int StatusFor(Error error) =>
         error == MenuErrors.CategoryNameTaken
             ? StatusCodes.Status409Conflict

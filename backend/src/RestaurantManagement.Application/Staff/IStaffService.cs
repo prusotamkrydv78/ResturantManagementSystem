@@ -68,4 +68,29 @@ public interface IStaffService
         Guid staffId,
         bool isActive,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Replaces a staff member password.
+    ///
+    /// The only way back in for somebody who has forgotten theirs: the product has no
+    /// forgot-password flow, and these accounts are issued rather than registered.
+    /// </summary>
+    Task<Result<StaffResponse>> ResetPasswordAsync(
+        Guid managerUserId,
+        Guid staffId,
+        ResetStaffPasswordRequest request,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Deletes a staff account outright.
+    ///
+    /// Only for one added by mistake. Refused once the account has taken an order,
+    /// recorded a payment or moved stock, because those rows record who did the work
+    /// by id and would be left pointing at nobody. Deactivating is the answer for
+    /// somebody who has actually worked and then left.
+    /// </summary>
+    Task<Result<bool>> DeleteAsync(
+        Guid managerUserId,
+        Guid staffId,
+        CancellationToken cancellationToken);
 }

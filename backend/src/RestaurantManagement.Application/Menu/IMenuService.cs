@@ -93,4 +93,52 @@ public interface IMenuService
         Guid itemId,
         bool isActive,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Creates several items in one category at once.
+    ///
+    /// Building a menu is the longest job in setting a restaurant up, and doing it a
+    /// dish at a time is what makes it long. The whole batch is one transaction: a
+    /// duplicate or a bad price rejects the lot and names the row, rather than leaving
+    /// half a course entered and the manager guessing where they got to.
+    /// </summary>
+    Task<Result<IReadOnlyList<MenuItemResponse>>> CreateItemsAsync(
+        Guid managerUserId,
+        CreateMenuItemsRequest request,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Sets the order categories appear in, from a list of identifiers.
+    ///
+    /// Position is a property of the whole menu, not of one category: swapping two of
+    /// them by editing numbers one at a time passes through states where both hold the
+    /// same value. Sending the full order makes it one decision.
+    /// </summary>
+    Task<Result<IReadOnlyList<MenuCategoryResponse>>> ReorderCategoriesAsync(
+        Guid managerUserId,
+        ReorderCategoriesRequest request,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Deletes an item added by mistake.
+    ///
+    /// Refused once it has been ordered. Its recipe lines go with it, because a recipe
+    /// cannot mean anything without the dish.
+    /// </summary>
+    Task<Result<bool>> DeleteItemAsync(
+        Guid managerUserId,
+        Guid itemId,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Deletes an empty category.
+    ///
+    /// Refused while it still holds items. Items cascade from their category in the
+    /// schema, so allowing it would delete dishes - possibly sold ones - as a side
+    /// effect of tidying the menu.
+    /// </summary>
+    Task<Result<bool>> DeleteCategoryAsync(
+        Guid managerUserId,
+        Guid categoryId,
+        CancellationToken cancellationToken);
 }

@@ -69,4 +69,17 @@ public interface ITableService
         Guid managerUserId,
         Guid tableId,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Deletes a table added by mistake.
+    ///
+    /// Refused once an order or a booking has been made against it. Those records name
+    /// the table, and a floor plan tidied up afterwards should not be able to take the
+    /// meaning out of them. Withdrawing from service is the answer for a table that
+    /// genuinely existed and no longer does.
+    /// </summary>
+    Task<Result<bool>> DeleteAsync(
+        Guid managerUserId,
+        Guid tableId,
+        CancellationToken cancellationToken);
 }

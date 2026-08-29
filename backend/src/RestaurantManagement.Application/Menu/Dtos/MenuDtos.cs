@@ -185,3 +185,67 @@ public sealed class SetMenuActiveRequest
     [Required]
     public bool IsActive { get; set; }
 }
+
+/// <summary>
+/// One line of a bulk item creation. Same rules as creating a single item, minus the
+/// category, which is chosen once for the whole batch.
+/// </summary>
+public sealed class MenuItemLineRequest
+{
+    /// <summary>What the dish is called.</summary>
+    [Required(ErrorMessage = "Enter an item name.")]
+    [StringLength(
+        120,
+        MinimumLength = 1,
+        ErrorMessage = "The item name cannot be longer than 120 characters.")]
+    public string Name { get; set; } = string.Empty;
+
+    /// <summary>Optional description shown to staff and guests.</summary>
+    [StringLength(600, ErrorMessage = "The description cannot be longer than 600 characters.")]
+    public string? Description { get; set; }
+
+    /// <summary>What it sells for.</summary>
+    [Range(
+        MenuLimits.MinPrice,
+        MenuLimits.MaxPrice,
+        ErrorMessage = "Enter a price of zero or more.")]
+    public decimal Price { get; set; }
+}
+
+/// <summary>
+/// Creates several items in one category at once.
+///
+/// Entering a real menu one dish at a time is the longest part of setting a restaurant
+/// up. The batch is capped rather than unbounded: a request large enough to matter is
+/// a paste of the wrong thing, and the cap says so instead of timing out.
+/// </summary>
+public sealed class CreateMenuItemsRequest
+{
+    /// <summary>The largest batch one request will take.</summary>
+    public const int MaxItems = 100;
+
+    /// <summary>The category every item in this batch belongs to.</summary>
+    [Required(ErrorMessage = "Choose a category.")]
+    public Guid CategoryId { get; set; }
+
+    /// <summary>The items to create. Names must not repeat within the batch.</summary>
+    [Required(ErrorMessage = "Add at least one item.")]
+    [MinLength(1, ErrorMessage = "Add at least one item.")]
+    [MaxLength(MaxItems, ErrorMessage = "That is more than 100 items in one go.")]
+    public List<MenuItemLineRequest> Items { get; set; } = [];
+}
+
+/// <summary>
+/// Sets the order categories appear in.
+///
+/// The list is the whole order, not a patch: position only means anything relative to
+/// the other categories, so sending them one at a time would pass through states where
+/// two share a place.
+/// </summary>
+public sealed class ReorderCategoriesRequest
+{
+    /// <summary>Every category of the restaurant, in the order they should appear.</summary>
+    [Required(ErrorMessage = "Send the categories in their new order.")]
+    [MinLength(1, ErrorMessage = "Send the categories in their new order.")]
+    public List<Guid> CategoryIds { get; set; } = [];
+}

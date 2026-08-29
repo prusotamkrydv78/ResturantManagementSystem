@@ -83,3 +83,13 @@ export function regenerateOrderingToken(id: string): Promise<RestaurantTable> {
     method: "POST",
   });
 }
+
+/**
+ * Delete a table added by mistake.
+ *
+ * Rejected with 409 once an order or a booking has been made against it. Take it out
+ * of service instead for a table that genuinely existed.
+ */
+export function deleteTable(id: string): Promise<void> {
+  return apiFetch<void>(`/api/tables/${id}`, { method: "DELETE" });
+}

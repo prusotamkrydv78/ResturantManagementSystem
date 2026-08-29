@@ -166,6 +166,69 @@ public sealed class StaffController : ControllerBase
             : Ok(result.Value);
     }
 
+    /// <summary>
+    /// Replaces a staff member password.
+    ///
+    /// The only way back in for somebody who has forgotten theirs. There is no
+    /// self-service reset, and these accounts are issued rather than registered.
+    /// </summary>
+    [HttpPut("{id:guid}/password")]
+    [ProducesResponseType(typeof(StaffResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<StaffResponse>> ResetPassword(
+        Guid id,
+        ResetStaffPasswordRequest request,
+        CancellationToken cancellationToken)
+    {
+        var managerId = User.GetUserId();
+
+        if (managerId is null)
+        {
+            return Unauthorized();
+        }
+
+        var result = await _staffService.ResetPasswordAsync(
+            managerId.Value,
+            id,
+            request,
+            cancellationToken);
+
+        return result.IsFailure
+            ? ProblemFrom(result.Error!, StatusFor(result.Error!))
+            : Ok(result.Value);
+    }
+
+    /// <summary>
+    /// Deletes a staff account added by mistake.
+    ///
+    /// Refused once the account has taken an order, recorded a payment or moved
+    /// stock. Deactivate somebody who has actually worked and then left.
+    /// </summary>
+    [HttpDelete("{id:guid}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> Delete(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var managerId = User.GetUserId();
+
+        if (managerId is null)
+        {
+            return Unauthorized();
+        }
+
+        var result = await _staffService.DeleteAsync(managerId.Value, id, cancellationToken);
+
+        return result.IsFailure
+            ? ProblemFrom(result.Error!, StatusFor(result.Error!))
+            : NoContent();
+    }
+
     private static int StatusFor(Error error) =>
         error == StaffErrors.NotFound || error == StaffErrors.NoRestaurantAssigned
             ? StatusCodes.Status404NotFound

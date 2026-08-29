@@ -422,6 +422,207 @@ public sealed class MenuService : IMenuService
             ToResponse(item, item.Category.Name, item.Category.IsActive));
     }
 
+    /// <inheritdoc />
+    public async Task<Result<IReadOnlyList<MenuItemResponse>>> CreateItemsAsync(
+        Guid managerUserId,
+        CreateMenuItemsRequest request,
+        CancellationToken cancellationToken)
+    {
+        var restaurantId = await ResolveRestaurantIdAsync(managerUserId, cancellationToken);
+
+        if (restaurantId is null)
+        {
+            return Result.Failure<IReadOnlyList<MenuItemResponse>>(
+                MenuErrors.NoRestaurantAssigned);
+        }
+
+        var category = await CategoriesOf(restaurantId.Value)
+            .SingleOrDefaultAsync(
+                candidate => candidate.Id == request.CategoryId,
+                cancellationToken);
+
+        if (category is null)
+        {
+            return Result.Failure<IReadOnlyList<MenuItemResponse>>(
+                MenuErrors.CategoryNotInRestaurant);
+        }
+
+        var now = DateTimeOffset.UtcNow;
+
+        var items = request.Items
+            .Select(line => new MenuItem
+            {
+                Id = Guid.CreateVersion7(),
+                RestaurantId = restaurantId.Value,
+                CategoryId = category.Id,
+                Category = category,
+                Name = line.Name.Trim(),
+                Description = string.IsNullOrWhiteSpace(line.Description)
+                    ? null
+                    : line.Description.Trim(),
+                Price = line.Price,
+                CreatedAtUtc = now,
+                UpdatedAtUtc = now,
+            })
+            .ToList();
+
+        // One SaveChanges for the batch. There is no unique index on an item name, so
+        // nothing here can half-fail on a duplicate; what a single save buys is that a
+        // price the database rejects takes the whole paste back rather than leaving a
+        // course half entered and the manager guessing where they got to.
+        _dbContext.MenuItems.AddRange(items);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation(
+            "Added {Count} items to category {CategoryId}.",
+            items.Count,
+            category.Id);
+
+        return Result.Success<IReadOnlyList<MenuItemResponse>>(
+            items.Select(Project).ToList());
+    }
+
+    /// <inheritdoc />
+    public async Task<Result<IReadOnlyList<MenuCategoryResponse>>> ReorderCategoriesAsync(
+        Guid managerUserId,
+        ReorderCategoriesRequest request,
+        CancellationToken cancellationToken)
+    {
+        var restaurantId = await ResolveRestaurantIdAsync(managerUserId, cancellationToken);
+
+        if (restaurantId is null)
+        {
+            return Result.Failure<IReadOnlyList<MenuCategoryResponse>>(
+                MenuErrors.NoRestaurantAssigned);
+        }
+
+        var categories = await CategoriesOf(restaurantId.Value).ToListAsync(cancellationToken);
+        var byId = categories.ToDictionary(category => category.Id);
+
+        // Every identifier has to be one of ours. A list containing something else is
+        // either stale or somebody else's, and reordering around it would silently
+        // renumber the wrong set.
+        if (request.CategoryIds.Any(id => !byId.ContainsKey(id)))
+        {
+            return Result.Failure<IReadOnlyList<MenuCategoryResponse>>(
+                MenuErrors.CategoryNotInRestaurant);
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        var position = 0;
+
+        foreach (var id in request.CategoryIds)
+        {
+            var category = byId[id];
+
+            if (category.DisplayOrder != position)
+            {
+                category.DisplayOrder = position;
+                category.UpdatedAtUtc = now;
+            }
+
+            position++;
+        }
+
+        // Anything the caller left out keeps its relative order and follows the rest,
+        // so a list that arrived stale reorders what it named without shuffling what
+        // it did not know about.
+        foreach (var category in categories
+            .Where(candidate => !request.CategoryIds.Contains(candidate.Id))
+            .OrderBy(candidate => candidate.DisplayOrder))
+        {
+            category.DisplayOrder = position++;
+            category.UpdatedAtUtc = now;
+        }
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return await GetCategoriesAsync(managerUserId, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task<Result<bool>> DeleteItemAsync(
+        Guid managerUserId,
+        Guid itemId,
+        CancellationToken cancellationToken)
+    {
+        var restaurantId = await ResolveRestaurantIdAsync(managerUserId, cancellationToken);
+
+        if (restaurantId is null)
+        {
+            return Result.Failure<bool>(MenuErrors.NoRestaurantAssigned);
+        }
+
+        var item = await ItemsOf(restaurantId.Value)
+            .SingleOrDefaultAsync(candidate => candidate.Id == itemId, cancellationToken);
+
+        if (item is null)
+        {
+            return Result.Failure<bool>(MenuErrors.ItemNotFound);
+        }
+
+        // Order lines keep the item id but are not a foreign key to it, so the database
+        // would allow this and leave the sales history pointing at nothing.
+        var sold = await _dbContext.OrderItems.AnyAsync(
+            line => line.MenuItemId == itemId,
+            cancellationToken);
+
+        if (sold)
+        {
+            return Result.Failure<bool>(MenuErrors.ItemHasHistory);
+        }
+
+        // Recipe lines cascade from the item in the schema, so an unsold dish takes its
+        // ingredients with it.
+        _dbContext.MenuItems.Remove(item);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation("Deleted menu item {ItemId}.", itemId);
+
+        return Result.Success(true);
+    }
+
+    /// <inheritdoc />
+    public async Task<Result<bool>> DeleteCategoryAsync(
+        Guid managerUserId,
+        Guid categoryId,
+        CancellationToken cancellationToken)
+    {
+        var restaurantId = await ResolveRestaurantIdAsync(managerUserId, cancellationToken);
+
+        if (restaurantId is null)
+        {
+            return Result.Failure<bool>(MenuErrors.NoRestaurantAssigned);
+        }
+
+        var category = await CategoriesOf(restaurantId.Value)
+            .SingleOrDefaultAsync(candidate => candidate.Id == categoryId, cancellationToken);
+
+        if (category is null)
+        {
+            return Result.Failure<bool>(MenuErrors.CategoryNotFound);
+        }
+
+        // Items cascade from their category, so deleting one that still holds dishes
+        // would take them with it - including sold ones the item rule above refuses to
+        // delete on their own. Emptying first keeps that an explicit decision.
+        var hasItems = await _dbContext.MenuItems.AnyAsync(
+            item => item.CategoryId == categoryId,
+            cancellationToken);
+
+        if (hasItems)
+        {
+            return Result.Failure<bool>(MenuErrors.CategoryNotEmpty);
+        }
+
+        _dbContext.MenuCategories.Remove(category);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation("Deleted menu category {CategoryId}.", categoryId);
+
+        return Result.Success(true);
+    }
+
     /* ------------------------------------------------------------------- Helpers */
 
     /// <summary>

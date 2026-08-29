@@ -171,6 +171,74 @@ public sealed class MenuItemsController : ControllerBase
             : Ok(result.Value);
     }
 
+    /// <summary>
+    /// Adds several items to one category at once.
+    ///
+    /// Entering a menu a dish at a time is the longest job in setting a restaurant up.
+    /// The batch saves together, so a rejected row takes the whole paste back rather
+    /// than leaving half a course entered.
+    /// </summary>
+    [HttpPost("bulk")]
+    [ProducesResponseType(typeof(IReadOnlyList<MenuItemResponse>), StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<IReadOnlyList<MenuItemResponse>>> CreateMany(
+        CreateMenuItemsRequest request,
+        CancellationToken cancellationToken)
+    {
+        var managerId = User.GetUserId();
+
+        if (managerId is null)
+        {
+            return Unauthorized();
+        }
+
+        var result = await _menuService.CreateItemsAsync(
+            managerId.Value,
+            request,
+            cancellationToken);
+
+        return result.IsFailure
+            ? ProblemFrom(result.Error!, StatusCodes.Status404NotFound)
+            : StatusCode(StatusCodes.Status201Created, result.Value);
+    }
+
+    /// <summary>
+    /// Deletes an item added by mistake. Refused once it has been ordered.
+    /// </summary>
+    [HttpDelete("{id:guid}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> Delete(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var managerId = User.GetUserId();
+
+        if (managerId is null)
+        {
+            return Unauthorized();
+        }
+
+        var result = await _menuService.DeleteItemAsync(managerId.Value, id, cancellationToken);
+
+        if (result.IsFailure)
+        {
+            var error = result.Error!;
+
+            return ProblemFrom(
+                error,
+                error == MenuErrors.ItemHasHistory
+                    ? StatusCodes.Status409Conflict
+                    : StatusCodes.Status404NotFound);
+        }
+
+        return NoContent();
+    }
+
     private ObjectResult ProblemFrom(Error error, int statusCode) =>
         Problem(
             detail: error.Message,
