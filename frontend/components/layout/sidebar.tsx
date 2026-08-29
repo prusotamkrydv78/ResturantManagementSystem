@@ -2,9 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useCallback, useId } from "react";
+import { useCallback } from "react";
 import {
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
   LogOut,
@@ -12,6 +11,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/features/auth/auth-context";
 import { navigationFor, roleLabel } from "@/components/layout/nav-config";
+import { NavSection, useClosedSections } from "@/components/layout/nav-section";
 import type { NavItem } from "@/components/layout/nav-config";
 import { RailLabel, Tooltip } from "@/components/ui/tooltip";
 import { useStoredPreference } from "@/lib/hooks/use-stored-preference";
@@ -34,9 +34,6 @@ const SETTINGS_SIDEBAR_KEY = "rms.nav.sidebarCollapsedInSettings";
 
 /** Where the settings area begins. Its layout supplies the navigation inside it. */
 const SETTINGS_ROOT = "/settings";
-
-/** Hoisted so the server snapshot is one stable reference, not a new array a render. */
-const NOTHING_CLOSED: string[] = [];
 
 /** Product mark. Kept small: this is application chrome, not a logo splash. */
 export function Brand({ isCollapsed = false }: { isCollapsed?: boolean }) {
@@ -152,57 +149,6 @@ function NavLink({
 }
 
 /**
- * One titled section of the navigation, which can be folded away.
- *
- * Folding is a real button with the heading as its label rather than a click
- * handler on an `h3`, so it is reachable by keyboard and announces its state.
- */
-function NavSection({
-  label,
-  isOpen,
-  onToggle,
-  children,
-}: {
-  label: string;
-  isOpen: boolean;
-  onToggle: () => void;
-  children: React.ReactNode;
-}) {
-  const panelId = useId();
-
-  return (
-    <div className="flex flex-col gap-1">
-      <h3>
-        <button
-          type="button"
-          onClick={onToggle}
-          aria-expanded={isOpen}
-          aria-controls={panelId}
-          className="flex w-full items-center gap-1.5 rounded-md px-3 py-1 text-2xs font-semibold tracking-wider text-subtle uppercase transition-colors hover:bg-surface-3 hover:text-muted"
-        >
-          <span className="min-w-0 flex-1 truncate text-left">{label}</span>
-          <ChevronDown
-            aria-hidden="true"
-            className={cn(
-              "size-3 shrink-0 transition-transform duration-200",
-              !isOpen && "-rotate-90",
-            )}
-          />
-        </button>
-      </h3>
-
-      {/* Unmounted rather than hidden: a folded section should not be a set of
-          tab stops a keyboard user has to walk through to reach the next one. */}
-      {isOpen && (
-        <div id={panelId} className="flex flex-col gap-1">
-          {children}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/**
  * The navigation list. Shared by the desktop sidebar and the mobile drawer so
  * the two can never fall out of sync.
  *
@@ -221,21 +167,7 @@ export function SidebarNav({
   const pathname = usePathname();
   const groups = navigationFor(user?.platformRole, user?.staffRole);
 
-  const [closedGroups, setClosedGroups] = useStoredPreference(
-    GROUPS_KEY,
-    NOTHING_CLOSED,
-  );
-
-  const toggleGroup = useCallback(
-    (label: string) => {
-      setClosedGroups(
-        closedGroups.includes(label)
-          ? closedGroups.filter((entry) => entry !== label)
-          : [...closedGroups, label],
-      );
-    },
-    [closedGroups, setClosedGroups],
-  );
+  const [isSectionClosed, toggleSection] = useClosedSections(GROUPS_KEY);
 
   // Whether some entry addresses this exact path, which decides if a parent
   // section should also light up.
@@ -295,8 +227,9 @@ export function SidebarNav({
           <NavSection
             key={label}
             label={label}
-            isOpen={!closedGroups.includes(label)}
-            onToggle={() => toggleGroup(label)}
+            indentClassName="px-3"
+            isOpen={!isSectionClosed(label)}
+            onToggle={() => toggleSection(label)}
           >
             {items}
           </NavSection>

@@ -9,6 +9,7 @@ import {
   SETTINGS_SECTIONS,
   type SettingsLink,
 } from "@/components/layout/settings-nav";
+import { NavSection, useClosedSections } from "@/components/layout/nav-section";
 import { RailLabel, Tooltip } from "@/components/ui/tooltip";
 import { useStoredPreference } from "@/lib/hooks/use-stored-preference";
 import { cn } from "@/lib/utils/cn";
@@ -37,6 +38,9 @@ export default function SettingsLayout({ children }: LayoutProps<"/settings">) {
 /** Folds the same way the main sidebar does, and remembers it the same way. */
 const RAIL_KEY = "rms.nav.settingsRailCollapsed";
 
+/** Which of its headings are folded, remembered separately from the main sidebar. */
+const SECTIONS_KEY = "rms.nav.settingsClosedSections";
+
 /**
  * Whether a link is the one being viewed.
  *
@@ -54,6 +58,7 @@ function SettingsRail() {
   const isCurrent = useIsCurrent();
   const pathname = usePathname();
   const [isCollapsed, setIsCollapsed] = useStoredPreference(RAIL_KEY, false);
+  const [isSectionClosed, toggleSection] = useClosedSections(SECTIONS_KEY);
 
   const toggle = useCallback(
     () => setIsCollapsed(!isCollapsed),
@@ -115,59 +120,75 @@ function SettingsRail() {
         // off its right edge.
         className="flex min-h-0 flex-1 flex-col gap-5 overflow-x-hidden overflow-y-auto px-2 py-3"
       >
-        {SETTINGS_SECTIONS.map((section, sectionIndex) => (
-          <div
-            key={section.title}
-            className={cn(
-              "flex flex-col gap-1",
-              // Folded, the headings go and a rule carries the grouping instead.
-              isCollapsed && sectionIndex > 0 && "border-t border-border pt-4",
-            )}
-          >
-            {!isCollapsed && (
-              <h2 className="px-2 pb-0.5 text-2xs font-semibold tracking-wider text-subtle uppercase">
-                {section.title}
-              </h2>
-            )}
+        {SETTINGS_SECTIONS.map((section, sectionIndex) => {
+          const links = section.links.map((link) => {
+            const Icon = link.icon;
+            const active = isCurrent(link);
 
-            {section.links.map((link) => {
-              const Icon = link.icon;
-              const active = isCurrent(link);
-
-              return (
-                <RailLabel
-                  key={link.href}
-                  label={link.label}
-                  isCollapsed={isCollapsed}
+            return (
+              <RailLabel
+                key={link.href}
+                label={link.label}
+                isCollapsed={isCollapsed}
+              >
+                <Link
+                  href={link.href}
+                  aria-current={active ? "page" : undefined}
+                  aria-label={isCollapsed ? link.label : undefined}
+                  className={cn(
+                    "relative flex items-center gap-2.5 rounded-md py-1.5 text-sm transition-colors",
+                    isCollapsed ? "justify-center px-0" : "px-2",
+                    active
+                      ? "bg-primary-soft font-medium text-primary"
+                      : "text-muted hover:bg-surface-3 hover:text-text",
+                  )}
                 >
-                  <Link
-                    href={link.href}
-                    aria-current={active ? "page" : undefined}
-                    aria-label={isCollapsed ? link.label : undefined}
-                    className={cn(
-                      "relative flex items-center gap-2.5 rounded-md py-1.5 text-sm transition-colors",
-                      isCollapsed ? "justify-center px-0" : "px-2",
-                      active
-                        ? "bg-primary-soft font-medium text-primary"
-                        : "text-muted hover:bg-surface-3 hover:text-text",
-                    )}
-                  >
-                    {active && isCollapsed && (
-                      <span
-                        aria-hidden="true"
-                        className="absolute inset-y-1 left-0 w-0.5 rounded-full bg-primary"
-                      />
-                    )}
-                    <Icon className="size-4 shrink-0" aria-hidden="true" />
-                    {!isCollapsed && (
-                      <span className="min-w-0 flex-1 truncate">{link.label}</span>
-                    )}
-                  </Link>
-                </RailLabel>
-              );
-            })}
-          </div>
-        ))}
+                  {active && isCollapsed && (
+                    <span
+                      aria-hidden="true"
+                      className="absolute inset-y-1 left-0 w-0.5 rounded-full bg-primary"
+                    />
+                  )}
+                  <Icon className="size-4 shrink-0" aria-hidden="true" />
+                  {!isCollapsed && (
+                    <span className="min-w-0 flex-1 truncate">{link.label}</span>
+                  )}
+                </Link>
+              </RailLabel>
+            );
+          });
+
+          // Folded to icons there is no heading to press, so there would be no way
+          // back out of a closed section. The rail shows every icon and carries the
+          // grouping with a rule instead.
+          if (isCollapsed) {
+            return (
+              <div
+                key={section.title}
+                className={cn(
+                  "flex flex-col gap-1",
+                  sectionIndex > 0 && "border-t border-border pt-4",
+                )}
+              >
+                {links}
+              </div>
+            );
+          }
+
+          return (
+            <NavSection
+              key={section.title}
+              label={section.title}
+              // h2 rather than the sidebar's h3: this rail is the page's own
+              // navigation, not a level nested inside something else.
+              as="h2"
+              isOpen={!isSectionClosed(section.title)}
+              onToggle={() => toggleSection(section.title)}
+            >
+              {links}
+            </NavSection>
+          );
+        })}
       </nav>
 
       {/* Centred on this rail's own seam, matching the main sidebar handle. The
