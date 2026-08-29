@@ -392,11 +392,39 @@ public sealed class ManagerService : IManagerService
             return Result.Failure<ManagerResponse>(ManagerErrors.NotFound);
         }
 
-        // Through Identity own reset rather than by writing a hash: this rotates the
-        // security stamp as a side effect, which is what makes the old password stop
-        // working everywhere rather than only at the next sign-in.
-        var token = await _userManager.GeneratePasswordResetTokenAsync(manager);
-        var result = await _userManager.ResetPasswordAsync(manager, token, request.Password);
+        // Validated before the stored hash is touched. The replacement below happens in
+        // two writes, so a password rejected on the second one would leave the account
+        // with none at all; checking first means the only way to reach that state is
+        // the process dying mid-reset.
+        foreach (var validator in _userManager.PasswordValidators)
+        {
+            var check = await validator.ValidateAsync(_userManager, manager, request.Password);
+
+            if (!check.Succeeded)
+            {
+                var invalid = string.Join(" ", check.Errors.Select(e => e.Description));
+
+                return Result.Failure<ManagerResponse>(
+                    ManagerErrors.PasswordResetFailed(invalid));
+            }
+        }
+
+        // Through Identity rather than by writing a hash directly: both calls go via
+        // UpdatePasswordHash, which rotates the security stamp, and that is what makes
+        // the old password stop working everywhere rather than only at the next
+        // sign-in. Not the token-based reset, which would need a token provider to be
+        // registered for a token that is minted and consumed in the same breath.
+        var removed = await _userManager.RemovePasswordAsync(manager);
+
+        if (!removed.Succeeded)
+        {
+            var removeReason = string.Join(" ", removed.Errors.Select(e => e.Description));
+
+            return Result.Failure<ManagerResponse>(
+                ManagerErrors.PasswordResetFailed(removeReason));
+        }
+
+        var result = await _userManager.AddPasswordAsync(manager, request.Password);
 
         if (!result.Succeeded)
         {

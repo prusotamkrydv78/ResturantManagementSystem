@@ -299,11 +299,38 @@ public sealed class StaffService : IStaffService
             return Result.Failure<StaffResponse>(StaffErrors.NotFound);
         }
 
-        // Through Identity own reset rather than by writing a hash: this rotates the
-        // security stamp as a side effect, which is what makes the old password stop
-        // working everywhere rather than only at the next sign-in.
-        var token = await _userManager.GeneratePasswordResetTokenAsync(member);
-        var result = await _userManager.ResetPasswordAsync(member, token, request.Password);
+        // Validated before the stored hash is touched. The replacement below happens in
+        // two writes, so a password rejected on the second one would leave the account
+        // with none at all; checking first means the only way to reach that state is
+        // the process dying mid-reset.
+        foreach (var validator in _userManager.PasswordValidators)
+        {
+            var check = await validator.ValidateAsync(_userManager, member, request.Password);
+
+            if (!check.Succeeded)
+            {
+                var invalid = string.Join(" ", check.Errors.Select(error => error.Description));
+
+                return Result.Failure<StaffResponse>(
+                    StaffErrors.PasswordResetFailed(invalid));
+            }
+        }
+
+        // Through Identity rather than by writing a hash directly: both calls go via
+        // UpdatePasswordHash, which rotates the security stamp, and that is what makes
+        // the old password stop working everywhere rather than only at the next
+        // sign-in. Not the token-based reset, which would need a token provider to be
+        // registered for a token that is minted and consumed in the same breath.
+        var removed = await _userManager.RemovePasswordAsync(member);
+
+        if (!removed.Succeeded)
+        {
+            var reason = string.Join(" ", removed.Errors.Select(error => error.Description));
+
+            return Result.Failure<StaffResponse>(StaffErrors.PasswordResetFailed(reason));
+        }
+
+        var result = await _userManager.AddPasswordAsync(member, request.Password);
 
         if (!result.Succeeded)
         {

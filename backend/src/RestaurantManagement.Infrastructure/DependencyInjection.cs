@@ -151,6 +151,11 @@ public static class DependencyInjection
                 options.Lockout.MaxFailedAccessAttempts = 10;
                 options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
             })
+            // No token providers are registered, and none are needed. The only
+            // password reset the product has is an administrator setting a new one for
+            // somebody standing in front of them, so there is no emailed link to mint
+            // a token for. The services do the reset with RemovePassword/AddPassword,
+            // which rotates the security stamp without one.
             .AddEntityFrameworkStores<ApplicationDbContext>();
 
         services.AddScoped<JwtTokenGenerator>();
