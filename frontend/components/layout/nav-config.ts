@@ -1,11 +1,11 @@
 import {
   CalendarClock,
   ChartNoAxesColumn,
-  Cog,
-  LayoutGrid,
   ChefHat,
   ClipboardList,
-  LayoutDashboard,
+  Cog,
+  Gauge,
+  LayoutGrid,
   Plus,
   ReceiptText,
   ScrollText,
@@ -44,7 +44,7 @@ const SUPER_ADMIN_NAV: NavGroup[] = [
       {
         label: "Overview",
         href: "/dashboard",
-        icon: LayoutDashboard,
+        icon: Gauge,
         status: "available",
       },
       {
@@ -104,10 +104,14 @@ const MANAGER_NAV: NavGroup[] = [
       {
         label: "Overview",
         href: "/dashboard",
-        icon: LayoutDashboard,
+        icon: Gauge,
         status: "available",
       },
       {
+        // A grid of tables, for the room. Overview takes a dial rather than the
+        // dashboard glyph it used to: side by side in a rail the two were both a
+        // square cut into squares, and an icon that has to be read twice is not
+        // doing the job an icon is for.
         label: "Floor",
         href: "/floor",
         icon: LayoutGrid,
@@ -161,7 +165,7 @@ const WAITER_NAV: NavGroup[] = [
       {
         label: "Overview",
         href: "/dashboard",
-        icon: LayoutDashboard,
+        icon: Gauge,
         status: "available",
       },
       {
@@ -194,7 +198,7 @@ const CHEF_NAV: NavGroup[] = [
       {
         label: "Overview",
         href: "/dashboard",
-        icon: LayoutDashboard,
+        icon: Gauge,
         status: "available",
       },
       {
@@ -213,7 +217,7 @@ const BASIC_NAV: NavGroup[] = [
       {
         label: "Overview",
         href: "/dashboard",
-        icon: LayoutDashboard,
+        icon: Gauge,
         status: "available",
       },
     ],

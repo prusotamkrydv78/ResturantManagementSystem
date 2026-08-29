@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useCallback, useId, useSyncExternalStore } from "react";
+import { useCallback, useId } from "react";
 import {
   ChevronDown,
   ChevronLeft,
@@ -13,27 +13,22 @@ import {
 import { useAuth } from "@/features/auth/auth-context";
 import { navigationFor, roleLabel } from "@/components/layout/nav-config";
 import type { NavItem } from "@/components/layout/nav-config";
+import { RailLabel, Tooltip } from "@/components/ui/tooltip";
+import { useStoredPreference } from "@/lib/hooks/use-stored-preference";
 import { cn } from "@/lib/utils/cn";
 
-/**
- * Where the two navigation preferences are kept.
- *
- * Per browser, deliberately. A collapsed sidebar is about the screen somebody is
- * sitting at - a manager on a laptop at the pass wants the room, the same manager
- * on a desktop in the office does not - so it does not belong on the account.
- */
 const SIDEBAR_KEY = "rms.nav.sidebarCollapsed";
 const GROUPS_KEY = "rms.nav.collapsedGroups";
 
 /**
- * The same preference again, for the settings area only, and defaulted the other
- * way.
+ * The collapse preference again, for the settings area only, and defaulted the
+ * other way.
  *
  * Settings brings its own navigation, so two full-width rails would be arguing
  * over the same edge of the screen; the main one folds to a rail on arrival. A
  * second key rather than forcing the collapse, because forcing it would leave the
  * toggle inert in there - somebody who wants both rails should be able to say so,
- * and be remembered. Leaving the area restores whatever they chose outside it.
+ * and be remembered. Leaving the area restores whatever they chose outside.
  */
 const SETTINGS_SIDEBAR_KEY = "rms.nav.sidebarCollapsedInSettings";
 
@@ -42,96 +37,6 @@ const SETTINGS_ROOT = "/settings";
 
 /** Hoisted so the server snapshot is one stable reference, not a new array a render. */
 const NOTHING_CLOSED: string[] = [];
-
-const listeners = new Set<() => void>();
-
-/**
- * The last value parsed out of a key, kept so repeated reads return the same
- * reference. useSyncExternalStore compares snapshots by identity, so parsing the
- * JSON afresh on every read would hand it a new array each time and spin.
- */
-const parsed = new Map<string, { raw: string | null; value: unknown }>();
-
-function subscribe(onChange: () => void): () => void {
-  listeners.add(onChange);
-  // Also the real storage event, which fires only in other tabs. A manager with
-  // the floor open on one screen and reports on another gets one sidebar, not two.
-  window.addEventListener("storage", onChange);
-
-  return () => {
-    listeners.delete(onChange);
-    window.removeEventListener("storage", onChange);
-  };
-}
-
-/**
- * Reads a preference, treating every failure as "no preference".
- *
- * Wrapped because the accessor itself throws in a browser set to block site data,
- * not only when the key is missing, and navigation chrome is not worth a crash.
- */
-function snapshot<T>(key: string, fallback: T): T {
-  let raw: string | null = null;
-
-  try {
-    raw = window.localStorage.getItem(key);
-  } catch {
-    raw = null;
-  }
-
-  const cached = parsed.get(key);
-
-  if (cached !== undefined && cached.raw === raw) {
-    return cached.value as T;
-  }
-
-  let value = fallback;
-
-  if (raw !== null) {
-    try {
-      value = JSON.parse(raw) as T;
-    } catch {
-      value = fallback;
-    }
-  }
-
-  parsed.set(key, { raw, value });
-
-  return value;
-}
-
-/**
- * A preference that lives in the browser rather than in React.
- *
- * Through useSyncExternalStore rather than state restored in an effect: the server
- * renders this component and cannot see localStorage, so the stored value has to
- * arrive as a client snapshot over a server one. Restoring it by calling setState
- * from an effect would do the same job by cascading an extra render.
- */
-function useStoredPreference<T>(key: string, fallback: T): [T, (next: T) => void] {
-  const value = useSyncExternalStore(
-    subscribe,
-    () => snapshot(key, fallback),
-    () => fallback,
-  );
-
-  const set = useCallback(
-    (next: T) => {
-      try {
-        window.localStorage.setItem(key, JSON.stringify(next));
-      } catch {
-        // Somebody who cannot store preferences still gets working navigation;
-        // the change simply does not outlive the page.
-      }
-
-      parsed.delete(key);
-      listeners.forEach((listener) => listener());
-    },
-    [key],
-  );
-
-  return [value, set];
-}
 
 /** Product mark. Kept small: this is application chrome, not a logo splash. */
 export function Brand({ isCollapsed = false }: { isCollapsed?: boolean }) {
@@ -178,24 +83,25 @@ function NavLink({
 
   if (item.status === "planned") {
     return (
-      <span
-        aria-disabled="true"
-        title={isCollapsed ? `${item.label} (soon)` : undefined}
-        className={cn(
-          "flex cursor-not-allowed items-center gap-2.5 rounded-md py-1.5 text-sm text-subtle",
-          isCollapsed ? "justify-center px-0" : "px-3",
-        )}
-      >
-        <Icon className="size-4 shrink-0" aria-hidden="true" />
-        {!isCollapsed && (
-          <>
-            <span className="min-w-0 flex-1 truncate">{item.label}</span>
-            <span className="shrink-0 rounded border border-border px-1 text-2xs text-subtle">
-              Soon
-            </span>
-          </>
-        )}
-      </span>
+      <RailLabel label={`${item.label} (soon)`} isCollapsed={isCollapsed}>
+        <span
+          aria-disabled="true"
+          className={cn(
+            "flex cursor-not-allowed items-center gap-2.5 rounded-md py-1.5 text-sm text-subtle",
+            isCollapsed ? "justify-center px-0" : "px-3",
+          )}
+        >
+          <Icon className="size-4 shrink-0" aria-hidden="true" />
+          {!isCollapsed && (
+            <>
+              <span className="min-w-0 flex-1 truncate">{item.label}</span>
+              <span className="shrink-0 rounded border border-border px-1 text-2xs text-subtle">
+                Soon
+              </span>
+            </>
+          )}
+        </span>
+      </RailLabel>
     );
   }
 
@@ -211,34 +117,37 @@ function NavLink({
       currentPath.startsWith(item.href + "/"));
 
   return (
-    <Link
-      href={item.href ?? "#"}
-      onClick={onNavigate}
-      aria-current={isActive ? "page" : undefined}
-      // The label is the only thing naming the link once it is an icon, so the
-      // accessible name is stated rather than left to the glyph. `title` gives a
-      // sighted user the same thing on hover.
-      aria-label={isCollapsed ? item.label : undefined}
-      title={isCollapsed ? item.label : undefined}
-      className={cn(
-        "relative flex items-center gap-2.5 rounded-md py-1.5 text-sm transition-colors",
-        isCollapsed ? "justify-center px-0" : "px-3",
-        isActive
-          ? "bg-primary-soft font-medium text-primary"
-          : "text-muted hover:bg-surface-3 hover:text-text",
-      )}
-    >
-      {/* A rail of icons loses the selected row at a glance, so the active one
-          also carries a marker on the edge it is anchored to. */}
-      {isActive && isCollapsed && (
-        <span
-          aria-hidden="true"
-          className="absolute inset-y-1 left-0 w-0.5 rounded-full bg-primary"
-        />
-      )}
-      <Icon className="size-4 shrink-0" aria-hidden="true" />
-      {!isCollapsed && <span className="min-w-0 flex-1 truncate">{item.label}</span>}
-    </Link>
+    <RailLabel label={item.label} isCollapsed={isCollapsed}>
+      <Link
+        href={item.href ?? "#"}
+        onClick={onNavigate}
+        aria-current={isActive ? "page" : undefined}
+        // The accessible name is stated rather than left to the glyph, because the
+        // label is the only thing naming this link once the text is gone. The
+        // tooltip describes it as well, but a description is not a name.
+        aria-label={isCollapsed ? item.label : undefined}
+        className={cn(
+          "relative flex items-center gap-2.5 rounded-md py-1.5 text-sm transition-colors",
+          isCollapsed ? "justify-center px-0" : "px-3",
+          isActive
+            ? "bg-primary-soft font-medium text-primary"
+            : "text-muted hover:bg-surface-3 hover:text-text",
+        )}
+      >
+        {/* A rail of icons loses the selected row at a glance, so the active one
+            also carries a marker on the edge it is anchored to. */}
+        {isActive && isCollapsed && (
+          <span
+            aria-hidden="true"
+            className="absolute inset-y-1 left-0 w-0.5 rounded-full bg-primary"
+          />
+        )}
+        <Icon className="size-4 shrink-0" aria-hidden="true" />
+        {!isCollapsed && (
+          <span className="min-w-0 flex-1 truncate">{item.label}</span>
+        )}
+      </Link>
+    </RailLabel>
   );
 }
 
@@ -414,21 +323,29 @@ export function UserPanel({ isCollapsed = false }: { isCollapsed?: boolean }) {
   if (isCollapsed) {
     return (
       <div className="flex flex-col items-center gap-1 border-t border-border px-2 py-3">
-        <span
-          title={`${user?.fullName ?? "Signed in"} — ${label}`}
-          className="flex size-7 shrink-0 items-center justify-center rounded-full border border-border bg-surface-3 text-2xs font-semibold text-muted"
+        <Tooltip
+          content={
+            <span className="flex flex-col">
+              <span>{user?.fullName ?? "Signed in"}</span>
+              <span className="text-subtle">{label}</span>
+            </span>
+          }
         >
-          {initials}
-        </span>
-        <button
-          type="button"
-          onClick={() => void signOut()}
-          aria-label="Sign out"
-          title="Sign out"
-          className="shrink-0 rounded-md p-1.5 text-muted transition-colors hover:bg-surface-3 hover:text-text"
-        >
-          <LogOut className="size-4" aria-hidden="true" />
-        </button>
+          <span className="flex size-7 shrink-0 items-center justify-center rounded-full border border-border bg-surface-3 text-2xs font-semibold text-muted">
+            {initials}
+          </span>
+        </Tooltip>
+
+        <Tooltip content="Sign out">
+          <button
+            type="button"
+            onClick={() => void signOut()}
+            aria-label="Sign out"
+            className="shrink-0 rounded-md p-1.5 text-muted transition-colors hover:bg-surface-3 hover:text-text"
+          >
+            <LogOut className="size-4" aria-hidden="true" />
+          </button>
+        </Tooltip>
       </div>
     );
   }
@@ -500,11 +417,36 @@ export function Sidebar() {
     setCollapsedOutside,
   ]);
 
+  // Anywhere on the folded rail that is not already a link reopens it. The whole
+  // panel becomes the target that way, which is a great deal easier to hit than a
+  // twenty-four pixel circle, and it matches what the shape suggests: a folded
+  // thing opens when you press it.
+  //
+  // Guarded on what was actually pressed rather than by stopping propagation in
+  // every child, so adding a control to the rail later cannot silently start
+  // reopening it. Only while collapsed: clicking the open sidebar must not fold
+  // it, or every miss between two rows would.
+  const expandOnEmptyClick = useCallback(
+    (event: React.MouseEvent<HTMLElement>) => {
+      if (!isCollapsed) {
+        return;
+      }
+
+      if ((event.target as HTMLElement).closest("a,button,[role='tooltip']")) {
+        return;
+      }
+
+      toggle();
+    },
+    [isCollapsed, toggle],
+  );
+
   return (
     <aside
+      onClick={expandOnEmptyClick}
       className={cn(
         "relative hidden shrink-0 flex-col border-r border-border bg-surface transition-[width] duration-200 ease-out lg:flex",
-        isCollapsed ? "w-16" : "w-60",
+        isCollapsed ? "w-16 cursor-e-resize" : "w-60",
       )}
     >
       <Brand isCollapsed={isCollapsed} />
@@ -520,20 +462,21 @@ export function Sidebar() {
           Left visible rather than revealed on hover: a control nobody can see is a
           control nobody finds, and this one is worth about forty-four pixels of
           content to a manager on a laptop. It stays quiet through colour instead. */}
-      <button
-        type="button"
-        onClick={toggle}
-        aria-expanded={!isCollapsed}
-        aria-label={isCollapsed ? "Expand the sidebar" : "Collapse the sidebar"}
-        title={isCollapsed ? "Expand the sidebar" : "Collapse the sidebar"}
-        className="absolute top-1/2 -right-3 z-20 flex size-6 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-surface text-subtle shadow-sm transition-colors hover:border-primary-border hover:bg-primary-soft hover:text-primary"
-      >
-        {isCollapsed ? (
-          <ChevronRight className="size-3.5" aria-hidden="true" />
-        ) : (
-          <ChevronLeft className="size-3.5" aria-hidden="true" />
-        )}
-      </button>
+      <Tooltip content={isCollapsed ? "Expand the sidebar" : "Collapse the sidebar"}>
+        <button
+          type="button"
+          onClick={toggle}
+          aria-expanded={!isCollapsed}
+          aria-label={isCollapsed ? "Expand the sidebar" : "Collapse the sidebar"}
+          className="absolute top-1/2 -right-3 z-20 flex size-6 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-surface text-subtle shadow-sm transition-colors hover:border-primary-border hover:bg-primary-soft hover:text-primary"
+        >
+          {isCollapsed ? (
+            <ChevronRight className="size-3.5" aria-hidden="true" />
+          ) : (
+            <ChevronLeft className="size-3.5" aria-hidden="true" />
+          )}
+        </button>
+      </Tooltip>
     </aside>
   );
 }
