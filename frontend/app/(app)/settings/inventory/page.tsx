@@ -114,7 +114,11 @@ function InventoryList() {
       <PageHeader
         title="Inventory"
         description="What is on the shelves. Stock moves through deliveries, corrections and cooking, never by editing a number."
-        crumbs={[{ label: "Workspace", href: "/dashboard" }, { label: "Inventory" }]}
+        crumbs={[
+          { label: "Workspace", href: "/dashboard" },
+          { label: "Settings", href: "/settings" },
+          { label: "Inventory" },
+        ]}
         actions={
           <div className="flex items-center gap-2">
             {overview !== null && overview.outOfStockCount > 0 && (
@@ -280,7 +284,7 @@ function ItemRow({
     <Tr className={item.isActive ? undefined : "opacity-60"}>
       <Td>
         <Link
-          href={`/inventory/${item.id}`}
+          href={`/settings/inventory/${item.id}`}
           className="inline-flex items-center gap-1 font-medium text-primary hover:underline"
         >
           {item.name}

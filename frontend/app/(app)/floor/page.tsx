@@ -151,7 +151,7 @@ function FloorOverviewScreen() {
               }
               action={
                 isManager ? (
-                  <LinkButton href="/tables" variant="secondary">
+                  <LinkButton href="/settings/tables" variant="secondary">
                     Add tables
                   </LinkButton>
                 ) : undefined

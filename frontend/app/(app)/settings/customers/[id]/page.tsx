@@ -85,11 +85,12 @@ function CustomerView() {
         }
         crumbs={[
           { label: "Workspace", href: "/dashboard" },
-          { label: "Customers", href: "/customers" },
+          { label: "Settings", href: "/settings" },
+          { label: "Customers", href: "/settings/customers" },
           { label: customer?.name ?? "Customer" },
         ]}
         actions={
-          <LinkButton href="/customers" variant="secondary">
+          <LinkButton href="/settings/customers" variant="secondary">
             All customers
           </LinkButton>
         }

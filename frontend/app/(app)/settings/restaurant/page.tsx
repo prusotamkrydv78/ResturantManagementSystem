@@ -183,7 +183,11 @@ function MyRestaurant() {
       <PageHeader
         title={restaurant?.name ?? "My restaurant"}
         description="Your restaurant profile. Guests see this information."
-        crumbs={[{ label: "Workspace", href: "/dashboard" }, { label: "My restaurant" }]}
+        crumbs={[
+          { label: "Workspace", href: "/dashboard" },
+          { label: "Settings", href: "/settings" },
+          { label: "My restaurant" },
+        ]}
         actions={
           restaurant !== null && !isEditing ? (
             <div className="flex items-center gap-2">

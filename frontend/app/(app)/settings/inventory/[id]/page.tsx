@@ -146,7 +146,7 @@ function ItemDetail() {
               onRetry={() => setReloadKey((key) => key + 1)}
             />
           </Surface>
-          <LinkButton href="/inventory" variant="secondary" icon={<ArrowLeft />}>
+          <LinkButton href="/settings/inventory" variant="secondary" icon={<ArrowLeft />}>
             Back to inventory
           </LinkButton>
         </PageBody>
@@ -178,7 +178,8 @@ function ItemDetail() {
         description={`Measured in ${item.unit.toLowerCase()}. Every change below says why it happened.`}
         crumbs={[
           { label: "Workspace", href: "/dashboard" },
-          { label: "Inventory", href: "/inventory" },
+          { label: "Settings", href: "/settings" },
+          { label: "Inventory", href: "/settings/inventory" },
           { label: item.name },
         ]}
         actions={
@@ -201,7 +202,7 @@ function ItemDetail() {
                 In stock
               </Badge>
             )}
-            <LinkButton href="/inventory" variant="secondary" icon={<ArrowLeft />}>
+            <LinkButton href="/settings/inventory" variant="secondary" icon={<ArrowLeft />}>
               Inventory
             </LinkButton>
           </div>

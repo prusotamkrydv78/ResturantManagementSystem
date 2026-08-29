@@ -463,7 +463,7 @@ function ManagerOverview() {
             >
               Refresh
             </Button>
-            <LinkButton href="/my-restaurant" variant="ghost" size="sm">
+            <LinkButton href="/settings/restaurant" variant="ghost" size="sm">
               Manage restaurant
             </LinkButton>
           </div>
@@ -529,7 +529,7 @@ function ManagerOverview() {
               </div>
             </div>
             <LinkButton
-              href={floor.inServiceCount === 0 ? "/tables" : "/menu"}
+              href={floor.inServiceCount === 0 ? "/settings/tables" : "/menu"}
               variant="secondary"
               size="sm"
             >
@@ -679,7 +679,7 @@ function ManagerOverview() {
                     </p>
                   </div>
                 </div>
-                <LinkButton href="/my-restaurant" variant="secondary" size="sm">
+                <LinkButton href="/settings/restaurant" variant="secondary" size="sm">
                   Complete profile
                 </LinkButton>
               </div>

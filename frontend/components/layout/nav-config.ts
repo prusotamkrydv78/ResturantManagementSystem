@@ -1,10 +1,7 @@
 import {
-  Armchair,
-  Boxes,
   CalendarClock,
   ChartNoAxesColumn,
   Cog,
-  Contact,
   LayoutGrid,
   ChefHat,
   ClipboardList,
@@ -84,11 +81,23 @@ const SUPER_ADMIN_NAV: NavGroup[] = [
 ];
 
 // The manager workspace lists only areas that exist. There are no branches in this
-// product, and no placeholder rows for features that have not been built. Billing
-// sits directly under the restaurant, above the setup areas, because settling a
-// table is the thing a manager does repeatedly during service. Reservations and
-// customers follow it, since both are consulted during service rather than set up
-// once; the setup areas stay below them.
+// product, and no placeholder rows for features that have not been built.
+//
+// Ordered and trimmed by one question: does this change while the restaurant is
+// trading? What answers yes is a sidebar row. What answers no lives on the settings
+// hub, which is one row at the bottom.
+//
+// Eleven rows meant the screen needed mid-service carried the same visual weight as
+// the one edited twice a year. Two of the survivors say they are live in the code
+// already, by refreshing on a timer - Overview every thirty seconds and Floor on the
+// kitchen interval - and nothing that was cut polls at all. Billing does not poll but
+// earns its place by repetition: settling a table is the action repeated all evening.
+// Menu stays for a narrower reason: marking a dish off is a mid-service job.
+//
+// Nothing was removed from the product. Tables, Staff, Inventory, Customers and the
+// restaurant profile moved under /settings, which has a rail of its own, so they are
+// a click away rather than a row each. One entry covers all five because they nest:
+// /settings/tables already starts with /settings.
 const MANAGER_NAV: NavGroup[] = [
   {
     items: [
@@ -96,12 +105,6 @@ const MANAGER_NAV: NavGroup[] = [
         label: "Overview",
         href: "/dashboard",
         icon: LayoutDashboard,
-        status: "available",
-      },
-      {
-        label: "My restaurant",
-        href: "/my-restaurant",
-        icon: Store,
         status: "available",
       },
       {
@@ -123,9 +126,9 @@ const MANAGER_NAV: NavGroup[] = [
         status: "available",
       },
       {
-        label: "Customers",
-        href: "/customers",
-        icon: Contact,
+        label: "Menu",
+        href: "/menu",
+        icon: ScrollText,
         status: "available",
       },
       {
@@ -134,28 +137,16 @@ const MANAGER_NAV: NavGroup[] = [
         icon: ChartNoAxesColumn,
         status: "available",
       },
+    ],
+  },
+  {
+    // Its own group rather than a seventh row, so the rule above it separates the
+    // things done during service from the place everything else was put.
+    items: [
       {
-        label: "Menu",
-        href: "/menu",
-        icon: ScrollText,
-        status: "available",
-      },
-      {
-        label: "Inventory",
-        href: "/inventory",
-        icon: Boxes,
-        status: "available",
-      },
-      {
-        label: "Tables",
-        href: "/tables",
-        icon: Armchair,
-        status: "available",
-      },
-      {
-        label: "Staff",
-        href: "/staff",
-        icon: Users,
+        label: "Settings",
+        href: "/settings",
+        icon: Cog,
         status: "available",
       },
     ],

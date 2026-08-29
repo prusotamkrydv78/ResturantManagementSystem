@@ -110,7 +110,11 @@ function CustomerList() {
       <PageHeader
         title="Customers"
         description="Regulars, bookings and anyone worth remembering. Nobody signs in here; these are your own records."
-        crumbs={[{ label: "Workspace", href: "/dashboard" }, { label: "Customers" }]}
+        crumbs={[
+          { label: "Workspace", href: "/dashboard" },
+          { label: "Settings", href: "/settings" },
+          { label: "Customers" },
+        ]}
         actions={<CustomerDialog onSaved={refresh} />}
       />
 
@@ -204,7 +208,7 @@ function CustomerList() {
                       <Tr key={customer.id}>
                         <Td>
                           <Link
-                            href={`/customers/${customer.id}`}
+                            href={`/settings/customers/${customer.id}`}
                             className="group flex items-center gap-1.5"
                           >
                             <span className="font-medium text-text group-hover:underline">
