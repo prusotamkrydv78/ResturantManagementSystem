@@ -11,7 +11,7 @@ using RestaurantManagement.Shared.Results;
 namespace RestaurantManagement.Infrastructure.Sites;
 
 /// <summary>
-/// The restaurant website: one page per restaurant, drawn by one of five designs.
+/// The restaurant website: one page per restaurant, drawn by one of the designs.
 ///
 /// The manager edits content and picks a design; they cannot change the structure,
 /// which is the whole reason this is safe to hand to somebody with no HTML. What
@@ -172,7 +172,7 @@ public sealed partial class SiteService : ISiteService
 
         return Result.Success(new PublicSiteResponse(
             row.Name,
-            row.Template,
+            Supported(row.Template),
             Deserialize(row.ContentJson)));
     }
 
@@ -442,9 +442,20 @@ public sealed partial class SiteService : ISiteService
         }
     }
 
+    /// <summary>
+    /// The design to draw, for a stored value that may name a withdrawn one.
+    ///
+    /// Template is stored as its number, so a design that is retired leaves rows
+    /// behind pointing at nothing. Reading those as the default is what keeps a
+    /// withdrawal from needing a migration - and a page that quietly changes design
+    /// is a far better failure than one that will not load.
+    /// </summary>
+    private static SiteTemplate Supported(SiteTemplate template) =>
+        Enum.IsDefined(template) ? template : SiteTemplate.Aurora;
+
     private static SiteResponse ToResponse(RestaurantSite site, string slug) =>
         new(
-            site.Template,
+            Supported(site.Template),
             Deserialize(site.ContentJson),
             site.IsPublished,
             slug,

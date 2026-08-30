@@ -1,15 +1,15 @@
 /**
  * The restaurant's public one-page website.
  *
- * One record for all five designs, mirroring the server exactly — but not one that
- * every design uses all of. Which parts a template can draw is declared in
+ * One record for every design, mirroring the server exactly — but not one that any
+ * single design uses all of. Which parts a template can draw is declared in
  * `site-capabilities.ts`, and the editor shows a manager only those.
  *
  * Still one record rather than one per design, because that is what keeps switching
  * lossless: content a design does not draw is kept, not discarded.
  */
 
-export type SiteTemplate = "Aurora" | "Slate" | "Terrace" | "Lantern" | "Press";
+export type SiteTemplate = "Aurora" | "Slate" | "Terrace" | "Press";
 
 export interface BrandContent {
   name: string;

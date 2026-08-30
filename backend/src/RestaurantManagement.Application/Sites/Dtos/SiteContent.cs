@@ -3,7 +3,7 @@ namespace RestaurantManagement.Application.Sites.Dtos;
 /// <summary>
 /// Everything on a restaurant's page that a manager can change.
 ///
-/// One record for all five designs, but not one that every design uses all of. A
+/// One record for every design, but not one that any design uses all of. A
 /// template declares which parts it can draw, and the editor shows a manager only
 /// those; a dining room carries a menu in courses, a chef and a list of awards, and
 /// a cafe page has no use for any of them.

@@ -97,20 +97,31 @@ export function PreviewFrame({
 
   return (
     <>
-      <iframe
-        ref={attach}
-        title={title}
-        srcDoc="<!doctype html><html><head></head><body></body></html>"
-        // The width is the whole point: it is what the page inside measures its
-        // media queries against. The scale only shrinks the result to fit the pane.
-        style={{
-          width,
-          height,
-          transform: `scale(${scale})`,
-          transformOrigin: "top left",
-        }}
-        className="border-0 bg-white"
-      />
+      {/* A transform does not change layout: the frame below still occupies its
+          full unscaled size in the flow while painting a fraction of it. Left as
+          it was, that leaves a tall invisible box hanging out of the pane, and
+          anything that scrolls an ancestor drags the painted part off-screen and
+          shows the empty remainder. This wrapper is the frame's *visible* size,
+          clipping the difference, so the box on the page is what the eye sees. */}
+      <div
+        style={{ width: width * scale, height: height * scale }}
+        className="mx-auto overflow-hidden"
+      >
+        <iframe
+          ref={attach}
+          title={title}
+          srcDoc="<!doctype html><html><head></head><body></body></html>"
+          // The width is the whole point: it is what the page inside measures its
+          // media queries against. The scale only shrinks the result to fit.
+          style={{
+            width,
+            height,
+            transform: `scale(${scale})`,
+            transformOrigin: "top left",
+          }}
+          className="border-0 bg-white"
+        />
+      </div>
       {body !== null && createPortal(children, body)}
     </>
   );

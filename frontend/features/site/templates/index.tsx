@@ -1,6 +1,5 @@
 import type { SiteContent, SiteTemplate } from "@/types/site";
 import { AuroraTemplate } from "./aurora";
-import { LanternTemplate } from "./lantern";
 import { PressTemplate } from "./press";
 import { SlateTemplate } from "./slate";
 import { TerraceTemplate } from "./terrace";
@@ -28,16 +27,15 @@ export function SiteRenderer({
       return <SlateTemplate {...props} />;
     case "Terrace":
       return <TerraceTemplate {...props} />;
-    case "Lantern":
-      return <LanternTemplate {...props} />;
     case "Press":
       return <PressTemplate {...props} />;
     case "Aurora":
       return <AuroraTemplate {...props} />;
     default:
-      // A value this build does not know, from a record written by a later one.
-      // Drawn in the default design rather than as an error: a visitor should get
-      // the restaurant's page, not a stack trace about a template name.
+      // A design this build does not know: a record written by a later one, or a
+      // row still naming one that has been withdrawn. Drawn in the default rather
+      // than as an error, because a visitor should get the restaurant's page and
+      // not a stack trace about a template name.
       return <AuroraTemplate {...props} />;
   }
 }

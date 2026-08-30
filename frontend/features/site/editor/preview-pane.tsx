@@ -71,6 +71,7 @@ export function PreviewPane({
     // than this one. Same-origin, so it can be reached; guarded anyway, because
     // the frame may not have adopted its body yet on the first render.
     const frame = scrollRef.current.querySelector("iframe");
+    const view = frame?.contentWindow;
     const target = frame?.contentDocument?.querySelector(
       `[data-site-section="${focusedSection}"]`,
     );
@@ -78,7 +79,19 @@ export function PreviewPane({
     // A section with nothing written in it is not rendered at all, so there is
     // legitimately nothing to scroll to. Left where it is rather than jumping to
     // the top, which would read as the preview losing its place.
-    target?.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (view == null || target == null) {
+      return;
+    }
+
+    // Scrolled by hand rather than with scrollIntoView, which walks up every
+    // scrollable ancestor — and across the frame boundary it found the editor's
+    // own panes and scrolled those instead, dragging the preview out of view when
+    // all that was wanted was the page inside moving to a section. Telling the
+    // frame's own window where to go cannot reach anything outside it.
+    view.scrollTo({
+      top: target.getBoundingClientRect().top + view.scrollY,
+      behavior: "smooth",
+    });
   }, [focusedSection, template]);
 
   return (

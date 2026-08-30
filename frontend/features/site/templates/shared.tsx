@@ -4,7 +4,7 @@ import type { SiteContent } from "@/types/site";
 /**
  * Pieces every template is built from.
  *
- * Two rules hold across all five designs, and they live here so no template has to
+ * Two rules hold across every design, and they live here so no template has to
  * remember them:
  *
  * A section with nothing in it does not render. A manager who has not written their

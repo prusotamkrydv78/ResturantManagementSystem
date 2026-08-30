@@ -36,7 +36,7 @@ import type {
 /**
  * The restaurant's public website, as its manager builds it.
  *
- * Content only. The manager picks one of five designs and fills it in; they cannot
+ * Content only. The manager picks a design and fills it in; they cannot
  * move a section, add one, or write markup — which is exactly what makes this safe
  * to hand to somebody who has never built a page. Every field on this screen is
  * text, and the layout around it belongs to the template.
@@ -925,8 +925,8 @@ export default function WebsitePage() {
               feature="events"
               onFocus={setFocused}
               id="events"
-              title="Private dining"
-              description="What the room is also for: parties, functions, whole buyouts"
+              title="Events and private dining"
+              description="What the room is also for: parties, functions, whole buyouts. Slate heads this section “Private dining” and Terrace heads it “Celebrations”."
             >
               <Field htmlFor="events-title" label="Heading">
                 <Input

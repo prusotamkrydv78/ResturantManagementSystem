@@ -111,7 +111,9 @@ export const EDITOR_SECTIONS: EditorSection[] = [
   },
   {
     id: "events",
-    label: "Private dining",
+    // Neutral on purpose: Slate heads this "Private dining" and Terrace heads it
+    // "Celebrations", and the editor label has to name the field for both.
+    label: "Events and private dining",
     feature: "events",
     isFilled: (c) => filled(c.events.title) || filled(c.events.body),
   },

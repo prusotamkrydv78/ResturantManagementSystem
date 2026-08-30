@@ -3,10 +3,10 @@ import type { SiteTemplate } from "@/types/site";
 /**
  * What each design can draw.
  *
- * The original premise was that all five templates rendered the same content, which
- * kept switching lossless but forced every design down to the same shape: five
- * variations on one brochure. A dining room and a street-food cafe do not want the
- * same page, and pretending otherwise is what made them all look thin.
+ * The original premise was that every template rendered the same content, which kept
+ * switching lossless but forced all of them down to the same shape: variations on one
+ * brochure. A dining room and a neighbourhood bistro do not want the same page, and
+ * pretending otherwise is what made them all look thin.
  *
  * So a template now declares its own parts. The editor reads this and shows a
  * manager only the sections their design can actually use — no writing a chef's
@@ -57,19 +57,19 @@ const COMMON: SiteFeature[] = [
 /**
  * Which extra parts each design carries.
  *
- * Deliberately uneven. A design that does everything is a design with no opinion,
- * and the point of offering five is that a manager picks the one that matches the
- * restaurant they actually run.
+ * Deliberately uneven, and no design is a superset of another. A template that does
+ * everything is a template with no opinion, and the point of offering four is that a
+ * manager picks the one that matches the restaurant they actually run.
  */
 export const TEMPLATE_FEATURES: Record<SiteTemplate, SiteFeature[]> = {
   // The full dining-room page: a menu in courses, the chef, awards, a dish given a
   // section of its own, and the private-dining enquiry a restaurant of this kind
   // gets asked about most.
   //
-  // Also the only design with no gallery, and that is the point rather than an
-  // omission. It argues in writing - the menu, the story, the name above the pass -
-  // and photographs are used as punctuation inside those sections. A wall of them
-  // would say less, not more.
+  // Also the only design with no photographs of its own, and that is the point
+  // rather than an omission. It argues in writing — the menu, the story, the name
+  // above the pass — and pictures are used as punctuation inside those sections. A
+  // wall of them would say less, not more.
   Slate: [
     ...COMMON,
     "marquee",
@@ -82,25 +82,10 @@ export const TEMPLATE_FEATURES: Record<SiteTemplate, SiteFeature[]> = {
     "cta",
   ],
 
-  // Photographs first. A flat list of dishes as cards, and reasons to visit, but no
-  // menu in courses: this design shows food rather than listing it.
-  Aurora: [...COMMON, "dishes", "features", "gallery", "testimonials", "cta"],
-
-  // A story told in bands. Carries the chef, because the story is usually theirs,
-  // and a menu in courses, but no awards or spotlight.
-  Terrace: [
-    ...COMMON,
-    "chef",
-    "menuGroups",
-    "features",
-    "gallery",
-    "testimonials",
-    "cta",
-  ],
-
-  // Fast and loud. Cards, reasons to visit, and one dish pushed forward. No chef, no
-  // awards, no courses: this is a counter, not a dining room.
-  Lantern: [
+  // Photographs first. Dishes as cards, one of them pushed forward, a gallery, and
+  // reasons to visit — this design shows food rather than listing it. No menu in
+  // courses and no chef: a page that scrolls through pictures does not stop to read.
+  Aurora: [
     ...COMMON,
     "dishes",
     "spotlight",
@@ -110,8 +95,21 @@ export const TEMPLATE_FEATURES: Record<SiteTemplate, SiteFeature[]> = {
     "cta",
   ],
 
-  // A printed menu on a page. Courses and awards, a small plate of photographs, and
-  // nothing that would crowd it: no spotlight, no events block, no chef feature.
+  // A story told in bands. Carries the chef, because the story is usually theirs, a
+  // menu in courses, and the celebrations a family restaurant is booked for. No
+  // awards, no spotlight and no reasons-to-visit list: the writing does that work.
+  Terrace: [
+    ...COMMON,
+    "chef",
+    "menuGroups",
+    "gallery",
+    "events",
+    "testimonials",
+    "cta",
+  ],
+
+  // A printed menu on a page. Courses and awards, a restrained plate of photographs,
+  // and nothing that would crowd it: no spotlight, no events block, no chef feature.
   Press: [...COMMON, "menuGroups", "awards", "gallery", "testimonials", "cta"],
 };
 

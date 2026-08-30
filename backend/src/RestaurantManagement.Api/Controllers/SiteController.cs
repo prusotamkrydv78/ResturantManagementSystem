@@ -66,23 +66,19 @@ public sealed class SiteController : ControllerBase
             new(
                 SiteTemplate.Aurora,
                 "Aurora",
-                "Warm and photographic. A full-bleed hero, generous spacing. The safe choice when you have good pictures."),
+                "Photographs first. Dishes as a rail of cards, a mosaic gallery, one dish given the spotlight. The choice when the food is the argument."),
             new(
                 SiteTemplate.Slate,
                 "Slate",
-                "Dark and editorial. Type-led and restrained, for a place that wants to look expensive."),
+                "The dining-room page. Dark and type-led, with a menu in courses, the chef, awards and private dining."),
             new(
                 SiteTemplate.Terrace,
                 "Terrace",
-                "Rustic and split. Alternating text and image bands on a paper ground, for somewhere with a story."),
-            new(
-                SiteTemplate.Lantern,
-                "Lantern",
-                "Bright and blocky. Strong colour and big numerals, for cafes and street food."),
+                "A story in bands. Paper, serif, text and picture alternating down the page, with the chef and the celebrations you get booked for."),
             new(
                 SiteTemplate.Press,
                 "Press",
-                "Classical and centred. Ruled borders and small caps, like a printed menu."),
+                "A printed menu on a page. Masthead, hairline rules, a centred bill of fare and accolades. Restrained on purpose."),
         });
 
     /// <summary>Saves the content and the chosen design.</summary>
