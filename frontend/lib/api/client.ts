@@ -140,7 +140,14 @@ async function sendRequest(
 ): Promise<Response> {
   const headers = new Headers(init.headers);
 
-  if (!headers.has("Content-Type") && init.body !== undefined) {
+  // FormData is the exception: the browser has to set this header itself, because
+  // only it knows the multipart boundary it generated. Setting it here would produce
+  // a body the server cannot parse.
+  if (
+    !headers.has("Content-Type") &&
+    init.body !== undefined &&
+    !(init.body instanceof FormData)
+  ) {
     headers.set("Content-Type", "application/json");
   }
 

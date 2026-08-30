@@ -1,4 +1,4 @@
-import { Armchair, Boxes, Contact, Store, Users } from "lucide-react";
+import { Armchair, Boxes, Contact, Globe, Store, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 /**
@@ -37,6 +37,13 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
         href: "/settings/restaurant",
         icon: Store,
         description: "Name, address and the contact details guests see.",
+      },
+      {
+        label: "Website",
+        href: "/settings/website",
+        icon: Globe,
+        description:
+          "Your public one-page site: pick a design, write every section, and publish it.",
       },
     ],
   },

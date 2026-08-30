@@ -8,6 +8,7 @@ using RestaurantManagement.Domain.Menu;
 using RestaurantManagement.Domain.Orders;
 using RestaurantManagement.Domain.Payments;
 using RestaurantManagement.Domain.Restaurants;
+using RestaurantManagement.Domain.Sites;
 
 namespace RestaurantManagement.Infrastructure.Persistence;
 
@@ -71,6 +72,12 @@ public class ApplicationDbContext : IdentityUserContext<ApplicationUser, Guid>
 
     /// <summary>Tables held for somebody at a time.</summary>
     public DbSet<Reservation> Reservations => Set<Reservation>();
+
+    /// <summary>The public one-page website belonging to each restaurant.</summary>
+    public DbSet<RestaurantSite> RestaurantSites => Set<RestaurantSite>();
+
+    /// <summary>Photographs uploaded for those websites.</summary>
+    public DbSet<SiteImage> SiteImages => Set<SiteImage>();
 
     /// <inheritdoc />
     protected override void OnModelCreating(ModelBuilder modelBuilder)
