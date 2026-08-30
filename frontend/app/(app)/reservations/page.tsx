@@ -19,7 +19,8 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Field, describedBy } from "@/components/ui/field";
-import { Input, Select, Textarea } from "@/components/ui/input";
+import { Input, Textarea } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { Surface } from "@/components/ui/surface";
 import {
   EmptyState,
@@ -524,19 +525,22 @@ function ReservationDialog({
                   id={fieldId("customer")}
                   required
                   value={customerId}
-                  onChange={(event) => setCustomerId(event.target.value)}
+                  onChange={setCustomerId}
                   aria-describedby={describedBy(fieldId("customer"), { hasHint: true })}
-                >
-                  <option value="">
-                    {customers === null ? "Loading…" : "Choose a customer"}
-                  </option>
-                  {customers?.map((customer) => (
-                    <option key={customer.id} value={customer.id}>
-                      {customer.name}
-                      {customer.phone === null ? "" : ` · ${customer.phone}`}
-                    </option>
-                  ))}
-                </Select>
+                  options={[
+                    {
+                      value: "",
+                      label: customers === null ? "Loading…" : "Choose a customer",
+                    },
+                    ...(customers ?? []).map((customer) => ({
+                      value: customer.id,
+                      label:
+                        customer.phone === null
+                          ? customer.name
+                          : `${customer.name} · ${customer.phone}`,
+                    })),
+                  ]}
+                />
               </Field>
             )}
 
@@ -605,16 +609,16 @@ function ReservationDialog({
               <Select
                 id={fieldId("table")}
                 value={tableId}
-                onChange={(event) => setTableId(event.target.value)}
+                onChange={setTableId}
                 aria-describedby={describedBy(fieldId("table"), { hasHint: true })}
-              >
-                <option value="">Not decided</option>
-                {tables?.map((table) => (
-                  <option key={table.id} value={table.id}>
-                    {table.name} · seats {table.capacity}
-                  </option>
-                ))}
-              </Select>
+                options={[
+                  { value: "", label: "Not decided" },
+                  ...(tables ?? []).map((table) => ({
+                    value: table.id,
+                    label: `${table.name} · seats ${table.capacity}`,
+                  })),
+                ]}
+              />
             </Field>
 
             <Field
@@ -637,7 +641,9 @@ function ReservationDialog({
             <DialogClose asChild>
               <Button variant="secondary">Cancel</Button>
             </DialogClose>
-            <Button type="submit" disabled={isSubmitting}>
+            {/* Guarded here rather than by the browser. The dropdown is no longer a
+                native control, so a required attribute has nothing to block on. */}
+            <Button type="submit" disabled={isSubmitting || customerId === ""}>
               {isSubmitting ? "Saving…" : isEdit ? "Save changes" : "Take booking"}
             </Button>
           </DialogFooter>

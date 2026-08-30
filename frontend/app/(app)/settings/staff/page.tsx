@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Pencil, Search, UserPlus, Users } from "lucide-react";
+import Link from "next/link";
+import { ChevronRight, Search, SlidersHorizontal, UserPlus, Users } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, LinkButton } from "@/components/ui/button";
 import {
   Dialog,
   DialogClose,
@@ -12,7 +13,8 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Field, describedBy } from "@/components/ui/field";
-import { Input, Select } from "@/components/ui/input";
+import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Surface } from "@/components/ui/surface";
 import {
@@ -24,14 +26,7 @@ import {
 import { Table, TableWrap, Td, Th, Tr } from "@/components/ui/table";
 import { PageBody, PageHeader } from "@/components/layout/page-header";
 import { RequireAuth } from "@/features/auth/require-auth";
-import {
-  createStaff,
-  deleteStaff,
-  listStaff,
-  resetStaffPassword,
-  setStaffActive,
-  updateStaff,
-} from "@/features/staff/api";
+import { createStaff, listStaff } from "@/features/staff/api";
 import { ApiError } from "@/lib/api/client";
 import { STAFF_ROLES } from "@/types/staff";
 import type { StaffMember, StaffRole } from "@/types/staff";
@@ -179,7 +174,18 @@ function StaffRoster() {
                   {staff.map((member) => (
                     <Tr key={member.id}>
                       <Td>
-                        <span className="font-medium text-text">{member.fullName}</span>
+                        <Link
+                          href={`/settings/staff/${member.id}`}
+                          className="group flex items-center gap-1.5"
+                        >
+                          <span className="font-medium text-text group-hover:underline">
+                            {member.fullName}
+                          </span>
+                          <ChevronRight
+                            className="size-3.5 shrink-0 text-subtle transition-transform group-hover:translate-x-0.5"
+                            aria-hidden="true"
+                          />
+                        </Link>
                         <span className="block truncate text-2xs text-muted">
                           {member.email}
                         </span>
@@ -202,7 +208,14 @@ function StaffRoster() {
                         {formatDate(member.createdAtUtc)}
                       </Td>
                       <Td className="text-right">
-                        <StaffActionsDialog member={member} onChanged={refresh} />
+                        <LinkButton
+                          href={`/settings/staff/${member.id}`}
+                          variant="secondary"
+                          size="sm"
+                          icon={<SlidersHorizontal />}
+                        >
+                          Manage
+                        </LinkButton>
                       </Td>
                     </Tr>
                   ))}
@@ -358,14 +371,12 @@ function CreateStaffDialog({ onCreated }: { onCreated: () => Promise<void> }) {
               <Select
                 id="staff-role"
                 value={role}
-                onChange={(event) => setRole(event.target.value as StaffRole)}
-              >
-                {STAFF_ROLES.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </Select>
+                onChange={(next) => setRole(next as StaffRole)}
+                options={STAFF_ROLES.map((option) => ({
+                  value: option,
+                  label: option,
+                }))}
+              />
             </Field>
           </div>
 
@@ -378,278 +389,6 @@ function CreateStaffDialog({ onCreated }: { onCreated: () => Promise<void> }) {
             </Button>
           </DialogFooter>
         </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-/* -------------------------------------------------------------------------- */
-/* Edit, role change, activate / deactivate                                   */
-/* -------------------------------------------------------------------------- */
-
-function StaffActionsDialog({
-  member,
-  onChanged,
-}: {
-  member: StaffMember;
-  onChanged: () => Promise<void>;
-}) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [fullName, setFullName] = useState(member.fullName);
-  const [email, setEmail] = useState(member.email);
-  const [role, setRole] = useState<StaffRole>(member.role);
-  const [error, setError] = useState<string | null>(null);
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
-  const [newPassword, setNewPassword] = useState("");
-  const [notice, setNotice] = useState<string | null>(null);
-  const [busy, setBusy] = useState<
-    "none" | "save" | "status" | "password" | "delete"
-  >("none");
-
-  function reset() {
-    setFullName(member.fullName);
-    setEmail(member.email);
-    setRole(member.role);
-    setNewPassword("");
-    setNotice(null);
-    setError(null);
-    setFieldErrors({});
-  }
-
-  async function run(
-    action: "save" | "status" | "password" | "delete",
-    work: () => Promise<unknown>,
-    options?: { keepOpen?: boolean; notice?: string },
-  ) {
-    setError(null);
-    setFieldErrors({});
-    setNotice(null);
-    setBusy(action);
-
-    try {
-      await work();
-      await onChanged();
-
-      // A password reset keeps the dialog open: there is nothing to navigate to
-      // afterwards, and closing it would leave no sign that anything happened.
-      if (options?.keepOpen === true) {
-        setNotice(options.notice ?? null);
-      } else {
-        setIsOpen(false);
-      }
-    } catch (caught) {
-      if (caught instanceof ApiError) {
-        setError(caught.message);
-        setFieldErrors(caught.fieldErrors);
-      } else {
-        setError(caught instanceof Error ? caught.message : "The action failed.");
-      }
-    } finally {
-      setBusy("none");
-    }
-  }
-
-  const isDirty =
-    fullName !== member.fullName || email !== member.email || role !== member.role;
-
-  return (
-    <Dialog
-      open={isOpen}
-      onOpenChange={(next) => {
-        setIsOpen(next);
-        if (!next) reset();
-      }}
-    >
-      <DialogTrigger asChild>
-        <Button variant="secondary" size="sm" icon={<Pencil />}>
-          Manage
-        </Button>
-      </DialogTrigger>
-
-      <DialogContent title={member.fullName} description={member.email}>
-
-          {notice !== null && (
-            <p
-              role="status"
-              className="rounded-md border border-success-border bg-success-soft px-3 py-2 text-sm text-success"
-            >
-              {notice}
-            </p>
-          )}
-        <div className="flex flex-col gap-5 px-4 py-4">
-          {error !== null && <FormError message={error} />}
-
-          <section className="flex flex-col gap-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h3 className="text-sm font-semibold text-text">Account status</h3>
-              {member.isActive ? (
-                <Badge tone="success" dot>
-                  Active
-                </Badge>
-              ) : (
-                <Badge tone="neutral" dot>
-                  Inactive
-                </Badge>
-              )}
-            </div>
-
-            <p className="text-sm text-muted">
-              {member.isActive
-                ? "Deactivating signs them out and blocks sign in. The account and its history are kept."
-                : "This account cannot sign in. Reactivate to restore access."}
-            </p>
-
-            <Button
-              variant={member.isActive ? "secondary" : "primary"}
-              size="sm"
-              className="self-start"
-              disabled={busy !== "none"}
-              onClick={() => void run("status", () => setStaffActive(member.id, !member.isActive))}
-            >
-              {busy === "status"
-                ? "Saving…"
-                : member.isActive
-                  ? "Deactivate"
-                  : "Activate"}
-            </Button>
-          </section>
-
-          <section className="flex flex-col gap-3 border-t border-border pt-4">
-            <h3 className="text-sm font-semibold text-text">Details</h3>
-
-            <Field
-              htmlFor={`name-${member.id}`}
-              label="Full name"
-              required
-              error={firstError(fieldErrors, "fullName")}
-            >
-              <Input
-                id={`name-${member.id}`}
-                required
-                minLength={2}
-                maxLength={100}
-                value={fullName}
-                onChange={(event) => setFullName(event.target.value)}
-                aria-invalid={firstError(fieldErrors, "fullName") !== undefined}
-              />
-            </Field>
-
-            <Field
-              htmlFor={`email-${member.id}`}
-              label="Email"
-              required
-              error={firstError(fieldErrors, "email")}
-            >
-              <Input
-                id={`email-${member.id}`}
-                type="email"
-                required
-                maxLength={256}
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                aria-invalid={firstError(fieldErrors, "email") !== undefined}
-              />
-            </Field>
-
-            <Field htmlFor={`role-${member.id}`} label="Role" required>
-              <Select
-                id={`role-${member.id}`}
-                value={role}
-                onChange={(event) => setRole(event.target.value as StaffRole)}
-              >
-                {STAFF_ROLES.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-
-            <Button
-              size="sm"
-              variant="secondary"
-              className="self-start"
-              disabled={busy !== "none" || !isDirty}
-              onClick={() =>
-                void run("save", () => updateStaff(member.id, { fullName, email, role }))
-              }
-            >
-              {busy === "save" ? "Saving…" : "Save changes"}
-            </Button>
-          </section>
-
-          <section className="flex flex-col gap-3 border-t border-border pt-4">
-            <h3 className="text-sm font-semibold text-text">Password</h3>
-            <p className="text-xs text-muted">
-              There is no self-service reset. Setting one here is the only way back in
-              for somebody who has forgotten theirs.
-            </p>
-
-            <Field htmlFor={`password-${member.id}`} label="New password">
-              <PasswordInput
-                id={`password-${member.id}`}
-                autoComplete="new-password"
-                value={newPassword}
-                onChange={(event) => setNewPassword(event.target.value)}
-              />
-            </Field>
-
-            <Button
-              size="sm"
-              variant="secondary"
-              className="self-start"
-              disabled={busy !== "none" || newPassword.trim() === ""}
-              onClick={() =>
-                void run(
-                  "password",
-                  () =>
-                    resetStaffPassword(member.id, newPassword).then(() => {
-                      setNewPassword("");
-                    }),
-                  { keepOpen: true, notice: "Password replaced." },
-                )
-              }
-            >
-              {busy === "password" ? "Saving…" : "Replace password"}
-            </Button>
-          </section>
-
-          <section className="flex flex-col gap-3 border-t border-border pt-4">
-            <h3 className="text-sm font-semibold text-text">Remove</h3>
-            <p className="text-xs text-muted">
-              Deleting is only for an account added by mistake. Once somebody has taken
-              an order, recorded a payment or moved stock it is refused, because those
-              records name who did the work. Deactivate instead for somebody who worked
-              and then left.
-            </p>
-
-            <Button
-              size="sm"
-              variant="danger"
-              className="self-start"
-              disabled={busy !== "none"}
-              onClick={() =>
-                void run("delete", () => deleteStaff(member.id))
-              }
-            >
-              {busy === "delete" ? "Deleting…" : "Delete account"}
-            </Button>
-          </section>
-
-          <section className="border-t border-border pt-4">
-            <p className="text-xs text-muted">
-              Works in{" "}
-              <span className="font-medium text-text">{member.restaurantName}</span>. A
-              staff member belongs to one restaurant and cannot be moved.
-            </p>
-          </section>
-        </div>
-
-        <DialogFooter>
-          <DialogClose asChild>
-            <Button variant="secondary">Close</Button>
-          </DialogClose>
-        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

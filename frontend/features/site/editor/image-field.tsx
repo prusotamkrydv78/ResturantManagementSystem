@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { ImagePlus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Select } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { siteImageSrc, uploadSiteImage } from "@/features/site/api";
 import { ApiError } from "@/lib/api/client";
 import type { SiteImage } from "@/types/site";
@@ -118,15 +118,15 @@ export function ImageField({
             <Select
               aria-label={`Choose an uploaded image for ${label}`}
               value={images.some((image) => image.url === value) ? value : ""}
-              onChange={(event) => onChange(event.target.value)}
-            >
-              <option value="">Or reuse an uploaded image…</option>
-              {images.map((image) => (
-                <option key={image.id} value={image.url}>
-                  {image.fileName}
-                </option>
-              ))}
-            </Select>
+              onChange={onChange}
+              options={[
+                { value: "", label: "Or reuse an uploaded image…" },
+                ...images.map((image) => ({
+                  value: image.url,
+                  label: image.fileName,
+                })),
+              ]}
+            />
           )}
 
           {error !== null && <p className="text-xs text-danger">{error}</p>}

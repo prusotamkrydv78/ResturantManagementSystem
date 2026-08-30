@@ -14,6 +14,14 @@ export interface Crumb {
  *
  * Actions come last in the DOM on small screens so the title is read first, but
  * sit on the right at desktop width.
+ *
+ * Full width, with padding rather than a measure. There was a 72rem cap here, and
+ * on a wide screen it left the working area floating in the middle of the window
+ * with empty gutters either side — worst of all in the settings area, where a rail
+ * has already taken its bite. Half the screens in the product had opted out of it
+ * one at a time, which is the sign that a default is wrong rather than that those
+ * screens are special. What genuinely needs a measure is prose, and prose caps
+ * itself where it appears.
  */
 export function PageHeader({
   title,
@@ -28,7 +36,7 @@ export function PageHeader({
 }) {
   return (
     <header className="border-b border-border bg-surface">
-      <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-4 sm:px-6">
+      <div className="flex flex-col gap-3 px-4 py-4 sm:px-6">
         {crumbs !== undefined && crumbs.length > 0 && (
           <nav aria-label="Breadcrumb">
             <ol className="flex flex-wrap items-center gap-1 text-xs text-muted">
@@ -74,7 +82,7 @@ export function PageHeader({
   );
 }
 
-/** Standard content well. Matches the header width so edges line up. */
+/** Standard content well. Padded like the header, so their edges line up. */
 export function PageBody({
   className,
   children,
@@ -85,7 +93,7 @@ export function PageBody({
   return (
     <div
       className={cn(
-        "mx-auto flex max-w-6xl flex-col gap-5 px-4 py-5 sm:px-6",
+        "flex flex-col gap-5 px-4 py-5 sm:px-6",
         className,
       )}
     >

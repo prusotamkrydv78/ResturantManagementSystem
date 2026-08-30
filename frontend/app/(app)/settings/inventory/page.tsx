@@ -21,7 +21,8 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Field, describedBy } from "@/components/ui/field";
-import { Input, Select } from "@/components/ui/input";
+import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { Surface } from "@/components/ui/surface";
 import {
   EmptyState,
@@ -522,15 +523,10 @@ function ItemDialog({
                 <Select
                   id="item-unit"
                   value={unit}
-                  onChange={(event) => setUnit(event.target.value as UnitOfMeasure)}
+                  onChange={(next) => setUnit(next as UnitOfMeasure)}
                   aria-describedby={describedBy("item-unit", { hasHint: true })}
-                >
-                  {UNITS.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </Select>
+                  options={UNITS.map((option) => ({ value: option, label: option }))}
+                />
               </Field>
 
               <Field

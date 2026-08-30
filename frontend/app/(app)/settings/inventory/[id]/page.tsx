@@ -7,7 +7,8 @@ import { ArrowLeft, ChefHat, Save, TriangleAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button, LinkButton } from "@/components/ui/button";
 import { Field, describedBy } from "@/components/ui/field";
-import { Input, Select } from "@/components/ui/input";
+import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { DetailRow, Surface, SurfaceHeader } from "@/components/ui/surface";
 import {
   EmptyState,
@@ -209,7 +210,7 @@ function ItemDetail() {
         }
       />
 
-      <PageBody className="lg:max-w-none">
+      <PageBody>
         {item.isNegative && (
           <Surface className="border-danger-border bg-danger-soft">
             <div className="flex items-start gap-2.5 px-4 py-3">
@@ -293,16 +294,12 @@ function ItemDetail() {
                   <Select
                     id="kind"
                     value={kind}
-                    onChange={(event) =>
-                      setKind(event.target.value as StockMovementKind)
-                    }
-                  >
-                    {ENTERABLE_KINDS.map((option) => (
-                      <option key={option} value={option}>
-                        {KIND_LABEL[option]}
-                      </option>
-                    ))}
-                  </Select>
+                    onChange={(next) => setKind(next as StockMovementKind)}
+                    options={ENTERABLE_KINDS.map((option) => ({
+                      value: option,
+                      label: KIND_LABEL[option],
+                    }))}
+                  />
                 </Field>
 
                 {kind === "Adjusted" && (
@@ -314,12 +311,13 @@ function ItemDetail() {
                     <Select
                       id="direction"
                       value={increase ? "up" : "down"}
-                      onChange={(event) => setIncrease(event.target.value === "up")}
+                      onChange={(next) => setIncrease(next === "up")}
                       aria-describedby={describedBy("direction", { hasHint: true })}
-                    >
-                      <option value="up">There was more than recorded</option>
-                      <option value="down">There was less than recorded</option>
-                    </Select>
+                      options={[
+                        { value: "up", label: "There was more than recorded" },
+                        { value: "down", label: "There was less than recorded" },
+                      ]}
+                    />
                   </Field>
                 )}
 

@@ -121,7 +121,7 @@ function FloorOverviewScreen() {
         }
       />
 
-      <PageBody className="lg:max-w-none">
+      <PageBody>
         {error !== null ? (
           <Surface>
             <ErrorState

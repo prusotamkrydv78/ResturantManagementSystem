@@ -21,7 +21,8 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Field, describedBy } from "@/components/ui/field";
-import { Input, Select } from "@/components/ui/input";
+import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Surface } from "@/components/ui/surface";
 import {
@@ -474,19 +475,19 @@ function AssignManagerDialog({
                     id={`user-${restaurant.id}`}
                     required
                     value={userId}
-                    onChange={(event) => setUserId(event.target.value)}
+                    onChange={setUserId}
                     disabled={availableManagers === null || availableManagers.length === 0}
                     aria-describedby={describedBy(`user-${restaurant.id}`, {
                       hasHint: true,
                     })}
-                  >
-                    <option value="">Select a manager</option>
-                    {(availableManagers ?? []).map((manager) => (
-                      <option key={manager.id} value={manager.id}>
-                        {manager.fullName} — {manager.email}
-                      </option>
-                    ))}
-                  </Select>
+                    options={[
+                      { value: "", label: "Select a manager" },
+                      ...(availableManagers ?? []).map((manager) => ({
+                        value: manager.id,
+                        label: `${manager.fullName} — ${manager.email}`,
+                      })),
+                    ]}
+                  />
                 </Field>
               </div>
             )}
@@ -496,7 +497,9 @@ function AssignManagerDialog({
             <DialogClose asChild>
               <Button variant="secondary">Cancel</Button>
             </DialogClose>
-            <Button type="submit" disabled={isSubmitting}>
+            {/* Guarded here rather than by the browser. The dropdown is no longer a
+                native control, so a required attribute has nothing to block on. */}
+            <Button type="submit" disabled={isSubmitting || userId === ""}>
               {isSubmitting ? "Assigning…" : "Assign manager"}
             </Button>
           </DialogFooter>

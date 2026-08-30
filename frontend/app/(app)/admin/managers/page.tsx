@@ -12,7 +12,8 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Field, describedBy } from "@/components/ui/field";
-import { Input, Select } from "@/components/ui/input";
+import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Surface } from "@/components/ui/surface";
 import {
@@ -151,13 +152,14 @@ function Managers() {
                 id="manager-status"
                 className="sm:w-44"
                 value={status}
-                onChange={(event) => setStatus(event.target.value as ManagerFilter)}
+                onChange={(next) => setStatus(next as ManagerFilter)}
                 aria-label="Filter by assignment"
-              >
-                <option value="All">All managers</option>
-                <option value="Assigned">Assigned</option>
-                <option value="Unassigned">Unassigned</option>
-              </Select>
+                options={[
+                  { value: "All", label: "All managers" },
+                  { value: "Assigned", label: "Assigned" },
+                  { value: "Unassigned", label: "Unassigned" },
+                ]}
+              />
             </div>
 
             <p className="text-sm text-muted">
@@ -407,17 +409,17 @@ function CreateManagerDialog({
               <Select
                 id="new-manager-restaurant"
                 value={restaurantId}
-                onChange={(event) => setRestaurantId(event.target.value)}
+                onChange={setRestaurantId}
                 disabled={restaurants.length === 0}
                 aria-describedby={describedBy("new-manager-restaurant", { hasHint: true })}
-              >
-                <option value="">Assign later</option>
-                {restaurants.map((restaurant) => (
-                  <option key={restaurant.id} value={restaurant.id}>
-                    {restaurant.name}
-                  </option>
-                ))}
-              </Select>
+                options={[
+                  { value: "", label: "Assign later" },
+                  ...restaurants.map((restaurant) => ({
+                    value: restaurant.id,
+                    label: restaurant.name,
+                  })),
+                ]}
+              />
             </Field>
           </div>
 
@@ -561,16 +563,16 @@ function ManagerActionsDialog({
               <Select
                 id={`assign-${manager.id}`}
                 value={restaurantId}
-                onChange={(event) => setRestaurantId(event.target.value)}
+                onChange={setRestaurantId}
                 aria-describedby={describedBy(`assign-${manager.id}`, { hasHint: true })}
-              >
-                <option value="">No restaurant</option>
-                {selectable.map((restaurant) => (
-                  <option key={restaurant.id} value={restaurant.id}>
-                    {restaurant.name}
-                  </option>
-                ))}
-              </Select>
+                options={[
+                  { value: "", label: "No restaurant" },
+                  ...selectable.map((restaurant) => ({
+                    value: restaurant.id,
+                    label: restaurant.name,
+                  })),
+                ]}
+              />
             </Field>
 
             <div className="flex flex-wrap gap-2">

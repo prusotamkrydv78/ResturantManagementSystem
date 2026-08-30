@@ -280,7 +280,7 @@ function NewOrder() {
         crumbs={[{ label: "Workspace", href: "/dashboard" }, { label: "New order" }]}
       />
 
-      <PageBody className="lg:max-w-none">
+      <PageBody>
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start">
           {/* Left: table, then menu */}
           <div className="flex min-w-0 flex-col gap-4">

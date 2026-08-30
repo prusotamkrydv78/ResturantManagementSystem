@@ -11,7 +11,8 @@ import {
   DialogFooter,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Input, Select } from "@/components/ui/input";
+import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { FormError, Skeleton } from "@/components/ui/states";
 import {
   getRecipe,
@@ -262,24 +263,19 @@ export function RecipeDialog({
                         <Select
                           id={`ingredient-${index}`}
                           value={line.inventoryItemId}
-                          onChange={(event) =>
-                            changeIngredient(index, event.target.value)
-                          }
+                          onChange={(next) => changeIngredient(index, next)}
                           className="min-w-40 flex-1"
-                        >
-                          {(available ?? []).map((item) => (
-                            <option
-                              key={item.id}
-                              value={item.id}
-                              disabled={
-                                item.id !== line.inventoryItemId &&
-                                lines.some((l) => l.inventoryItemId === item.id)
-                              }
-                            >
-                              {item.name}
-                            </option>
-                          ))}
-                        </Select>
+                          options={(available ?? []).map((item) => ({
+                            value: item.id,
+                            label: item.name,
+                            // Already used on another line. Shown rather than
+                            // hidden, so the list does not change shape as lines
+                            // are added.
+                            disabled:
+                              item.id !== line.inventoryItemId &&
+                              lines.some((l) => l.inventoryItemId === item.id),
+                          }))}
+                        />
 
                         <label className="sr-only" htmlFor={`quantity-${index}`}>
                           Quantity
@@ -308,23 +304,21 @@ export function RecipeDialog({
                         <Select
                           id={`unit-${index}`}
                           value={line.unit}
-                          onChange={(event) =>
+                          onChange={(next) =>
                             setLines((current) =>
                               current.map((l, position) =>
                                 position === index
-                                  ? { ...l, unit: event.target.value as UnitOfMeasure }
+                                  ? { ...l, unit: next as UnitOfMeasure }
                                   : l,
                               ),
                             )
                           }
                           className="w-32"
-                        >
-                          {usable.map((unit) => (
-                            <option key={unit} value={unit}>
-                              {unit}
-                            </option>
-                          ))}
-                        </Select>
+                          options={usable.map((unit) => ({
+                            value: unit,
+                            label: unit,
+                          }))}
+                        />
 
                         {ingredient !== undefined && (
                           <span className="flex items-center gap-1 pb-2 text-2xs text-subtle">

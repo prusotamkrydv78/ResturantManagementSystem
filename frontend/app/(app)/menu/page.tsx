@@ -21,7 +21,8 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Field, describedBy } from "@/components/ui/field";
-import { Input, Select, Textarea } from "@/components/ui/input";
+import { Input, Textarea } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { Surface, SurfaceHeader } from "@/components/ui/surface";
 import {
   EmptyState,
@@ -319,17 +320,17 @@ function MenuManager() {
                 id="item-category-filter"
                 className="sm:w-52"
                 value={categoryFilter}
-                onChange={(event) => setCategoryFilter(event.target.value)}
+                onChange={setCategoryFilter}
                 aria-label="Filter by category"
                 disabled={!hasCategories}
-              >
-                <option value="">All categories</option>
-                {(categories ?? []).map((category) => (
-                  <option key={category.id} value={category.id}>
-                    {category.name}
-                  </option>
-                ))}
-              </Select>
+                options={[
+                  { value: "", label: "All categories" },
+                  ...(categories ?? []).map((category) => ({
+                    value: category.id,
+                    label: category.name,
+                  })),
+                ]}
+              />
             </div>
 
             <p className="text-sm text-muted">
@@ -564,14 +565,12 @@ function BulkItemsDialog({
                 id="bulk-category"
                 required
                 value={categoryId}
-                onChange={(event) => setCategoryId(event.target.value)}
-              >
-                {categories.map((category) => (
-                  <option key={category.id} value={category.id}>
-                    {category.name}
-                  </option>
-                ))}
-              </Select>
+                onChange={setCategoryId}
+                options={categories.map((category) => ({
+                  value: category.id,
+                  label: category.name,
+                }))}
+              />
             </Field>
 
             <Field
@@ -1087,15 +1086,14 @@ function ItemDialog({
                   id="item-category"
                   required
                   value={categoryId}
-                  onChange={(event) => setCategoryId(event.target.value)}
-                >
-                  {categories.map((category) => (
-                    <option key={category.id} value={category.id}>
-                      {category.name}
-                      {category.isActive ? "" : " (hidden)"}
-                    </option>
-                  ))}
-                </Select>
+                  onChange={setCategoryId}
+                  options={categories.map((category) => ({
+                    value: category.id,
+                    label: category.isActive
+                      ? category.name
+                      : `${category.name} (hidden)`,
+                  }))}
+                />
               </Field>
 
               <Field

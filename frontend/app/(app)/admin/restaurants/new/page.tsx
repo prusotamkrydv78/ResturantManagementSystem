@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { Store } from "lucide-react";
 import { Button, LinkButton } from "@/components/ui/button";
 import { Field, describedBy } from "@/components/ui/field";
-import { Input, Select } from "@/components/ui/input";
+import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Surface, SurfaceHeader } from "@/components/ui/surface";
 import { FormError } from "@/components/ui/states";
@@ -327,16 +328,16 @@ function NewRestaurant() {
                     <Select
                       id="managerId"
                       value={managerId}
-                      onChange={(event) => setManagerId(event.target.value)}
+                      onChange={setManagerId}
                       aria-describedby={describedBy("managerId", { hasHint: true })}
-                    >
-                      <option value="">Choose a manager</option>
-                      {(unassigned ?? []).map((manager) => (
-                        <option key={manager.id} value={manager.id}>
-                          {manager.fullName} · {manager.email}
-                        </option>
-                      ))}
-                    </Select>
+                      options={[
+                        { value: "", label: "Choose a manager" },
+                        ...(unassigned ?? []).map((manager) => ({
+                          value: manager.id,
+                          label: `${manager.fullName} · ${manager.email}`,
+                        })),
+                      ]}
+                    />
                   </Field>
                 </div>
               )}

@@ -224,7 +224,7 @@ function BillingOrderDetail() {
         }
       />
 
-      <PageBody className="lg:max-w-none">
+      <PageBody>
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start">
           {/* The bill */}
           <div className="flex flex-col gap-4">

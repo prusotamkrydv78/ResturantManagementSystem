@@ -1,8 +1,8 @@
 import { cn } from "@/lib/utils/cn";
 
 /**
- * Shared visual treatment for every text-entry control, so inputs, selects and
- * textareas cannot drift apart.
+ * Shared visual treatment for every entry control, so inputs, textareas and the
+ * dropdown in `select.tsx` cannot drift apart.
  */
 export const controlClasses = cn(
   "w-full rounded-md border bg-surface px-2.5 text-base text-text",
@@ -34,14 +34,6 @@ export function Textarea({
   );
 }
 
-export function Select({
-  className,
-  children,
-  ...selectProps
-}: React.SelectHTMLAttributes<HTMLSelectElement>) {
-  return (
-    <select className={cn(controlClasses, "h-9 pr-8", className)} {...selectProps}>
-      {children}
-    </select>
-  );
-}
+// The dropdown lives in `select.tsx` and is not a native `select`. The list a
+// native one opens is drawn by the operating system, which meant a white strip on
+// a dark page with no CSS anywhere that could reach it.

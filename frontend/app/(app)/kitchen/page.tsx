@@ -161,7 +161,7 @@ function Kitchen() {
         }
       />
 
-      <PageBody className="lg:max-w-none">
+      <PageBody>
         {actionError !== null && <FormError message={actionError} />}
 
         {loadError !== null ? (
