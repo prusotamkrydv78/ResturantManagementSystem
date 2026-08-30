@@ -378,7 +378,12 @@ export function Sidebar() {
     <aside
       onClick={expandOnEmptyClick}
       className={cn(
-        "relative hidden shrink-0 flex-col border-r border-border bg-surface transition-[width] duration-200 ease-out lg:flex",
+        // Pinned to the viewport. Without this the panel is an ordinary flex item
+        // as tall as the page beside it, so on any long screen its contents sit at
+        // the top and scroll out of sight - navigation you have to scroll back up
+        // to reach is not navigation. The settings rail was already pinned, which
+        // is what made the two disagree on the same screen.
+        "relative hidden shrink-0 flex-col border-r border-border bg-surface transition-[width] duration-200 ease-out lg:sticky lg:top-0 lg:flex lg:h-svh",
         isCollapsed ? "w-16 cursor-e-resize" : "w-60",
       )}
     >
