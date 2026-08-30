@@ -9,6 +9,7 @@ import {
   sections,
   type TemplateProps,
 } from "./shared";
+import { CardSlider } from "./card-slider";
 
 /**
  * Slate — the dining-room page.
@@ -62,8 +63,8 @@ export function SlateTemplate({ content, restaurantName }: TemplateProps) {
     >
       {/* ------------------------------------------------------------- Top bar */}
       <nav className="sticky top-0 z-40 border-b border-white/10 bg-zinc-950/85 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-6 px-6 py-4">
-          <span className="text-sm font-semibold tracking-[0.25em] whitespace-nowrap text-white uppercase">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-5 py-3.5 sm:gap-6 sm:px-6 sm:py-4">
+          <span className="min-w-0 truncate text-xs font-semibold tracking-[0.2em] text-white uppercase sm:text-sm sm:tracking-[0.25em]">
             {name}
           </span>
 
@@ -104,7 +105,7 @@ export function SlateTemplate({ content, restaurantName }: TemplateProps) {
       {/* ---------------------------------------------------------------- Hero */}
       <header
         data-site-section="hero"
-        className="relative isolate flex min-h-[38rem] items-end overflow-hidden border-b border-white/10"
+        className="relative isolate flex min-h-[26rem] items-end overflow-hidden border-b border-white/10 sm:min-h-[32rem] lg:min-h-[38rem]"
       >
         {has(content.hero.imageUrl) ? (
           <>
@@ -119,19 +120,19 @@ export function SlateTemplate({ content, restaurantName }: TemplateProps) {
           <div className="absolute inset-0 -z-10 bg-gradient-to-br from-zinc-900 via-zinc-950 to-black" />
         )}
 
-        <div className="mx-auto w-full max-w-6xl px-6 pt-32 pb-16">
+        <div className="mx-auto w-full max-w-6xl px-5 pt-24 pb-12 sm:px-6 sm:pt-32 sm:pb-16">
           {has(content.hero.eyebrow) && (
             <p className="mb-6 text-xs font-medium tracking-[0.35em] text-[var(--accent)] uppercase">
               {content.hero.eyebrow}
             </p>
           )}
 
-          <h1 className="max-w-3xl text-5xl leading-[1.02] font-light tracking-tight text-balance text-white sm:text-7xl">
+          <h1 className="max-w-3xl text-[2.5rem] leading-[1.05] font-light tracking-tight text-balance text-white sm:text-5xl lg:text-7xl">
             {has(content.hero.headline) ? content.hero.headline : name}
           </h1>
 
           {has(content.hero.body) && (
-            <p className="mt-8 max-w-xl text-lg leading-relaxed text-pretty text-zinc-300">
+            <p className="mt-6 max-w-xl text-base leading-relaxed text-pretty text-zinc-300 sm:mt-8 sm:text-lg">
               {content.hero.body}
             </p>
           )}
@@ -180,9 +181,9 @@ export function SlateTemplate({ content, restaurantName }: TemplateProps) {
         <section
           id="story"
           data-site-section="about"
-          className="scroll-mt-20 border-b border-white/10 py-24"
+          className="scroll-mt-20 border-b border-white/10 py-16 sm:py-20 lg:py-24"
         >
-          <div className="mx-auto grid max-w-6xl gap-14 px-6 lg:grid-cols-[1fr_1.2fr]">
+          <div className="mx-auto grid max-w-6xl gap-10 px-5 sm:px-6 lg:gap-14 lg:grid-cols-[1fr_1.2fr]">
             <div>
               <SectionLabel>
                 {has(content.about.title) ? content.about.title : "Our story"}
@@ -190,7 +191,7 @@ export function SlateTemplate({ content, restaurantName }: TemplateProps) {
               <SiteImageEl
                 url={content.about.imageUrl}
                 alt={content.about.title}
-                className="mt-8 aspect-4/5 w-full object-cover grayscale-[30%]"
+                className="mt-8 aspect-3/2 w-full object-cover grayscale-[30%] sm:aspect-16/9 lg:aspect-4/5"
               />
             </div>
 
@@ -219,7 +220,7 @@ export function SlateTemplate({ content, restaurantName }: TemplateProps) {
         <section
           id="chef"
           data-site-section="chef"
-          className="scroll-mt-20 border-b border-white/10 bg-zinc-900/40 py-24"
+          className="scroll-mt-20 border-b border-white/10 bg-zinc-900/40 py-16 sm:py-20 lg:py-24"
         >
           <div className="mx-auto grid max-w-6xl items-center gap-14 px-6 lg:grid-cols-[1.1fr_1fr]">
             <div>
@@ -254,7 +255,7 @@ export function SlateTemplate({ content, restaurantName }: TemplateProps) {
             <SiteImageEl
               url={content.chef.imageUrl}
               alt={content.chef.name}
-              className="aspect-3/4 w-full object-cover grayscale"
+              className="aspect-3/2 w-full object-cover grayscale sm:aspect-16/9 lg:aspect-3/4"
             />
           </div>
         </section>
@@ -265,53 +266,71 @@ export function SlateTemplate({ content, restaurantName }: TemplateProps) {
         <section
           id="menu"
           data-site-section="menuGroups"
-          className="scroll-mt-20 border-b border-white/10 py-24"
+          className="scroll-mt-20 border-b border-white/10 py-16 sm:py-20 lg:py-24"
         >
-          <div className="mx-auto max-w-6xl px-6">
+          <div className="mx-auto max-w-6xl px-5 sm:px-6">
             <div className="text-center">
               <SectionLabel>The menu</SectionLabel>
               <Flourish />
             </div>
 
-            {/* Two columns of courses at width, because a menu is read in columns and
-                a single stack of thirty lines is a list rather than a menu. */}
-            <div className="grid gap-x-16 gap-y-14 md:grid-cols-2">
+            {/* Two columns of courses only once there is room for two. Below that a
+                single column, because a menu squeezed into halves of a phone is
+                two narrow lists rather than one readable one. */}
+            <div className="grid gap-x-16 gap-y-12 lg:grid-cols-2">
               {content.menuGroups.map((group, index) => (
-                <div key={index}>
+                <section key={index} className="break-inside-avoid">
+                  {/* The course name sits on a rule that runs to the edge of the
+                      column. It is the one piece of structure a menu really has,
+                      and it has to be findable when you are scanning for it. */}
                   {has(group.name) && (
-                    <h3 className="text-xs tracking-[0.3em] text-[var(--accent)] uppercase">
-                      {group.name}
-                    </h3>
+                    <div className="flex items-center gap-4">
+                      <h3 className="text-sm font-medium tracking-[0.25em] whitespace-nowrap text-[var(--accent)] uppercase">
+                        {group.name}
+                      </h3>
+                      <span
+                        aria-hidden="true"
+                        className="h-px flex-1 bg-[var(--accent)]/25"
+                      />
+                    </div>
                   )}
+
                   {has(group.description) && (
-                    <p className="mt-2 text-sm text-zinc-500 italic">
+                    <p className="mt-3 text-sm leading-relaxed text-zinc-500 italic">
                       {group.description}
                     </p>
                   )}
 
-                  <ul className="mt-6 flex flex-col">
+                  <ul className="mt-7 flex flex-col gap-6">
                     {group.items.map((item, itemIndex) => (
-                      <li
-                        key={itemIndex}
-                        className="flex items-baseline justify-between gap-5 border-b border-white/5 py-4 last:border-0"
-                      >
-                        <div className="min-w-0">
-                          <h4 className="font-light text-white">{item.name}</h4>
-                          {has(item.description) && (
-                            <p className="mt-1 text-sm leading-relaxed text-zinc-500">
-                              {item.description}
-                            </p>
+                      <li key={itemIndex}>
+                        {/* Name and price joined across the gap by a leader, the
+                            way a printed menu does it. The leader is what makes a
+                            column of prices scannable without a table. */}
+                        <div className="flex items-baseline gap-3">
+                          <h4 className="text-base font-normal text-white">
+                            {item.name}
+                          </h4>
+                          <span
+                            aria-hidden="true"
+                            className="min-w-5 flex-1 translate-y-[-0.3em] border-b border-dotted border-white/20"
+                          />
+                          {has(item.price) && (
+                            <span className="shrink-0 text-sm text-[var(--accent)] tabular-nums">
+                              {item.price}
+                            </span>
                           )}
                         </div>
-                        {has(item.price) && (
-                          <span className="shrink-0 text-sm text-[var(--accent)] tabular-nums">
-                            {item.price}
-                          </span>
+
+                        {has(item.description) && (
+                          <p className="mt-1.5 max-w-prose text-sm leading-relaxed text-zinc-500">
+                            {item.description}
+                          </p>
                         )}
                       </li>
                     ))}
                   </ul>
-                </div>
+                </section>
               ))}
             </div>
           </div>
@@ -325,7 +344,7 @@ export function SlateTemplate({ content, restaurantName }: TemplateProps) {
           className="border-b border-white/10 bg-zinc-900/40"
         >
           <div className="mx-auto grid max-w-6xl items-stretch lg:grid-cols-2">
-            <div className="min-h-[22rem] bg-zinc-900">
+            <div className="min-h-[16rem] bg-zinc-900 sm:min-h-[20rem] lg:min-h-[22rem]">
               <SiteImageEl
                 url={content.spotlight.imageUrl}
                 alt={content.spotlight.name}
@@ -333,7 +352,7 @@ export function SlateTemplate({ content, restaurantName }: TemplateProps) {
               />
             </div>
 
-            <div className="flex flex-col justify-center px-6 py-16 lg:px-14">
+            <div className="flex flex-col justify-center px-5 py-12 sm:px-6 sm:py-16 lg:px-14">
               {has(content.spotlight.eyebrow) && (
                 <p className="text-xs tracking-[0.3em] text-[var(--accent)] uppercase">
                   {content.spotlight.eyebrow}
@@ -360,22 +379,32 @@ export function SlateTemplate({ content, restaurantName }: TemplateProps) {
       {/* -------------------------------------------------------------- Awards */}
       {hasAwards && (
         <section data-site-section="awards" className="border-b border-white/10 py-16">
-          <div className="mx-auto grid max-w-6xl gap-10 px-6 sm:grid-cols-2 lg:grid-cols-4">
-            {content.awards.map((award, index) => (
-              <div key={index} className="text-center">
-                {has(award.year) && (
-                  <p className="text-3xl font-light text-[var(--accent)] tabular-nums">
-                    {award.year}
+          <div className="mx-auto max-w-6xl px-5 sm:px-6">
+            <CardSlider
+              ariaLabel="awards"
+              itemClassName="basis-[60%] sm:basis-[38%] lg:basis-[23%]"
+            >
+              {content.awards.map((award, index) => (
+                <div
+                  key={index}
+                  className="flex h-full flex-col items-center border border-white/10 px-4 py-8 text-center"
+                >
+                  {has(award.year) && (
+                    <p className="text-3xl font-light text-[var(--accent)] tabular-nums">
+                      {award.year}
+                    </p>
+                  )}
+                  <p className="mt-3 text-sm font-medium text-balance text-white">
+                    {award.title}
                   </p>
-                )}
-                <p className="mt-3 text-sm font-medium text-white">{award.title}</p>
-                {has(award.source) && (
-                  <p className="mt-1 text-xs tracking-[0.15em] text-zinc-500 uppercase">
-                    {award.source}
-                  </p>
-                )}
-              </div>
-            ))}
+                  {has(award.source) && (
+                    <p className="mt-1 text-xs tracking-[0.15em] text-zinc-500 uppercase">
+                      {award.source}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </CardSlider>
           </div>
         </section>
       )}
@@ -387,21 +416,35 @@ export function SlateTemplate({ content, restaurantName }: TemplateProps) {
           data-site-section="gallery"
           className="scroll-mt-20 border-b border-white/10"
         >
-          <div className="grid grid-cols-2 gap-px bg-white/10 md:grid-cols-4">
-            {content.gallery.map((image, index) => (
-              <figure key={index} className="group relative overflow-hidden">
-                <SiteImageEl
-                  url={image.imageUrl}
-                  alt={image.caption}
-                  className="aspect-square w-full object-cover grayscale-[40%] transition-all duration-700 group-hover:scale-105 group-hover:grayscale-0"
-                />
-                {has(image.caption) && (
-                  <figcaption className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-zinc-950/90 to-transparent p-3 text-xs text-zinc-300 opacity-0 transition-opacity group-hover:opacity-100">
-                    {image.caption}
-                  </figcaption>
-                )}
-              </figure>
-            ))}
+          <div className="px-5 py-16 sm:px-6 sm:py-20 lg:py-24">
+            <div className="mx-auto max-w-6xl">
+              <SectionLabel>The room</SectionLabel>
+
+              <div className="mt-8">
+                <CardSlider
+                  ariaLabel="photographs"
+                  itemClassName="basis-[78%] sm:basis-[46%] lg:basis-[31%]"
+                >
+                  {content.gallery.map((image, index) => (
+                    <figure key={index} className="group relative overflow-hidden">
+                      <SiteImageEl
+                        url={image.imageUrl}
+                        alt={image.caption}
+                        className="aspect-4/5 w-full object-cover grayscale-[40%] transition-all duration-700 group-hover:grayscale-0"
+                      />
+                      {/* On a touch screen there is no hover, so the caption is
+                          always legible there and fades in only where a pointer
+                          can ask for it. */}
+                      {has(image.caption) && (
+                        <figcaption className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-zinc-950/95 to-transparent p-4 text-xs text-zinc-300 lg:opacity-0 lg:transition-opacity lg:group-hover:opacity-100">
+                          {image.caption}
+                        </figcaption>
+                      )}
+                    </figure>
+                  ))}
+                </CardSlider>
+              </div>
+            </div>
           </div>
         </section>
       )}
@@ -410,15 +453,18 @@ export function SlateTemplate({ content, restaurantName }: TemplateProps) {
       {sections.testimonials(content) && (
         <section
           data-site-section="testimonials"
-          className="border-b border-white/10 py-24"
+          className="border-b border-white/10 py-16 sm:py-20 lg:py-24"
         >
-          <div className="mx-auto max-w-4xl px-6 text-center">
+          <div className="mx-auto max-w-4xl px-5 text-center sm:px-6">
             <SectionLabel>In their words</SectionLabel>
             <Flourish />
-            <div className="flex flex-col gap-14">
+            {/* One quote at a time, full width. Stacking them made the section as
+                long as the story above it, for words that are read one at a time
+                anyway. */}
+            <CardSlider ariaLabel="quotes" itemClassName="basis-full">
               {content.testimonials.map((quote, index) => (
-                <figure key={index}>
-                  <blockquote className="text-2xl leading-relaxed font-light text-balance text-zinc-200">
+                <figure key={index} className="px-1">
+                  <blockquote className="text-xl leading-relaxed font-light text-balance text-zinc-200 sm:text-2xl">
                     &ldquo;{quote.quote}&rdquo;
                   </blockquote>
                   {has(quote.author) && (
@@ -428,7 +474,7 @@ export function SlateTemplate({ content, restaurantName }: TemplateProps) {
                   )}
                 </figure>
               ))}
-            </div>
+            </CardSlider>
           </div>
         </section>
       )}
@@ -441,7 +487,7 @@ export function SlateTemplate({ content, restaurantName }: TemplateProps) {
           className="scroll-mt-20 border-b border-white/10 bg-zinc-900/40"
         >
           <div className="mx-auto grid max-w-6xl items-center lg:grid-cols-2">
-            <div className="flex flex-col justify-center px-6 py-16 lg:px-14">
+            <div className="flex flex-col justify-center px-5 py-12 sm:px-6 sm:py-16 lg:px-14">
               <SectionLabel>
                 {has(content.events.title) ? content.events.title : "Private dining"}
               </SectionLabel>
@@ -463,7 +509,7 @@ export function SlateTemplate({ content, restaurantName }: TemplateProps) {
             {/* Picture first on a phone, where the text would otherwise push it off
                 the screen entirely, and second at width where the band reads left
                 to right. */}
-            <div className="order-first min-h-[20rem] bg-zinc-900 lg:order-last">
+            <div className="order-first min-h-[15rem] bg-zinc-900 sm:min-h-[18rem] lg:order-last lg:min-h-[20rem]">
               <SiteImageEl
                 url={content.events.imageUrl}
                 alt={content.events.title}
@@ -479,9 +525,9 @@ export function SlateTemplate({ content, restaurantName }: TemplateProps) {
         <section
           id="visit"
           data-site-section="hours"
-          className="scroll-mt-20 border-b border-white/10 py-24"
+          className="scroll-mt-20 border-b border-white/10 py-16 sm:py-20 lg:py-24"
         >
-          <div className="mx-auto grid max-w-6xl gap-14 px-6 sm:grid-cols-2">
+          <div className="mx-auto grid max-w-6xl gap-10 px-5 sm:px-6 lg:gap-14 sm:grid-cols-2">
             {sections.hours(content) && (
               <div>
                 <SectionLabel>Hours</SectionLabel>
@@ -522,8 +568,8 @@ export function SlateTemplate({ content, restaurantName }: TemplateProps) {
 
       {/* ----------------------------------------------------------------- CTA */}
       {sections.cta(content) && (
-        <section data-site-section="cta" className="border-b border-white/10 py-24">
-          <div className="mx-auto max-w-2xl px-6 text-center">
+        <section data-site-section="cta" className="border-b border-white/10 py-16 sm:py-20 lg:py-24">
+          <div className="mx-auto max-w-2xl px-5 text-center sm:px-6">
             {has(content.callToAction.title) && (
               <h2 className="text-4xl font-light text-balance text-white">
                 {content.callToAction.title}
@@ -548,7 +594,7 @@ export function SlateTemplate({ content, restaurantName }: TemplateProps) {
 
       {/* -------------------------------------------------------------- Footer */}
       <footer data-site-section="footer" className="py-14">
-        <div className="mx-auto grid max-w-6xl gap-10 px-6 sm:grid-cols-3">
+        <div className="mx-auto grid max-w-6xl gap-8 px-5 sm:grid-cols-3 sm:px-6 sm:gap-10">
           <div>
             <p className="text-sm font-semibold tracking-[0.25em] text-white uppercase">
               {name}
@@ -581,7 +627,7 @@ export function SlateTemplate({ content, restaurantName }: TemplateProps) {
           </nav>
         </div>
 
-        <div className="mx-auto mt-12 max-w-6xl border-t border-white/10 px-6 pt-6">
+        <div className="mx-auto mt-10 max-w-6xl border-t border-white/10 px-5 pt-6 sm:px-6 sm:mt-12">
           <p className="text-xs text-zinc-600">
             {has(content.footer.note) ? content.footer.note : name}
           </p>
