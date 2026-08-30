@@ -67,5 +67,5 @@ public static class SiteErrors
     public static Error LinkInvalid(string field) =>
         new(
             "site.link_invalid",
-            $"The link in {field} must start with http://, https://, mailto: or tel:.");
+            $"The link in {field} must start with http://, https://, mailto:, tel: or # for a link on this page.");
 }

@@ -71,7 +71,9 @@ public sealed partial class SiteService : ISiteService
             return Result.Failure<SiteResponse>(SiteErrors.NoRestaurantAssigned);
         }
 
-        var content = request.Content;
+        // Normalised before validation as well as after reading: a client that omits
+        // a section would otherwise store a null the next reader has to survive.
+        var content = request.Content.Normalised();
 
         var invalid = Validate(content);
 
@@ -431,6 +433,7 @@ public sealed partial class SiteService : ISiteService
         try
         {
             return JsonSerializer.Deserialize<SiteContent>(json, SerializerOptions)
+                ?.Normalised()
                 ?? SiteContent.Empty();
         }
         catch (JsonException)
@@ -484,6 +487,7 @@ public sealed partial class SiteService : ISiteService
             ("the map link", content.Contact.MapUrl),
             ("the booking link", content.Contact.BookingUrl),
             ("the closing button", content.CallToAction.ButtonHref),
+            ("the private dining button", content.Events.ButtonHref),
         };
 
         foreach (var (field, value) in links)
@@ -522,6 +526,15 @@ public sealed partial class SiteService : ISiteService
         var trimmed = (url ?? string.Empty).Trim();
 
         if (trimmed.Length == 0)
+        {
+            return true;
+        }
+
+        // A fragment scrolls the page it is already on. It cannot navigate anywhere
+        // or carry a scheme, so anything after the hash is inert. Allowed because
+        // the designs with anchored navigation need it: a hero button reading "See
+        // the menu" points at "#menu" on the same page.
+        if (trimmed.StartsWith('#'))
         {
             return true;
         }

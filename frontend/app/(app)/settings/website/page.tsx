@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useState } from "react";
 import { Eye, ExternalLink, Globe, Pencil, Save } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button, LinkButton } from "@/components/ui/button";
@@ -11,6 +11,9 @@ import { ErrorState, FormError, FormSuccess, Skeleton } from "@/components/ui/st
 import { PageBody, PageHeader } from "@/components/layout/page-header";
 import { NoRestaurantAssigned } from "@/features/restaurants/no-restaurant";
 import { ImageField } from "@/features/site/editor/image-field";
+import { PreviewPane, type DeviceId } from "@/features/site/editor/preview-pane";
+import { SectionNav } from "@/features/site/editor/section-nav";
+import { type SiteFeature, supports } from "@/types/site-capabilities";
 import { ListEditor } from "@/features/site/editor/list-editor";
 import { SiteRenderer } from "@/features/site/templates";
 import {
@@ -58,6 +61,22 @@ export default function WebsitePage() {
   const [isSaving, setIsSaving] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
   const [isPreviewing, setIsPreviewing] = useState(false);
+  const [device, setDevice] = useState<DeviceId>("desktop");
+  const [focused, setFocused] = useState<string | null>(null);
+
+  // The preview redraws a whole restaurant page, which is far more work than the
+  // keystroke that caused it. Deferring it lets React paint the input first and
+  // catch the preview up after, so typing never waits on a repaint of the page.
+  const previewContent = useDeferredValue(content);
+  const isPreviewStale = previewContent !== content;
+
+  /** Scrolls the form to a section and points the preview at the same one. */
+  const goToSection = useCallback((id: string) => {
+    setFocused(id);
+    document
+      .getElementById("section-" + id)
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -223,6 +242,7 @@ export default function WebsitePage() {
             <Button
               variant="secondary"
               size="sm"
+              className="xl:hidden"
               icon={isPreviewing ? <Pencil /> : <Eye />}
               onClick={() => setIsPreviewing((current) => !current)}
             >
@@ -250,7 +270,23 @@ export default function WebsitePage() {
         }
       />
 
-      <PageBody>
+      {/* Wider than the standard well, because this screen is three columns and
+          the middle one is a form that still has to be comfortable to type in. */}
+      <div className="mx-auto flex w-full max-w-[120rem] gap-6 px-4 py-5 sm:px-6">
+        {/* The navigator, at the width where a third column stops crowding the
+            form rather than at the width where it merely fits. */}
+        <aside className="hidden w-52 shrink-0 2xl:block">
+          <div className="sticky top-5">
+            <SectionNav
+              content={content}
+              template={template}
+              active={focused}
+              onSelect={goToSection}
+            />
+          </div>
+        </aside>
+
+        <div className="flex min-w-0 flex-1 flex-col gap-5">
         {saveError !== null && <FormError message={saveError} />}
         {savedAt !== null && saveError === null && (
           <FormSuccess message="Your website has been saved." />
@@ -321,7 +357,7 @@ export default function WebsitePage() {
               </div>
             </Surface>
 
-            <Section title="Name and tagline" description="Shown in the header and footer">
+            <Section template={template} feature="brand" onFocus={setFocused} id="brand" title="Name and tagline" description="Shown in the header and footer">
               <Field htmlFor="brand-name" label="Restaurant name on the page">
                 <Input
                   id="brand-name"
@@ -346,7 +382,7 @@ export default function WebsitePage() {
               </Field>
             </Section>
 
-            <Section title="Hero" description="The first thing a visitor sees">
+            <Section template={template} feature="hero" onFocus={setFocused} id="hero" title="Hero" description="The first thing a visitor sees">
               <Field htmlFor="hero-eyebrow" label="Small text above the headline">
                 <Input
                   id="hero-eyebrow"
@@ -441,7 +477,35 @@ export default function WebsitePage() {
               </div>
             </Section>
 
-            <Section title="Your story" description="Who you are and why">
+            <Section
+              template={template}
+              feature="marquee"
+              onFocus={setFocused}
+              id="marquee"
+              title="Accolades strip"
+              description="A single line of short boasts, under the hero"
+            >
+              <ListEditor
+                label="Line"
+                addLabel="Add an accolade"
+                emptyHint="Nothing here yet. A star, a guide listing, a year established."
+                max={6}
+                items={content.marquee.map((text) => ({ text }))}
+                blank={() => ({ text: "" })}
+                onChange={(next) => patch("marquee", next.map((entry) => entry.text))}
+                renderRow={(entry, update) => (
+                  <Input
+                    aria-label="Accolade"
+                    placeholder="Michelin Guide 2025"
+                    maxLength={60}
+                    value={entry.text}
+                    onChange={(event) => update({ text: event.target.value })}
+                  />
+                )}
+              />
+            </Section>
+
+            <Section template={template} feature="about" onFocus={setFocused} id="about" title="Your story" description="Who you are and why">
               <Field htmlFor="about-title" label="Heading">
                 <Input
                   id="about-title"
@@ -477,7 +541,165 @@ export default function WebsitePage() {
               />
             </Section>
 
-            <Section title="Signature dishes" description="Shown as cards or a menu list">
+            <Section
+              template={template}
+              feature="chef"
+              onFocus={setFocused}
+              id="chef"
+              title="The kitchen"
+              description="Who cooks, and what they would say about it"
+            >
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field htmlFor="chef-name" label="Name">
+                  <Input
+                    id="chef-name"
+                    maxLength={80}
+                    value={content.chef.name}
+                    onChange={(event) =>
+                      patch("chef", { ...content.chef, name: event.target.value })
+                    }
+                  />
+                </Field>
+                <Field htmlFor="chef-role" label="Role">
+                  <Input
+                    id="chef-role"
+                    maxLength={60}
+                    placeholder="Head chef"
+                    value={content.chef.role}
+                    onChange={(event) =>
+                      patch("chef", { ...content.chef, role: event.target.value })
+                    }
+                  />
+                </Field>
+              </div>
+              <Field
+                htmlFor="chef-quote"
+                label="A line they would say"
+                hint="Set large, above the biography."
+              >
+                <Input
+                  id="chef-quote"
+                  maxLength={200}
+                  value={content.chef.quote}
+                  onChange={(event) =>
+                    patch("chef", { ...content.chef, quote: event.target.value })
+                  }
+                />
+              </Field>
+              <Field
+                htmlFor="chef-bio"
+                label="Biography"
+                hint="Leave a blank line between paragraphs."
+              >
+                <Textarea
+                  id="chef-bio"
+                  rows={5}
+                  maxLength={1200}
+                  value={content.chef.bio}
+                  onChange={(event) =>
+                    patch("chef", { ...content.chef, bio: event.target.value })
+                  }
+                />
+              </Field>
+              <ImageField
+                label="Portrait"
+                value={content.chef.imageUrl}
+                images={images}
+                onUploaded={addImage}
+                onChange={(url) => patch("chef", { ...content.chef, imageUrl: url })}
+              />
+            </Section>
+
+            <Section
+              template={template}
+              feature="menuGroups"
+              onFocus={setFocused}
+              id="menuGroups"
+              title="Menu by course"
+              description="Starters, mains, desserts - set in two columns"
+            >
+              <ListEditor
+                label="Course"
+                addLabel="Add a course"
+                emptyHint="No courses yet. Add Starters, then the dishes on it."
+                max={10}
+                items={content.menuGroups}
+                blank={() => ({ name: "", description: "", items: [] })}
+                onChange={(next) => patch("menuGroups", next)}
+                renderRow={(group, update) => (
+                  <div className="flex flex-col gap-3">
+                    <Input
+                      aria-label="Course name"
+                      placeholder="Starters"
+                      maxLength={60}
+                      value={group.name}
+                      onChange={(event) => update({ name: event.target.value })}
+                    />
+                    <Input
+                      aria-label="Course description"
+                      placeholder="Optional line under the course name"
+                      maxLength={160}
+                      value={group.description}
+                      onChange={(event) => update({ description: event.target.value })}
+                    />
+
+                    {/* A list inside a list. The course is what is ordered on the
+                        page, and its dishes are ordered within it. */}
+                    <div className="rounded-lg border border-border bg-surface p-3">
+                      <ListEditor
+                        label="Dish"
+                        addLabel="Add a dish to this course"
+                        emptyHint="No dishes on this course yet."
+                        max={30}
+                        items={group.items}
+                        blank={() => ({
+                          name: "",
+                          description: "",
+                          price: "",
+                          imageUrl: "",
+                        })}
+                        onChange={(next) => update({ items: next })}
+                        renderRow={(dish, updateDish) => (
+                          <div className="flex flex-col gap-3">
+                            <div className="grid gap-3 sm:grid-cols-[1fr_8rem]">
+                              <Input
+                                aria-label="Dish name"
+                                placeholder="Seared scallops"
+                                maxLength={80}
+                                value={dish.name}
+                                onChange={(event) =>
+                                  updateDish({ name: event.target.value })
+                                }
+                              />
+                              <Input
+                                aria-label="Price"
+                                placeholder="Rs 900"
+                                maxLength={24}
+                                value={dish.price}
+                                onChange={(event) =>
+                                  updateDish({ price: event.target.value })
+                                }
+                              />
+                            </div>
+                            <Input
+                              aria-label="Dish description"
+                              placeholder="Cauliflower, brown butter, capers"
+                              maxLength={200}
+                              value={dish.description}
+                              onChange={(event) =>
+                                updateDish({ description: event.target.value })
+                              }
+                            />
+                          </div>
+                        )}
+                      />
+                    </div>
+                  </div>
+                )}
+              />
+            </Section>
+
+            <Section template={template} feature="dishes" onFocus={setFocused} id="dishes" title="Signature dishes" description="Shown as cards or a menu list">
               <ListEditor
                 label="Dish"
                 addLabel="Add a dish"
@@ -523,7 +745,79 @@ export default function WebsitePage() {
               />
             </Section>
 
-            <Section title="Why visit" description="Three short reasons, at most">
+            <Section
+              template={template}
+              feature="spotlight"
+              onFocus={setFocused}
+              id="spotlight"
+              title="Dish of the moment"
+              description="One dish given a band of its own, with a large photograph"
+            >
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field htmlFor="spot-eyebrow" label="Small text above it">
+                  <Input
+                    id="spot-eyebrow"
+                    maxLength={40}
+                    placeholder="This month"
+                    value={content.spotlight.eyebrow}
+                    onChange={(event) =>
+                      patch("spotlight", {
+                        ...content.spotlight,
+                        eyebrow: event.target.value,
+                      })
+                    }
+                  />
+                </Field>
+                <Field htmlFor="spot-price" label="Price">
+                  <Input
+                    id="spot-price"
+                    maxLength={24}
+                    value={content.spotlight.price}
+                    onChange={(event) =>
+                      patch("spotlight", {
+                        ...content.spotlight,
+                        price: event.target.value,
+                      })
+                    }
+                  />
+                </Field>
+              </div>
+              <Field htmlFor="spot-name" label="Dish">
+                <Input
+                  id="spot-name"
+                  maxLength={80}
+                  value={content.spotlight.name}
+                  onChange={(event) =>
+                    patch("spotlight", { ...content.spotlight, name: event.target.value })
+                  }
+                />
+              </Field>
+              <Field htmlFor="spot-description" label="Why it is worth a whole section">
+                <Textarea
+                  id="spot-description"
+                  rows={3}
+                  maxLength={400}
+                  value={content.spotlight.description}
+                  onChange={(event) =>
+                    patch("spotlight", {
+                      ...content.spotlight,
+                      description: event.target.value,
+                    })
+                  }
+                />
+              </Field>
+              <ImageField
+                label="Photograph"
+                value={content.spotlight.imageUrl}
+                images={images}
+                onUploaded={addImage}
+                onChange={(url) =>
+                  patch("spotlight", { ...content.spotlight, imageUrl: url })
+                }
+              />
+            </Section>
+
+            <Section template={template} feature="features" onFocus={setFocused} id="features" title="Why visit" description="Three short reasons, at most">
               <ListEditor
                 label="Reason"
                 addLabel="Add a reason"
@@ -553,7 +847,51 @@ export default function WebsitePage() {
               />
             </Section>
 
-            <Section title="Gallery" description="Photographs of the room and the food">
+            <Section
+              template={template}
+              feature="awards"
+              onFocus={setFocused}
+              id="awards"
+              title="Awards"
+              description="Prizes and listings, shown as a row of figures"
+            >
+              <ListEditor
+                label="Award"
+                addLabel="Add an award"
+                emptyHint="Nothing here yet."
+                max={8}
+                items={content.awards}
+                blank={() => ({ title: "", source: "", year: "" })}
+                onChange={(next) => patch("awards", next)}
+                renderRow={(award, update) => (
+                  <div className="grid gap-3 sm:grid-cols-[6rem_1fr_1fr]">
+                    <Input
+                      aria-label="Year"
+                      placeholder="2025"
+                      maxLength={10}
+                      value={award.year}
+                      onChange={(event) => update({ year: event.target.value })}
+                    />
+                    <Input
+                      aria-label="Award"
+                      placeholder="One star"
+                      maxLength={60}
+                      value={award.title}
+                      onChange={(event) => update({ title: event.target.value })}
+                    />
+                    <Input
+                      aria-label="Awarded by"
+                      placeholder="Michelin Guide"
+                      maxLength={60}
+                      value={award.source}
+                      onChange={(event) => update({ source: event.target.value })}
+                    />
+                  </div>
+                )}
+              />
+            </Section>
+
+            <Section template={template} feature="gallery" onFocus={setFocused} id="gallery" title="Gallery" description="Photographs of the room and the food">
               <ListEditor
                 label="Photo"
                 addLabel="Add a photo"
@@ -582,7 +920,79 @@ export default function WebsitePage() {
               />
             </Section>
 
-            <Section title="Opening hours" description="One line per group of days">
+            <Section
+              template={template}
+              feature="events"
+              onFocus={setFocused}
+              id="events"
+              title="Private dining"
+              description="What the room is also for: parties, functions, whole buyouts"
+            >
+              <Field htmlFor="events-title" label="Heading">
+                <Input
+                  id="events-title"
+                  maxLength={80}
+                  placeholder="Private dining"
+                  value={content.events.title}
+                  onChange={(event) =>
+                    patch("events", { ...content.events, title: event.target.value })
+                  }
+                />
+              </Field>
+              <Field
+                htmlFor="events-body"
+                label="What is on offer"
+                hint="Leave a blank line between paragraphs."
+              >
+                <Textarea
+                  id="events-body"
+                  rows={4}
+                  maxLength={900}
+                  value={content.events.body}
+                  onChange={(event) =>
+                    patch("events", { ...content.events, body: event.target.value })
+                  }
+                />
+              </Field>
+              <ImageField
+                label="Photograph of the space"
+                value={content.events.imageUrl}
+                images={images}
+                onUploaded={addImage}
+                onChange={(url) => patch("events", { ...content.events, imageUrl: url })}
+              />
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field htmlFor="events-label" label="Button text">
+                  <Input
+                    id="events-label"
+                    maxLength={40}
+                    placeholder="Enquire"
+                    value={content.events.buttonLabel}
+                    onChange={(event) =>
+                      patch("events", {
+                        ...content.events,
+                        buttonLabel: event.target.value,
+                      })
+                    }
+                  />
+                </Field>
+                <Field htmlFor="events-href" label="Where enquiries go">
+                  <Input
+                    id="events-href"
+                    placeholder="mailto:events@example.com"
+                    value={content.events.buttonHref}
+                    onChange={(event) =>
+                      patch("events", {
+                        ...content.events,
+                        buttonHref: event.target.value,
+                      })
+                    }
+                  />
+                </Field>
+              </div>
+            </Section>
+
+            <Section template={template} feature="hours" onFocus={setFocused} id="hours" title="Opening hours" description="One line per group of days">
               <ListEditor
                 label="Row"
                 addLabel="Add a row"
@@ -612,7 +1022,7 @@ export default function WebsitePage() {
               />
             </Section>
 
-            <Section title="What guests say" description="Quotes, in their words">
+            <Section template={template} feature="testimonials" onFocus={setFocused} id="testimonials" title="What guests say" description="Quotes, in their words">
               <ListEditor
                 label="Quote"
                 addLabel="Add a quote"
@@ -642,7 +1052,7 @@ export default function WebsitePage() {
               />
             </Section>
 
-            <Section title="Find us" description="How a guest reaches you">
+            <Section template={template} feature="contact" onFocus={setFocused} id="contact" title="Find us" description="How a guest reaches you">
               <div className="grid gap-4 sm:grid-cols-2">
                 <Field htmlFor="contact-address" label="Address">
                   <Input
@@ -712,7 +1122,7 @@ export default function WebsitePage() {
               </div>
             </Section>
 
-            <Section title="Closing invitation" description="The band above the footer">
+            <Section template={template} feature="cta" onFocus={setFocused} id="cta" title="Closing invitation" description="The band above the footer">
               <Field htmlFor="cta-title" label="Heading">
                 <Input
                   id="cta-title"
@@ -769,7 +1179,7 @@ export default function WebsitePage() {
               </div>
             </Section>
 
-            <Section title="Footer" description="The last line of the page">
+            <Section template={template} feature="footer" onFocus={setFocused} id="footer" title="Footer" description="The last line of the page">
               <Field htmlFor="footer-note" label="Small print">
                 <Input
                   id="footer-note"
@@ -810,6 +1220,10 @@ export default function WebsitePage() {
             </Section>
 
             <Section
+              template={template}
+              feature="seo"
+              onFocus={setFocused}
+              id="settings"
               title="Colour and search"
               description="One accent colour, and what search engines show"
             >
@@ -862,7 +1276,26 @@ export default function WebsitePage() {
             </Section>
           </>
         )}
-      </PageBody>
+        </div>
+
+        {/* Sticky rather than a fixed pane, so the preview keeps its place while
+            the form scrolls past it and no height has to be computed from the
+            header. Hidden below xl: two columns in less than that leaves a form
+            too narrow to write in, and the Preview button already covers it. */}
+        <div className="hidden w-[34rem] shrink-0 xl:block 2xl:w-[42rem]">
+          <div className="sticky top-5 h-[calc(100svh-2.5rem)]">
+            <PreviewPane
+              template={template}
+              content={previewContent}
+              restaurantName={previewContent.brand.name || site.slug}
+              device={device}
+              onDeviceChange={setDevice}
+              focusedSection={focused}
+              isStale={isPreviewStale}
+            />
+          </div>
+        </div>
+      </div>
     </>
   );
 }
@@ -873,18 +1306,41 @@ const CRUMBS = [
   { label: "Website" },
 ];
 
-/** One block of the form, matching the sections of the page it edits. */
+/**
+ * One block of the form, matching the section of the page it edits.
+ *
+ * Focusing anything inside it tells the page which section is being worked on,
+ * which is what steers the preview. Focus rather than scroll position, because a
+ * manager tabbing through the gallery fields means the gallery even if the page
+ * has not moved, and a scroll-spy would fight the navigator every time it jumped.
+ */
 function Section({
+  id,
+  feature,
+  template,
   title,
   description,
+  onFocus,
   children,
 }: {
+  id: string;
+  /** The capability a design must declare for this block to be offered. */
+  feature: SiteFeature;
+  template: SiteTemplate;
   title: string;
   description: string;
+  onFocus: (id: string) => void;
   children: React.ReactNode;
 }) {
+  // Hidden rather than disabled. A manager on the cafe design has no use for
+  // knowing a chef biography exists somewhere in the product, and a form full of
+  // greyed-out blocks is a form mostly made of things you cannot do.
+  if (!supports(template, feature)) {
+    return null;
+  }
+
   return (
-    <Surface>
+    <Surface id={"section-" + id} onFocusCapture={() => onFocus(id)}>
       <SurfaceHeader title={title} description={description} />
       <div className="flex flex-col gap-4 p-4">{children}</div>
     </Surface>

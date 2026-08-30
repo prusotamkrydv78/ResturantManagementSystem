@@ -30,7 +30,7 @@ export function PressTemplate({ content, restaurantName }: TemplateProps) {
       className="min-h-screen bg-white font-serif text-neutral-800 antialiased"
     >
       <div className="mx-auto max-w-3xl px-6">
-        <header className="border-b border-neutral-300 py-14 text-center">
+        <header data-site-section="hero" className="border-b border-neutral-300 py-14 text-center">
           <p className="text-[0.7rem] tracking-[0.4em] text-neutral-500 uppercase">
             {has(content.hero.eyebrow) ? content.hero.eyebrow : "Established"}
           </p>
@@ -82,7 +82,7 @@ export function PressTemplate({ content, restaurantName }: TemplateProps) {
         />
 
         {sections.about(content) && (
-          <section className="py-16 text-center">
+          <section data-site-section="about" className="py-16 text-center">
             <SectionHeading>
               {has(content.about.title) ? content.about.title : "Our story"}
             </SectionHeading>
@@ -95,7 +95,7 @@ export function PressTemplate({ content, restaurantName }: TemplateProps) {
         )}
 
         {sections.dishes(content) && (
-          <section className="border-t border-neutral-300 py-16">
+          <section data-site-section="dishes" className="border-t border-neutral-300 py-16">
             <SectionHeading>The menu</SectionHeading>
             <ul className="flex flex-col gap-7">
               {content.dishes.map((dish, index) => (
@@ -118,7 +118,7 @@ export function PressTemplate({ content, restaurantName }: TemplateProps) {
         )}
 
         {sections.features(content) && (
-          <section className="border-t border-neutral-300 py-14">
+          <section data-site-section="features" className="border-t border-neutral-300 py-14">
             <div className="grid gap-8 text-center sm:grid-cols-3">
               {content.features.map((feature, index) => (
                 <div key={index}>
@@ -133,7 +133,7 @@ export function PressTemplate({ content, restaurantName }: TemplateProps) {
         )}
 
         {sections.testimonials(content) && (
-          <section className="border-t border-neutral-300 py-16 text-center">
+          <section data-site-section="testimonials" className="border-t border-neutral-300 py-16 text-center">
             {content.testimonials.map((quote, index) => (
               <figure key={index} className="mb-10 last:mb-0">
                 <blockquote className="mx-auto max-w-xl text-xl leading-relaxed text-balance text-neutral-700 italic">
@@ -151,7 +151,7 @@ export function PressTemplate({ content, restaurantName }: TemplateProps) {
       </div>
 
       {sections.gallery(content) && (
-        <section className="mx-auto grid max-w-5xl grid-cols-2 gap-1 px-6 py-10 md:grid-cols-3">
+        <section data-site-section="gallery" className="mx-auto grid max-w-5xl grid-cols-2 gap-1 px-6 py-10 md:grid-cols-3">
           {content.gallery.map((image, index) => (
             <SiteImageEl
               key={index}
@@ -165,9 +165,9 @@ export function PressTemplate({ content, restaurantName }: TemplateProps) {
 
       <div className="mx-auto max-w-3xl px-6">
         {(sections.hours(content) || sections.contact(content)) && (
-          <section className="grid gap-12 border-t border-neutral-300 py-16 text-center sm:grid-cols-2">
+          <section data-site-section="hours" className="grid gap-12 border-t border-neutral-300 py-16 text-center sm:grid-cols-2">
             {sections.hours(content) && (
-              <div>
+              <div data-site-section="hours">
                 <SectionHeading>Hours</SectionHeading>
                 <dl className="flex flex-col gap-2 text-sm">
                   {content.hours.map((row, index) => (
@@ -182,7 +182,7 @@ export function PressTemplate({ content, restaurantName }: TemplateProps) {
               </div>
             )}
             {sections.contact(content) && (
-              <div>
+              <div data-site-section="contact">
                 <SectionHeading>Find us</SectionHeading>
                 <ContactBlock
                   content={content}
@@ -194,7 +194,7 @@ export function PressTemplate({ content, restaurantName }: TemplateProps) {
         )}
 
         {sections.cta(content) && (
-          <section className="border-t border-neutral-300 py-16 text-center">
+          <section data-site-section="cta" className="border-t border-neutral-300 py-16 text-center">
             {has(content.callToAction.title) && (
               <h2 className="text-3xl text-balance text-neutral-900">
                 {content.callToAction.title}
@@ -216,7 +216,7 @@ export function PressTemplate({ content, restaurantName }: TemplateProps) {
           </section>
         )}
 
-        <footer className="border-t border-neutral-300 py-10 text-center">
+        <footer data-site-section="footer" className="border-t border-neutral-300 py-10 text-center">
           <nav className="flex flex-wrap justify-center gap-6 font-sans text-[0.7rem] tracking-[0.2em] uppercase">
             {content.footer.links.map((link, index) => {
               const href = safeHref(link.url);

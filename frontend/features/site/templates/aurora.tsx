@@ -29,7 +29,7 @@ export function AuroraTemplate({ content, restaurantName }: TemplateProps) {
       className="min-h-screen bg-stone-50 font-sans text-stone-800 antialiased"
     >
       {/* Hero */}
-      <header className="relative isolate flex min-h-[32rem] items-center overflow-hidden bg-gradient-to-br from-stone-900 via-stone-800 to-[var(--accent)]">
+      <header data-site-section="hero" className="relative isolate flex min-h-[32rem] items-center overflow-hidden bg-gradient-to-br from-stone-900 via-stone-800 to-[var(--accent)]">
         {has(content.hero.imageUrl) && (
           <>
             <SiteImageEl
@@ -92,7 +92,7 @@ export function AuroraTemplate({ content, restaurantName }: TemplateProps) {
       </div>
 
       {sections.about(content) && (
-        <section className="mx-auto grid max-w-5xl items-center gap-10 px-6 py-20 md:grid-cols-2">
+        <section data-site-section="about" className="mx-auto grid max-w-5xl items-center gap-10 px-6 py-20 md:grid-cols-2">
           <div>
             {has(content.about.title) && (
               <h2 className="text-3xl font-semibold tracking-tight text-stone-900">
@@ -114,7 +114,7 @@ export function AuroraTemplate({ content, restaurantName }: TemplateProps) {
       )}
 
       {sections.features(content) && (
-        <section className="bg-white py-16">
+        <section data-site-section="features" className="bg-white py-16">
           <div className="mx-auto grid max-w-5xl gap-8 px-6 sm:grid-cols-3">
             {content.features.map((feature, index) => (
               <div key={index} className="text-center">
@@ -131,7 +131,7 @@ export function AuroraTemplate({ content, restaurantName }: TemplateProps) {
       )}
 
       {sections.dishes(content) && (
-        <section className="mx-auto max-w-5xl px-6 py-20">
+        <section data-site-section="dishes" className="mx-auto max-w-5xl px-6 py-20">
           <h2 className="text-center text-3xl font-semibold tracking-tight text-stone-900">
             What we are known for
           </h2>
@@ -166,7 +166,7 @@ export function AuroraTemplate({ content, restaurantName }: TemplateProps) {
       )}
 
       {sections.gallery(content) && (
-        <section className="bg-white py-16">
+        <section data-site-section="gallery" className="bg-white py-16">
           <div className="mx-auto grid max-w-6xl grid-cols-2 gap-3 px-6 md:grid-cols-4">
             {content.gallery.map((image, index) => (
               <SiteImageEl
@@ -181,7 +181,7 @@ export function AuroraTemplate({ content, restaurantName }: TemplateProps) {
       )}
 
       {sections.testimonials(content) && (
-        <section className="mx-auto max-w-4xl px-6 py-20">
+        <section data-site-section="testimonials" className="mx-auto max-w-4xl px-6 py-20">
           <div className="grid gap-8 sm:grid-cols-2">
             {content.testimonials.map((quote, index) => (
               <figure
@@ -203,10 +203,10 @@ export function AuroraTemplate({ content, restaurantName }: TemplateProps) {
       )}
 
       {(sections.hours(content) || sections.contact(content)) && (
-        <section className="bg-stone-900 py-20 text-stone-200">
+        <section data-site-section="hours" className="bg-stone-900 py-20 text-stone-200">
           <div className="mx-auto grid max-w-5xl gap-12 px-6 md:grid-cols-2">
             {sections.hours(content) && (
-              <div>
+              <div data-site-section="hours">
                 <h2 className="text-xl font-semibold text-white">Opening hours</h2>
                 <dl className="mt-5 flex flex-col gap-2 text-sm">
                   {content.hours.map((row, index) => (
@@ -223,7 +223,7 @@ export function AuroraTemplate({ content, restaurantName }: TemplateProps) {
             )}
 
             {sections.contact(content) && (
-              <div>
+              <div data-site-section="contact">
                 <h2 className="text-xl font-semibold text-white">Find us</h2>
                 <ContactBlock content={content} className="mt-5 text-sm text-stone-300" />
               </div>
@@ -248,7 +248,7 @@ function CallToActionBand({
   const href = safeHref(content.callToAction.buttonHref);
 
   return (
-    <section className="bg-[var(--accent)] py-16 text-white">
+    <section data-site-section="cta" className="bg-[var(--accent)] py-16 text-white">
       <div className="mx-auto max-w-3xl px-6 text-center">
         {has(content.callToAction.title) && (
           <h2 className="text-3xl font-semibold tracking-tight text-balance">
@@ -280,7 +280,7 @@ function FooterBar({
   name: string;
 }) {
   return (
-    <footer className="border-t border-stone-200 bg-white py-10">
+    <footer data-site-section="footer" className="border-t border-stone-200 bg-white py-10">
       <div className="mx-auto flex max-w-5xl flex-col items-center gap-4 px-6 text-center">
         {content.footer.links.length > 0 && (
           <nav className="flex flex-wrap justify-center gap-5 text-sm">

@@ -40,7 +40,7 @@ export function LanternTemplate({ content, restaurantName }: TemplateProps) {
         </div>
       </nav>
 
-      <header className="border-b-4 border-neutral-900">
+      <header data-site-section="hero" className="border-b-4 border-neutral-900">
         <div className="mx-auto grid max-w-6xl gap-0 md:grid-cols-2">
           <div className="flex flex-col justify-center px-6 py-16 md:py-24">
             {has(content.hero.eyebrow) && (
@@ -87,7 +87,7 @@ export function LanternTemplate({ content, restaurantName }: TemplateProps) {
       </header>
 
       {sections.features(content) && (
-        <section className="border-b-4 border-neutral-900 bg-[var(--accent)] text-white">
+        <section data-site-section="features" className="border-b-4 border-neutral-900 bg-[var(--accent)] text-white">
           <div className="mx-auto grid max-w-6xl divide-y-4 divide-neutral-900 sm:grid-cols-3 sm:divide-x-4 sm:divide-y-0">
             {content.features.map((feature, index) => (
               <div key={index} className="px-6 py-10">
@@ -103,7 +103,7 @@ export function LanternTemplate({ content, restaurantName }: TemplateProps) {
       )}
 
       {sections.about(content) && (
-        <section className="border-b-4 border-neutral-900">
+        <section data-site-section="about" className="border-b-4 border-neutral-900">
           <div className="mx-auto grid max-w-6xl items-center gap-10 px-6 py-20 md:grid-cols-[1fr_1.2fr]">
             <SiteImageEl
               url={content.about.imageUrl}
@@ -127,7 +127,7 @@ export function LanternTemplate({ content, restaurantName }: TemplateProps) {
       )}
 
       {sections.dishes(content) && (
-        <section className="border-b-4 border-neutral-900 py-20">
+        <section data-site-section="dishes" className="border-b-4 border-neutral-900 py-20">
           <div className="mx-auto max-w-6xl px-6">
             <h2 className="text-4xl font-black tracking-tight">The good stuff</h2>
             <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
@@ -164,7 +164,7 @@ export function LanternTemplate({ content, restaurantName }: TemplateProps) {
       )}
 
       {sections.gallery(content) && (
-        <section className="border-b-4 border-neutral-900">
+        <section data-site-section="gallery" className="border-b-4 border-neutral-900">
           <div className="mx-auto grid max-w-6xl grid-cols-2 gap-4 px-6 py-16 md:grid-cols-4">
             {content.gallery.map((image, index) => (
               <SiteImageEl
@@ -179,7 +179,7 @@ export function LanternTemplate({ content, restaurantName }: TemplateProps) {
       )}
 
       {sections.testimonials(content) && (
-        <section className="border-b-4 border-neutral-900 bg-neutral-900 py-16 text-yellow-50">
+        <section data-site-section="testimonials" className="border-b-4 border-neutral-900 bg-neutral-900 py-16 text-yellow-50">
           <div className="mx-auto grid max-w-5xl gap-8 px-6 sm:grid-cols-2">
             {content.testimonials.map((quote, index) => (
               <figure key={index}>
@@ -198,10 +198,10 @@ export function LanternTemplate({ content, restaurantName }: TemplateProps) {
       )}
 
       {(sections.hours(content) || sections.contact(content)) && (
-        <section className="border-b-4 border-neutral-900">
+        <section data-site-section="hours" className="border-b-4 border-neutral-900">
           <div className="mx-auto grid max-w-6xl gap-10 px-6 py-16 sm:grid-cols-2">
             {sections.hours(content) && (
-              <div>
+              <div data-site-section="hours">
                 <h2 className="text-2xl font-black">When we are open</h2>
                 <dl className="mt-5 flex flex-col gap-2 text-sm">
                   {content.hours.map((row, index) => (
@@ -217,7 +217,7 @@ export function LanternTemplate({ content, restaurantName }: TemplateProps) {
               </div>
             )}
             {sections.contact(content) && (
-              <div>
+              <div data-site-section="contact">
                 <h2 className="text-2xl font-black">Come find us</h2>
                 <ContactBlock content={content} className="mt-5 text-sm text-neutral-700" />
               </div>
@@ -227,7 +227,7 @@ export function LanternTemplate({ content, restaurantName }: TemplateProps) {
       )}
 
       {sections.cta(content) && (
-        <section className="bg-[var(--accent)] py-20 text-white">
+        <section data-site-section="cta" className="bg-[var(--accent)] py-20 text-white">
           <div className="mx-auto max-w-3xl px-6 text-center">
             {has(content.callToAction.title) && (
               <h2 className="text-4xl font-black tracking-tight text-balance sm:text-5xl">
@@ -251,7 +251,7 @@ export function LanternTemplate({ content, restaurantName }: TemplateProps) {
         </section>
       )}
 
-      <footer className="bg-neutral-900 py-10 text-yellow-50">
+      <footer data-site-section="footer" className="bg-neutral-900 py-10 text-yellow-50">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-6 text-sm">
           <p className="font-bold">
             {has(content.footer.note) ? content.footer.note : name}

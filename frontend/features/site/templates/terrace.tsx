@@ -29,7 +29,7 @@ export function TerraceTemplate({ content, restaurantName }: TemplateProps) {
       style={accentStyle(content.theme.accent, "#7f5539")}
       className="min-h-screen bg-amber-50/60 font-serif text-stone-700 antialiased"
     >
-      <header className="border-b-2 border-stone-800/10">
+      <header data-site-section="hero" className="border-b-2 border-stone-800/10">
         <div className="mx-auto max-w-5xl px-6 py-16 text-center">
           {has(content.hero.eyebrow) && (
             <p className="mb-3 font-sans text-xs tracking-[0.3em] text-[var(--accent)] uppercase">
@@ -80,6 +80,7 @@ export function TerraceTemplate({ content, restaurantName }: TemplateProps) {
 
       {sections.about(content) && (
         <Band
+          name="about"
           image={content.about.imageUrl}
           alt={content.about.title}
           reversed={false}
@@ -96,7 +97,7 @@ export function TerraceTemplate({ content, restaurantName }: TemplateProps) {
       )}
 
       {sections.features(content) && (
-        <section className="border-y-2 border-stone-800/10 bg-white/60 py-16">
+        <section data-site-section="features" className="border-y-2 border-stone-800/10 bg-white/60 py-16">
           <div className="mx-auto grid max-w-5xl gap-10 px-6 sm:grid-cols-3">
             {content.features.map((feature, index) => (
               <div key={index} className="text-center">
@@ -111,7 +112,7 @@ export function TerraceTemplate({ content, restaurantName }: TemplateProps) {
       )}
 
       {sections.dishes(content) && (
-        <section className="mx-auto max-w-4xl px-6 py-20">
+        <section data-site-section="dishes" className="mx-auto max-w-4xl px-6 py-20">
           <h2 className="text-center text-4xl text-stone-900">From our kitchen</h2>
           <div
             aria-hidden="true"
@@ -153,7 +154,7 @@ export function TerraceTemplate({ content, restaurantName }: TemplateProps) {
       )}
 
       {sections.gallery(content) && (
-        <section className="mx-auto grid max-w-6xl grid-cols-2 gap-2 px-6 pb-20 md:grid-cols-4">
+        <section data-site-section="gallery" className="mx-auto grid max-w-6xl grid-cols-2 gap-2 px-6 pb-20 md:grid-cols-4">
           {content.gallery.map((image, index) => (
             <SiteImageEl
               key={index}
@@ -166,7 +167,7 @@ export function TerraceTemplate({ content, restaurantName }: TemplateProps) {
       )}
 
       {sections.testimonials(content) && (
-        <section className="border-y-2 border-stone-800/10 bg-white/60 py-16">
+        <section data-site-section="testimonials" className="border-y-2 border-stone-800/10 bg-white/60 py-16">
           <div className="mx-auto grid max-w-5xl gap-10 px-6 sm:grid-cols-2">
             {content.testimonials.map((quote, index) => (
               <figure key={index} className="text-center">
@@ -185,9 +186,9 @@ export function TerraceTemplate({ content, restaurantName }: TemplateProps) {
       )}
 
       {(sections.hours(content) || sections.contact(content)) && (
-        <section className="mx-auto grid max-w-5xl gap-12 px-6 py-20 sm:grid-cols-2">
+        <section data-site-section="hours" className="mx-auto grid max-w-5xl gap-12 px-6 py-20 sm:grid-cols-2">
           {sections.hours(content) && (
-            <div>
+            <div data-site-section="hours">
               <h2 className="text-3xl text-stone-900">Opening hours</h2>
               <dl className="mt-5 flex flex-col gap-2 font-sans text-sm">
                 {content.hours.map((row, index) => (
@@ -203,7 +204,7 @@ export function TerraceTemplate({ content, restaurantName }: TemplateProps) {
             </div>
           )}
           {sections.contact(content) && (
-            <div>
+            <div data-site-section="contact">
               <h2 className="text-3xl text-stone-900">Find us</h2>
               <ContactBlock
                 content={content}
@@ -215,7 +216,7 @@ export function TerraceTemplate({ content, restaurantName }: TemplateProps) {
       )}
 
       {sections.cta(content) && (
-        <section className="bg-[var(--accent)] py-16 text-amber-50">
+        <section data-site-section="cta" className="bg-[var(--accent)] py-16 text-amber-50">
           <div className="mx-auto max-w-2xl px-6 text-center">
             {has(content.callToAction.title) && (
               <h2 className="text-4xl text-balance">{content.callToAction.title}</h2>
@@ -235,7 +236,7 @@ export function TerraceTemplate({ content, restaurantName }: TemplateProps) {
         </section>
       )}
 
-      <footer className="border-t-2 border-stone-800/10 py-10">
+      <footer data-site-section="footer" className="border-t-2 border-stone-800/10 py-10">
         <div className="mx-auto flex max-w-5xl flex-col items-center gap-3 px-6 text-center font-sans text-xs text-stone-500">
           <nav className="flex flex-wrap justify-center gap-5">
             {content.footer.links.map((link, index) => {
@@ -263,18 +264,21 @@ export function TerraceTemplate({ content, restaurantName }: TemplateProps) {
 
 /** One text-and-image band. The side the picture sits on alternates down the page. */
 function Band({
+  name,
   image,
   alt,
   reversed,
   children,
 }: {
+  /** Which section of the content this band is showing, for the editor preview. */
+  name: string;
   image: string;
   alt: string;
   reversed: boolean;
   children: React.ReactNode;
 }) {
   return (
-    <section className="mx-auto grid max-w-5xl items-center gap-10 px-6 py-20 md:grid-cols-2">
+    <section data-site-section={name} className="mx-auto grid max-w-5xl items-center gap-10 px-6 py-20 md:grid-cols-2">
       <div className={reversed ? "md:order-2" : undefined}>{children}</div>
       <SiteImageEl
         url={image}

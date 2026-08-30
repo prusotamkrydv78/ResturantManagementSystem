@@ -36,6 +36,12 @@ export function safeHref(url: string): string | null {
     return null;
   }
 
+  // A fragment scrolls the page it is already on: inert, and needed by the designs
+  // with anchored navigation.
+  if (trimmed.startsWith("#")) {
+    return trimmed;
+  }
+
   if (trimmed.startsWith("/")) {
     return trimmed.startsWith("//") ? null : trimmed;
   }

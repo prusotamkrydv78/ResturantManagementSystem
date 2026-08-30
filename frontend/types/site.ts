@@ -1,9 +1,12 @@
 /**
  * The restaurant's public one-page website.
  *
- * One content shape for all five designs, mirroring the server record exactly. A
- * template decides how a section looks and may leave one out, but none of them owns
- * a field the others lack — which is what makes switching design lossless.
+ * One record for all five designs, mirroring the server exactly — but not one that
+ * every design uses all of. Which parts a template can draw is declared in
+ * `site-capabilities.ts`, and the editor shows a manager only those.
+ *
+ * Still one record rather than one per design, because that is what keeps switching
+ * lossless: content a design does not draw is kept, not discarded.
  */
 
 export type SiteTemplate = "Aurora" | "Slate" | "Terrace" | "Lantern" | "Press";
@@ -36,6 +39,53 @@ export interface DishContent {
   /** Written by the manager, so a restaurant sets its own currency. */
   price: string;
   imageUrl: string;
+}
+
+/**
+ * A course, and what is on it.
+ *
+ * Separate from a flat dish list rather than replacing it, because the two answer
+ * different designs: a cafe wants four cards, a dining room wants Starters, Mains
+ * and Desserts with a dozen lines under them.
+ */
+export interface MenuGroupContent {
+  name: string;
+  description: string;
+  items: DishContent[];
+}
+
+/** One dish given a section of its own. */
+export interface SpotlightContent {
+  eyebrow: string;
+  name: string;
+  description: string;
+  price: string;
+  imageUrl: string;
+}
+
+/** The person behind the kitchen. */
+export interface ChefContent {
+  name: string;
+  role: string;
+  bio: string;
+  imageUrl: string;
+  quote: string;
+}
+
+/** A prize, a listing, or a mention worth showing. */
+export interface AwardContent {
+  title: string;
+  source: string;
+  year: string;
+}
+
+/** What the room is also for: private dining, parties, functions. */
+export interface EventsContent {
+  title: string;
+  body: string;
+  imageUrl: string;
+  buttonLabel: string;
+  buttonHref: string;
 }
 
 export interface FeatureContent {
@@ -100,7 +150,16 @@ export interface SiteContent {
   brand: BrandContent;
   hero: HeroContent;
   about: AboutContent;
+  /** Short accolades, for designs that run a ticker. */
+  marquee: string[];
+  /** A flat list of dishes, for designs that show cards. */
   dishes: DishContent[];
+  /** The menu split into courses, for designs that carry one. */
+  menuGroups: MenuGroupContent[];
+  spotlight: SpotlightContent;
+  chef: ChefContent;
+  awards: AwardContent[];
+  events: EventsContent;
   features: FeatureContent[];
   gallery: GalleryImageContent[];
   hours: HoursRowContent[];
@@ -173,7 +232,13 @@ export function emptySiteContent(): SiteContent {
       secondaryHref: "",
     },
     about: { title: "", body: "", imageUrl: "" },
+    marquee: [],
     dishes: [],
+    menuGroups: [],
+    spotlight: { eyebrow: "", name: "", description: "", price: "", imageUrl: "" },
+    chef: { name: "", role: "", bio: "", imageUrl: "", quote: "" },
+    awards: [],
+    events: { title: "", body: "", imageUrl: "", buttonLabel: "", buttonHref: "" },
     features: [],
     gallery: [],
     hours: [],

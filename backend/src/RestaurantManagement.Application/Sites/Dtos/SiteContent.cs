@@ -3,11 +3,14 @@ namespace RestaurantManagement.Application.Sites.Dtos;
 /// <summary>
 /// Everything on a restaurant's page that a manager can change.
 ///
-/// One shape for all five designs, rather than a shape per design. A template
-/// decides how a section looks and may leave one out, but none of them owns a field
-/// nobody else has: that is what makes switching design lossless, and it is why a
-/// manager who spends an hour writing their story does not lose it by changing their
-/// mind about the layout.
+/// One record for all five designs, but not one that every design uses all of. A
+/// template declares which parts it can draw, and the editor shows a manager only
+/// those; a dining room carries a menu in courses, a chef and a list of awards, and
+/// a cafe page has no use for any of them.
+///
+/// Still one record rather than one per design, because that is what keeps switching
+/// lossless. Content a design does not draw is kept, not discarded, so trying a
+/// different look and going back costs nothing.
 ///
 /// Every property has a default, so a record written by an older build - or a
 /// half-filled one saved by a manager who stopped halfway - deserialises into the
@@ -18,7 +21,13 @@ namespace RestaurantManagement.Application.Sites.Dtos;
 /// <param name="Brand">Identity in the header and the footer.</param>
 /// <param name="Hero">The first screen.</param>
 /// <param name="About">The story section.</param>
-/// <param name="Dishes">Signature dishes, shown as cards.</param>
+/// <param name="Marquee">Short accolades, for designs that run a ticker.</param>
+/// <param name="Dishes">Signature dishes, for designs that show a flat list.</param>
+/// <param name="MenuGroups">The menu split into courses, for designs that carry one.</param>
+/// <param name="Spotlight">One dish given a section of its own.</param>
+/// <param name="Chef">The person behind the kitchen.</param>
+/// <param name="Awards">Prizes and listings.</param>
+/// <param name="Events">Private dining, or whatever the room is also for.</param>
 /// <param name="Features">Short reasons to visit, shown as a row.</param>
 /// <param name="Gallery">Photographs.</param>
 /// <param name="Hours">Opening times, one row per line.</param>
@@ -32,7 +41,13 @@ public sealed record SiteContent(
     BrandContent Brand,
     HeroContent Hero,
     AboutContent About,
+    IReadOnlyList<string> Marquee,
     IReadOnlyList<DishContent> Dishes,
+    IReadOnlyList<MenuGroupContent> MenuGroups,
+    SpotlightContent Spotlight,
+    ChefContent Chef,
+    IReadOnlyList<AwardContent> Awards,
+    EventsContent Events,
     IReadOnlyList<FeatureContent> Features,
     IReadOnlyList<GalleryImageContent> Gallery,
     IReadOnlyList<HoursRowContent> Hours,
@@ -57,7 +72,19 @@ public sealed record SiteContent(
                 string.Empty, string.Empty, string.Empty, string.Empty,
                 string.Empty, string.Empty, string.Empty, string.Empty),
             new AboutContent(string.Empty, string.Empty, string.Empty),
+            // Marquee, Dishes, MenuGroups
             [],
+            [],
+            [],
+            new SpotlightContent(
+                string.Empty, string.Empty, string.Empty, string.Empty, string.Empty),
+            new ChefContent(
+                string.Empty, string.Empty, string.Empty, string.Empty, string.Empty),
+            // Awards
+            [],
+            new EventsContent(
+                string.Empty, string.Empty, string.Empty, string.Empty, string.Empty),
+            // Features, Gallery, Hours, Testimonials
             [],
             [],
             [],
@@ -70,6 +97,43 @@ public sealed record SiteContent(
             new FooterContent(string.Empty, []),
             new ThemeContent(string.Empty),
             new SeoContent(string.Empty, string.Empty));
+
+    /// <summary>
+    /// Replaces anything missing with its empty form.
+    ///
+    /// A positional record deserialises through its constructor, so a property that
+    /// is not in the stored JSON arrives as null rather than as an empty list. Every
+    /// page written before a field existed is in exactly that state, and a template
+    /// mapping over a null list is a crash rather than a missing section. This is the
+    /// one place that has to know, so nothing downstream does.
+    /// </summary>
+    public SiteContent Normalised()
+    {
+        var empty = Empty();
+
+        return new SiteContent(
+            Brand ?? empty.Brand,
+            Hero ?? empty.Hero,
+            About ?? empty.About,
+            Marquee ?? [],
+            Dishes ?? [],
+            MenuGroups ?? [],
+            Spotlight ?? empty.Spotlight,
+            Chef ?? empty.Chef,
+            Awards ?? [],
+            Events ?? empty.Events,
+            Features ?? [],
+            Gallery ?? [],
+            Hours ?? [],
+            Testimonials ?? [],
+            Contact ?? empty.Contact,
+            CallToAction ?? empty.CallToAction,
+            Footer is null
+                ? empty.Footer
+                : Footer with { Links = Footer.Links ?? [] },
+            Theme ?? empty.Theme,
+            Seo ?? empty.Seo);
+    }
 }
 
 /// <param name="Name">Shown in the header. Falls back to the restaurant name.</param>
@@ -170,3 +234,64 @@ public sealed record ThemeContent(string Accent);
 /// <param name="Title">The browser tab and the search result heading.</param>
 /// <param name="Description">The line under it in a search result.</param>
 public sealed record SeoContent(string Title, string Description);
+
+/// <summary>
+/// A course, and what is on it.
+///
+/// Separate from <see cref="DishContent"/> rather than replacing it, because the two
+/// answer different designs. A cafe page wants four cards; a dining room wants
+/// Starters, Mains and Desserts with a dozen lines under them, and flattening that
+/// into one list loses the only structure a menu has.
+/// </summary>
+/// <param name="Name">The course.</param>
+/// <param name="Description">An optional line under it.</param>
+/// <param name="Items">The dishes on it.</param>
+public sealed record MenuGroupContent(
+    string Name,
+    string Description,
+    IReadOnlyList<DishContent> Items);
+
+/// <summary>One dish given a section of its own.</summary>
+/// <param name="Eyebrow">Small text above it, such as "This month".</param>
+/// <param name="Name">The dish.</param>
+/// <param name="Description">Why it is worth a whole section.</param>
+/// <param name="Price">Shown as written.</param>
+/// <param name="ImageUrl">A photograph, given real size.</param>
+public sealed record SpotlightContent(
+    string Eyebrow,
+    string Name,
+    string Description,
+    string Price,
+    string ImageUrl);
+
+/// <summary>The person behind the kitchen.</summary>
+/// <param name="Name">Their name.</param>
+/// <param name="Role">Head chef, owner, whatever they are.</param>
+/// <param name="Bio">A paragraph or two.</param>
+/// <param name="ImageUrl">A portrait.</param>
+/// <param name="Quote">Something they would say about the food.</param>
+public sealed record ChefContent(
+    string Name,
+    string Role,
+    string Bio,
+    string ImageUrl,
+    string Quote);
+
+/// <summary>A prize, a listing, or a mention worth showing.</summary>
+/// <param name="Title">What it was.</param>
+/// <param name="Source">Who gave it.</param>
+/// <param name="Year">When.</param>
+public sealed record AwardContent(string Title, string Source, string Year);
+
+/// <summary>What the room is also for: private dining, parties, functions.</summary>
+/// <param name="Title">The heading.</param>
+/// <param name="Body">What is on offer.</param>
+/// <param name="ImageUrl">A photograph of the space.</param>
+/// <param name="ButtonLabel">Blank hides the button.</param>
+/// <param name="ButtonHref">Where enquiries go.</param>
+public sealed record EventsContent(
+    string Title,
+    string Body,
+    string ImageUrl,
+    string ButtonLabel,
+    string ButtonHref);
