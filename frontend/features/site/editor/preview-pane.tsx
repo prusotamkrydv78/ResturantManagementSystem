@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { Monitor, Smartphone, Tablet } from "lucide-react";
 import { SiteRenderer } from "@/features/site/templates";
+import { PreviewFrame } from "./preview-frame";
 import { useElementSize } from "@/lib/hooks/use-element-size";
 import { cn } from "@/lib/utils/cn";
 import type { SiteContent, SiteTemplate } from "@/types/site";
@@ -16,11 +17,13 @@ import type { SiteContent, SiteTemplate } from "@/types/site";
  * iframe pointed at the published route — would show the last saved version, which
  * is exactly the thing a live preview exists not to do.
  *
- * And it renders at a real device width, then scales the result down to fit the
- * pane. A restaurant page is designed for a browser window; dropping it into a
- * 500-pixel column would trigger every mobile breakpoint and show a layout no
- * visitor will ever see. Scaling keeps the proportions honest — what is on screen
- * is the desktop design, just smaller.
+ * And it renders inside an iframe set to a real device width, then scales the
+ * result down to fit the pane. The iframe is not decoration: media queries — all
+ * a Tailwind `sm:` or `lg:` prefix compiles to — are answered by the viewport,
+ * and only an iframe gives the page a viewport of its own. A narrow `div` looks
+ * the part while still reporting the desktop width to every breakpoint, which
+ * showed the desktop layout squeezed thin and hid the exact problems this pane
+ * exists to catch.
  */
 
 /** The widths a manager can check, and what each is standing in for. */
@@ -64,7 +67,11 @@ export function PreviewPane({
       return;
     }
 
-    const target = scrollRef.current.querySelector(
+    // The page now lives in an iframe, so the element is in that document rather
+    // than this one. Same-origin, so it can be reached; guarded anyway, because
+    // the frame may not have adopted its body yet on the first render.
+    const frame = scrollRef.current.querySelector("iframe");
+    const target = frame?.contentDocument?.querySelector(
       `[data-site-section="${focusedSection}"]`,
     );
 
@@ -107,8 +114,8 @@ export function PreviewPane({
         </span>
       </div>
 
-      {/* The measured pane. Overflow hidden here, scrolling on the frame inside,
-          so the scaled page scrolls within its own bounds rather than the border. */}
+      {/* The measured pane. Overflow hidden here; the frame inside scrolls its own
+          document, so the scaled page stays within these bounds. */}
       <div ref={paneRef} className="relative min-h-0 flex-1 overflow-hidden">
         {isStale && (
           <span className="absolute top-2 right-2 z-10 rounded-full bg-surface/90 px-2 py-0.5 text-2xs text-muted shadow-sm backdrop-blur">
@@ -116,24 +123,21 @@ export function PreviewPane({
           </span>
         )}
 
-        <div
-          ref={scrollRef}
-          // Laid out at the device width and then scaled, so the page inside sees
-          // the viewport it was designed for. Height is divided by the scale so the
-          // scaled result fills the pane exactly rather than ending short.
-          style={{
-            width,
-            height: pane.height === 0 ? undefined : pane.height / scale,
-            transform: `scale(${scale})`,
-            transformOrigin: "top left",
-          }}
-          className="overflow-y-auto overscroll-contain"
-        >
-          <SiteRenderer
-            template={template}
-            content={content}
-            restaurantName={restaurantName}
-          />
+        <div ref={scrollRef}>
+          <PreviewFrame
+            width={width}
+            // Divided by the scale so the shrunken result still fills the pane,
+            // rather than ending short of the bottom.
+            height={pane.height === 0 ? 0 : pane.height / scale}
+            scale={scale}
+            title="Website preview"
+          >
+            <SiteRenderer
+              template={template}
+              content={content}
+              restaurantName={restaurantName}
+            />
+          </PreviewFrame>
         </div>
       </div>
     </div>

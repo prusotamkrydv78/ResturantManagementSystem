@@ -23,11 +23,18 @@ export function CardSlider({
   ariaLabel,
   /** Card width per breakpoint. Basis rather than a count, so a card keeps its shape. */
   itemClassName = "basis-[80%] sm:basis-[46%] lg:basis-[31%]",
+  /**
+   * Where the arrows sit. Trailing suits a rail whose cut-off card already says
+   * there is more; a centred section with one item per view has no such hint, so
+   * the control belongs under the middle where the reader is already looking.
+   */
+  controlsClassName = "justify-end",
   className,
   children,
 }: {
   ariaLabel: string;
   itemClassName?: string;
+  controlsClassName?: string;
   className?: string;
   children: React.ReactNode[];
 }) {
@@ -111,7 +118,7 @@ export function CardSlider({
       </div>
 
       {isScrollable && (
-        <div className="mt-5 flex items-center justify-end gap-2">
+        <div className={cn("mt-6 flex items-center gap-2", controlsClassName)}>
           <SliderButton
             label={`Previous ${ariaLabel}`}
             disabled={atStart}

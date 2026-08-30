@@ -51,7 +51,6 @@ export function SlateTemplate({ content, restaurantName }: TemplateProps) {
     hasMenu && { href: "#menu", label: "Menu" },
     sections.about(content) && { href: "#story", label: "Story" },
     hasChef && { href: "#chef", label: "The kitchen" },
-    sections.gallery(content) && { href: "#gallery", label: "Gallery" },
     hasEvents && { href: "#events", label: "Private dining" },
     { href: "#visit", label: "Visit" },
   ].filter((entry): entry is { href: string; label: string } => entry !== false);
@@ -409,45 +408,6 @@ export function SlateTemplate({ content, restaurantName }: TemplateProps) {
         </section>
       )}
 
-      {/* ------------------------------------------------------------- Gallery */}
-      {sections.gallery(content) && (
-        <section
-          id="gallery"
-          data-site-section="gallery"
-          className="scroll-mt-20 border-b border-white/10"
-        >
-          <div className="px-5 py-16 sm:px-6 sm:py-20 lg:py-24">
-            <div className="mx-auto max-w-6xl">
-              <SectionLabel>The room</SectionLabel>
-
-              <div className="mt-8">
-                <CardSlider
-                  ariaLabel="photographs"
-                  itemClassName="basis-[78%] sm:basis-[46%] lg:basis-[31%]"
-                >
-                  {content.gallery.map((image, index) => (
-                    <figure key={index} className="group relative overflow-hidden">
-                      <SiteImageEl
-                        url={image.imageUrl}
-                        alt={image.caption}
-                        className="aspect-4/5 w-full object-cover grayscale-[40%] transition-all duration-700 group-hover:grayscale-0"
-                      />
-                      {/* On a touch screen there is no hover, so the caption is
-                          always legible there and fades in only where a pointer
-                          can ask for it. */}
-                      {has(image.caption) && (
-                        <figcaption className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-zinc-950/95 to-transparent p-4 text-xs text-zinc-300 lg:opacity-0 lg:transition-opacity lg:group-hover:opacity-100">
-                          {image.caption}
-                        </figcaption>
-                      )}
-                    </figure>
-                  ))}
-                </CardSlider>
-              </div>
-            </div>
-          </div>
-        </section>
-      )}
 
       {/* -------------------------------------------------------- Testimonials */}
       {sections.testimonials(content) && (
@@ -458,17 +418,29 @@ export function SlateTemplate({ content, restaurantName }: TemplateProps) {
           <div className="mx-auto max-w-4xl px-5 text-center sm:px-6">
             <SectionLabel>In their words</SectionLabel>
             <Flourish />
-            {/* One quote at a time, full width. Stacking them made the section as
-                long as the story above it, for words that are read one at a time
-                anyway. */}
-            <CardSlider ariaLabel="quotes" itemClassName="basis-full">
+            {/* One review at a time, full width. Quotes are read one at a time
+                whatever the layout, so stacking them only made the section as long
+                as the story above it; sliding is the shape the content already
+                has. The centred arrows put the control where the eye already is,
+                unlike a photograph rail where the cut-off card does that job. */}
+            <CardSlider
+              ariaLabel="reviews"
+              itemClassName="basis-full"
+              controlsClassName="justify-center"
+            >
               {content.testimonials.map((quote, index) => (
                 <figure key={index} className="px-1">
-                  <blockquote className="text-xl leading-relaxed font-light text-balance text-zinc-200 sm:text-2xl">
-                    &ldquo;{quote.quote}&rdquo;
+                  <span
+                    aria-hidden="true"
+                    className="block text-5xl leading-none font-light text-[var(--accent)]/30"
+                  >
+                    &ldquo;
+                  </span>
+                  <blockquote className="mt-3 text-lg leading-relaxed font-light text-balance text-zinc-200 sm:text-2xl">
+                    {quote.quote}
                   </blockquote>
                   {has(quote.author) && (
-                    <figcaption className="mt-5 text-xs tracking-[0.25em] text-zinc-600 uppercase">
+                    <figcaption className="mt-6 text-xs tracking-[0.25em] text-zinc-500 uppercase">
                       {quote.author}
                     </figcaption>
                   )}

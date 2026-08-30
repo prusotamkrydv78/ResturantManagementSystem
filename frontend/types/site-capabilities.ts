@@ -47,7 +47,6 @@ const COMMON: SiteFeature[] = [
   "brand",
   "hero",
   "about",
-  "gallery",
   "hours",
   "contact",
   "footer",
@@ -66,6 +65,11 @@ export const TEMPLATE_FEATURES: Record<SiteTemplate, SiteFeature[]> = {
   // The full dining-room page: a menu in courses, the chef, awards, a dish given a
   // section of its own, and the private-dining enquiry a restaurant of this kind
   // gets asked about most.
+  //
+  // Also the only design with no gallery, and that is the point rather than an
+  // omission. It argues in writing - the menu, the story, the name above the pass -
+  // and photographs are used as punctuation inside those sections. A wall of them
+  // would say less, not more.
   Slate: [
     ...COMMON,
     "marquee",
@@ -80,19 +84,35 @@ export const TEMPLATE_FEATURES: Record<SiteTemplate, SiteFeature[]> = {
 
   // Photographs first. A flat list of dishes as cards, and reasons to visit, but no
   // menu in courses: this design shows food rather than listing it.
-  Aurora: [...COMMON, "dishes", "features", "testimonials", "cta"],
+  Aurora: [...COMMON, "dishes", "features", "gallery", "testimonials", "cta"],
 
   // A story told in bands. Carries the chef, because the story is usually theirs,
   // and a menu in courses, but no awards or spotlight.
-  Terrace: [...COMMON, "chef", "menuGroups", "features", "testimonials", "cta"],
+  Terrace: [
+    ...COMMON,
+    "chef",
+    "menuGroups",
+    "features",
+    "gallery",
+    "testimonials",
+    "cta",
+  ],
 
   // Fast and loud. Cards, reasons to visit, and one dish pushed forward. No chef, no
   // awards, no courses: this is a counter, not a dining room.
-  Lantern: [...COMMON, "dishes", "spotlight", "features", "testimonials", "cta"],
+  Lantern: [
+    ...COMMON,
+    "dishes",
+    "spotlight",
+    "features",
+    "gallery",
+    "testimonials",
+    "cta",
+  ],
 
-  // A printed menu on a page. Courses and awards, and nothing that would clutter it:
-  // no gallery-led sections, no spotlight, no events block.
-  Press: [...COMMON, "menuGroups", "awards", "testimonials", "cta"],
+  // A printed menu on a page. Courses and awards, a small plate of photographs, and
+  // nothing that would crowd it: no spotlight, no events block, no chef feature.
+  Press: [...COMMON, "menuGroups", "awards", "gallery", "testimonials", "cta"],
 };
 
 /** Whether a design draws this part at all. */
