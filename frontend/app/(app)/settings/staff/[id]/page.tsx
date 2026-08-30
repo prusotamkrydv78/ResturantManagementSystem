@@ -9,6 +9,13 @@ import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { PasswordInput } from "@/components/ui/password-input";
+import {
+  Notice,
+  failure,
+  fieldError,
+  idle,
+  type PanelState,
+} from "@/components/ui/panel-state";
 import { DetailRow, Surface, SurfaceHeader } from "@/components/ui/surface";
 import { ErrorState, FormError, Spinner } from "@/components/ui/states";
 import { PageBody, PageHeader } from "@/components/layout/page-header";
@@ -20,7 +27,6 @@ import {
   setStaffActive,
   updateStaff,
 } from "@/features/staff/api";
-import { ApiError } from "@/lib/api/client";
 import { STAFF_ROLES } from "@/types/staff";
 import type { StaffMember, StaffRole } from "@/types/staff";
 
@@ -518,58 +524,6 @@ function AboutPanel({ member }: { member: StaffMember }) {
         them.
       </p>
     </Surface>
-  );
-}
-
-/* -------------------------------------------------------------------------- */
-/* Shared panel state                                                         */
-/* -------------------------------------------------------------------------- */
-
-/**
- * What one panel is doing.
- *
- * Per panel rather than per page: four independent actions live on this screen, and
- * a single shared message meant a password reset silently cleared the confirmation
- * from a save that had just succeeded above it.
- */
-type PanelState =
-  | { status: "idle" }
-  | { status: "busy" }
-  | { status: "done"; message: string }
-  | { status: "error"; message: string; fieldErrors: Record<string, string[]> };
-
-const idle: PanelState = { status: "idle" };
-
-function failure(caught: unknown, fallback: string): PanelState {
-  if (caught instanceof ApiError) {
-    return {
-      status: "error",
-      message: caught.message,
-      fieldErrors: caught.fieldErrors,
-    };
-  }
-
-  return {
-    status: "error",
-    message: caught instanceof Error ? caught.message : fallback,
-    fieldErrors: {},
-  };
-}
-
-function fieldError(state: PanelState, field: string): string | undefined {
-  return state.status === "error" ? state.fieldErrors[field]?.[0] : undefined;
-}
-
-/** The confirmation beside a button, once its action has succeeded. */
-function Notice({ state }: { state: PanelState }) {
-  if (state.status !== "done") {
-    return null;
-  }
-
-  return (
-    <p role="status" className="text-sm text-success">
-      {state.message}
-    </p>
   );
 }
 

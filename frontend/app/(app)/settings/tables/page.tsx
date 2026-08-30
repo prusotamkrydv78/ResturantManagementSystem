@@ -1,16 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import {
-  Armchair,
-  Copy,
-  Pencil,
-  Plus,
-  QrCode as QrCodeIcon,
-  RefreshCw,
-} from "lucide-react";
+import Link from "next/link";
+import { Armchair, ChevronRight, Plus, SlidersHorizontal } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, LinkButton } from "@/components/ui/button";
 import {
   Dialog,
   DialogClose,
@@ -20,7 +14,6 @@ import {
 } from "@/components/ui/dialog";
 import { Field, describedBy } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { QrCode } from "@/components/ui/qr-code";
 import { Surface } from "@/components/ui/surface";
 import {
   EmptyState,
@@ -31,17 +24,9 @@ import {
 import { Table, TableWrap, Td, Th, Tr } from "@/components/ui/table";
 import { PageBody, PageHeader } from "@/components/layout/page-header";
 import { RequireAuth } from "@/features/auth/require-auth";
-import {
-  createTable,
-  deleteTable,
-  listTables,
-  regenerateOrderingToken,
-  setTableActive,
-  setTableOrdering,
-  updateTable,
-} from "@/features/tables/api";
+import { createTable, listTables } from "@/features/tables/api";
 import { ApiError } from "@/lib/api/client";
-import { orderingLink, TABLE_CAPACITY } from "@/types/table";
+import { TABLE_CAPACITY } from "@/types/table";
 import type { RestaurantTable } from "@/types/table";
 
 /**
@@ -163,7 +148,18 @@ function Tables() {
                   {tables.map((table) => (
                     <Tr key={table.id}>
                       <Td>
-                        <span className="font-medium text-text">{table.name}</span>
+                        <Link
+                          href={`/settings/tables/${table.id}`}
+                          className="group flex items-center gap-1.5"
+                        >
+                          <span className="font-medium text-text group-hover:underline">
+                            {table.name}
+                          </span>
+                          <ChevronRight
+                            className="size-3.5 shrink-0 text-subtle transition-transform group-hover:translate-x-0.5"
+                            aria-hidden="true"
+                          />
+                        </Link>
                       </Td>
                       <Td className="text-muted tabular">{table.capacity}</Td>
                       <Td>
@@ -190,7 +186,14 @@ function Tables() {
                         {formatDate(table.createdAtUtc)}
                       </Td>
                       <Td className="text-right">
-                        <TableActionsDialog table={table} onChanged={refresh} />
+                        <LinkButton
+                          href={`/settings/tables/${table.id}`}
+                          variant="secondary"
+                          size="sm"
+                          icon={<SlidersHorizontal />}
+                        >
+                          Manage
+                        </LinkButton>
                       </Td>
                     </Tr>
                   ))}
@@ -342,348 +345,3 @@ function CreateTableDialog({ onCreated }: { onCreated: () => Promise<void> }) {
 /* -------------------------------------------------------------------------- */
 /* Edit and in-service toggle                                                 */
 /* -------------------------------------------------------------------------- */
-
-function TableActionsDialog({
-  table,
-  onChanged,
-}: {
-  table: RestaurantTable;
-  onChanged: () => Promise<void>;
-}) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [name, setName] = useState(table.name);
-  const [capacity, setCapacity] = useState(String(table.capacity));
-  const [error, setError] = useState<string | null>(null);
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
-  const [busy, setBusy] = useState<
-    "none" | "save" | "status" | "ordering" | "token" | "delete"
-  >("none");
-
-  function reset() {
-    setName(table.name);
-    setCapacity(String(table.capacity));
-    setError(null);
-    setFieldErrors({});
-  }
-
-  async function run(
-    action: "save" | "status" | "ordering" | "token" | "delete",
-    work: () => Promise<unknown>,
-    options?: { keepOpen?: boolean },
-  ) {
-    setError(null);
-    setFieldErrors({});
-    setBusy(action);
-
-    try {
-      await work();
-      await onChanged();
-
-      // The self-service actions leave the dialog open, because a manager who has
-      // just switched ordering on is about to look at the code, and a manager who
-      // regenerated a token needs to see that it changed.
-      if (options?.keepOpen !== true) {
-        setIsOpen(false);
-      }
-    } catch (caught) {
-      if (caught instanceof ApiError) {
-        setError(caught.message);
-        setFieldErrors(caught.fieldErrors);
-      } else {
-        setError(caught instanceof Error ? caught.message : "The action failed.");
-      }
-    } finally {
-      setBusy("none");
-    }
-  }
-
-  const isDirty = name !== table.name || capacity !== String(table.capacity);
-
-  return (
-    <Dialog
-      open={isOpen}
-      onOpenChange={(next) => {
-        setIsOpen(next);
-        if (!next) reset();
-      }}
-    >
-      <DialogTrigger asChild>
-        <Button variant="secondary" size="sm" icon={<Pencil />}>
-          Manage
-        </Button>
-      </DialogTrigger>
-
-      <DialogContent
-        title={table.name}
-        description={`Seats ${table.capacity}`}
-      >
-        <div className="flex flex-col gap-5 px-4 py-4">
-          {error !== null && <FormError message={error} />}
-
-          <section className="flex flex-col gap-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h3 className="text-sm font-semibold text-text">Service status</h3>
-              {table.isActive ? (
-                <Badge tone="success" dot>
-                  In service
-                </Badge>
-              ) : (
-                <Badge tone="neutral" dot>
-                  Out of service
-                </Badge>
-              )}
-            </div>
-
-            <p className="text-sm text-muted">
-              {table.isActive
-                ? "Taking a table out of service keeps its record and hides it from future restaurant operations."
-                : "This table is kept but not offered to restaurant operations."}
-            </p>
-
-            <Button
-              variant={table.isActive ? "secondary" : "primary"}
-              size="sm"
-              className="self-start"
-              disabled={busy !== "none"}
-              onClick={() =>
-                void run("status", () => setTableActive(table.id, !table.isActive))
-              }
-            >
-              {busy === "status"
-                ? "Saving…"
-                : table.isActive
-                  ? "Take out of service"
-                  : "Return to service"}
-            </Button>
-          </section>
-
-          <OrderingSection table={table} busy={busy} run={run} />
-
-          <section className="flex flex-col gap-3 border-t border-border pt-4">
-            <h3 className="text-sm font-semibold text-text">Details</h3>
-
-            <Field
-              htmlFor={`table-name-${table.id}`}
-              label="Table name"
-              required
-              error={firstError(fieldErrors, "name")}
-            >
-              <Input
-                id={`table-name-${table.id}`}
-                required
-                maxLength={32}
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                aria-invalid={firstError(fieldErrors, "name") !== undefined}
-              />
-            </Field>
-
-            <Field
-              htmlFor={`table-capacity-${table.id}`}
-              label="Seats"
-              required
-              error={firstError(fieldErrors, "capacity")}
-            >
-              <Input
-                id={`table-capacity-${table.id}`}
-                type="number"
-                inputMode="numeric"
-                required
-                min={TABLE_CAPACITY.min}
-                max={TABLE_CAPACITY.max}
-                className="sm:max-w-32"
-                value={capacity}
-                onChange={(event) => setCapacity(event.target.value)}
-                aria-invalid={firstError(fieldErrors, "capacity") !== undefined}
-              />
-            </Field>
-
-            <Button
-              size="sm"
-              variant="secondary"
-              className="self-start"
-              disabled={busy !== "none" || !isDirty}
-              onClick={() =>
-                void run("save", () =>
-                  updateTable(table.id, { name, capacity: Number(capacity) }),
-                )
-              }
-            >
-              {busy === "save" ? "Saving…" : "Save changes"}
-            </Button>
-          </section>
-
-          <section className="flex flex-col gap-2 border-t border-border pt-4">
-            <h3 className="text-sm font-semibold text-text">Remove</h3>
-            <p className="text-xs text-muted">
-              Deleting is only for a table added by mistake. Once an order or a booking
-              has been made against it the request is refused, because those records
-              name the table. Take it out of service instead for a table that genuinely
-              existed.
-            </p>
-
-            <Button
-              size="sm"
-              variant="danger"
-              className="self-start"
-              disabled={busy !== "none"}
-              onClick={() => void run("delete", () => deleteTable(table.id))}
-            >
-              {busy === "delete" ? "Deleting…" : "Delete table"}
-            </Button>
-          </section>
-        </div>
-
-        <DialogFooter>
-          <DialogClose asChild>
-            <Button variant="secondary">Close</Button>
-          </DialogClose>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-/* -------------------------------------------------------------------------- */
-/* Self-service ordering                                                      */
-/* -------------------------------------------------------------------------- */
-
-/**
- * The code a guest scans, and the switch that makes it work.
- *
- * Two separate things, deliberately. Every table has a token from the moment it is
- * created, so a manager who decides months later to put codes out has nothing to set
- * up; whether guests may actually order is a switch, off by default, that can be turned
- * off for an evening without invalidating a single printed card.
- *
- * The code is shown alongside the link rather than instead of it. A card can be
- * photographed and reprinted from the link, and a guest whose camera will not focus can
- * type it.
- */
-function OrderingSection({
-  table,
-  busy,
-  run,
-}: {
-  table: RestaurantTable;
-  busy: "none" | "save" | "status" | "ordering" | "token" | "delete";
-  run: (
-    action: "save" | "status" | "ordering" | "token" | "delete",
-    work: () => Promise<unknown>,
-    options?: { keepOpen?: boolean },
-  ) => Promise<void>;
-}) {
-  const [copied, setCopied] = useState(false);
-  const link = orderingLink(table.publicOrderingToken);
-
-  async function copy() {
-    try {
-      await navigator.clipboard.writeText(link);
-      setCopied(true);
-    } catch {
-      // Clipboard access can be refused, and there is nothing to fix: the link is
-      // on screen and selectable either way, so this says nothing rather than
-      // raising an error about a convenience.
-      setCopied(false);
-    }
-  }
-
-  return (
-    <section className="flex flex-col gap-3 border-t border-border pt-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="flex items-center gap-1.5 text-sm font-semibold text-text">
-          <QrCodeIcon className="size-4 text-muted" aria-hidden="true" />
-          Guest ordering
-        </h3>
-        {table.isOrderingEnabled ? (
-          <Badge tone="primary" dot>
-            On
-          </Badge>
-        ) : (
-          <Badge tone="neutral" dot>
-            Off
-          </Badge>
-        )}
-      </div>
-
-      <p className="text-sm text-muted">
-        {table.isOrderingEnabled
-          ? "Guests at this table can scan the code and order for themselves. What they order arrives as an ordinary order and still has to be sent to the kitchen by your staff."
-          : "Switch this on to let guests at this table order by scanning. It is off until you do."}
-      </p>
-
-      {!table.isActive && table.isOrderingEnabled && (
-        <p className="rounded-md border border-warning-border bg-warning-soft px-2.5 py-2 text-sm text-warning">
-          This table is out of service, so the code will not work until you put it
-          back.
-        </p>
-      )}
-
-      <Button
-        variant={table.isOrderingEnabled ? "secondary" : "primary"}
-        size="sm"
-        className="self-start"
-        disabled={busy !== "none"}
-        onClick={() =>
-          void run(
-            "ordering",
-            () => setTableOrdering(table.id, !table.isOrderingEnabled),
-            { keepOpen: true },
-          )
-        }
-      >
-        {busy === "ordering"
-          ? "Saving…"
-          : table.isOrderingEnabled
-            ? "Switch off"
-            : "Switch on"}
-      </Button>
-
-      <div className="flex flex-col gap-3 rounded-md border border-border bg-surface-2 p-3 sm:flex-row sm:items-start">
-        <QrCode
-          value={link}
-          size={140}
-          title={`Ordering code for ${table.name}`}
-          className="self-center border border-border sm:self-start"
-        />
-
-        <div className="flex min-w-0 flex-1 flex-col gap-2">
-          <p className="text-xs font-medium tracking-wide text-muted uppercase">
-            Ordering link
-          </p>
-          <p className="font-mono text-xs break-all text-text">{link}</p>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              variant="secondary"
-              size="sm"
-              icon={<Copy />}
-              onClick={() => void copy()}
-            >
-              {copied ? "Copied" : "Copy link"}
-            </Button>
-
-            <Button
-              variant="ghost"
-              size="sm"
-              icon={<RefreshCw />}
-              disabled={busy !== "none"}
-              onClick={() =>
-                void run("token", () => regenerateOrderingToken(table.id), {
-                  keepOpen: true,
-                })
-              }
-            >
-              {busy === "token" ? "Issuing…" : "New code"}
-            </Button>
-          </div>
-
-          <p className="text-xs text-muted">
-            A new code stops every card already printed for this table from working.
-            Use it if one has been photographed or has gone missing.
-          </p>
-        </div>
-      </div>
-    </section>
-  );
-}
