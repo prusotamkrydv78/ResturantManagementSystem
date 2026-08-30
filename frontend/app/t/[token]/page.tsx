@@ -389,7 +389,7 @@ function Stepper({
         aria-label={`One more ${label}`}
         className={cn(
           "flex size-9 items-center justify-center rounded-md",
-          "border border-primary bg-primary text-primary-fg",
+          "border border-primary-solid bg-primary-solid text-primary-fg",
           "transition-colors hover:bg-primary-hover",
         )}
         onClick={() => onAdjust(1)}

@@ -14,6 +14,7 @@ import { navigationFor, roleLabel } from "@/components/layout/nav-config";
 import { NavSection, useClosedSections } from "@/components/layout/nav-section";
 import type { NavItem } from "@/components/layout/nav-config";
 import { RailLabel, Tooltip } from "@/components/ui/tooltip";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { useStoredPreference } from "@/lib/hooks/use-stored-preference";
 import { cn } from "@/lib/utils/cn";
 
@@ -45,7 +46,7 @@ export function Brand({ isCollapsed = false }: { isCollapsed?: boolean }) {
       )}
     >
       <span
-        className="flex size-7 shrink-0 items-center justify-center rounded-md bg-primary text-primary-fg"
+        className="flex size-7 shrink-0 items-center justify-center rounded-md bg-primary-solid text-primary-fg"
         aria-hidden="true"
       >
         <UtensilsCrossed className="size-4" />
@@ -56,7 +57,9 @@ export function Brand({ isCollapsed = false }: { isCollapsed?: boolean }) {
           <span className="truncate text-sm font-semibold text-text">
             Restaurant OS
           </span>
-          <span className="truncate text-2xs text-subtle">Management platform</span>
+          <span className="truncate text-2xs text-subtle">
+            Management platform
+          </span>
         </span>
       )}
     </div>
@@ -256,6 +259,8 @@ export function UserPanel({ isCollapsed = false }: { isCollapsed?: boolean }) {
   if (isCollapsed) {
     return (
       <div className="flex flex-col items-center gap-1 border-t border-border px-2 py-3">
+        <ThemeToggle isCollapsed />
+
         <Tooltip
           content={
             <span className="flex flex-col">
@@ -284,28 +289,34 @@ export function UserPanel({ isCollapsed = false }: { isCollapsed?: boolean }) {
   }
 
   return (
-    <div className="flex items-center gap-2.5 border-t border-border px-3 py-3">
-      <span
-        className="flex size-7 shrink-0 items-center justify-center rounded-full border border-border bg-surface-3 text-2xs font-semibold text-muted"
-        aria-hidden="true"
-      >
-        {initials}
-      </span>
-      <span className="flex min-w-0 flex-1 flex-col leading-tight">
-        <span className="truncate text-sm font-medium text-text">
-          {user?.fullName ?? "Signed in"}
+    <div className="flex flex-col gap-3 border-t border-border px-3 py-3">
+      {/* Above the account rather than beside it: the row below is already three
+          things wide, and a theme is set once and then left alone. */}
+      <ThemeToggle />
+
+      <div className="flex items-center gap-2.5">
+        <span
+          className="flex size-7 shrink-0 items-center justify-center rounded-full border border-border bg-surface-3 text-2xs font-semibold text-muted"
+          aria-hidden="true"
+        >
+          {initials}
         </span>
-        <span className="truncate text-2xs text-subtle">{label}</span>
-      </span>
-      <button
-        type="button"
-        onClick={() => void signOut()}
-        aria-label="Sign out"
-        title="Sign out"
-        className="shrink-0 rounded-md p-1.5 text-muted transition-colors hover:bg-surface-3 hover:text-text"
-      >
-        <LogOut className="size-4" aria-hidden="true" />
-      </button>
+        <span className="flex min-w-0 flex-1 flex-col leading-tight">
+          <span className="truncate text-sm font-medium text-text">
+            {user?.fullName ?? "Signed in"}
+          </span>
+          <span className="truncate text-2xs text-subtle">{label}</span>
+        </span>
+        <button
+          type="button"
+          onClick={() => void signOut()}
+          aria-label="Sign out"
+          title="Sign out"
+          className="shrink-0 rounded-md p-1.5 text-muted transition-colors hover:bg-surface-3 hover:text-text"
+        >
+          <LogOut className="size-4" aria-hidden="true" />
+        </button>
+      </div>
     </div>
   );
 }
@@ -400,12 +411,16 @@ export function Sidebar() {
           Left visible rather than revealed on hover: a control nobody can see is a
           control nobody finds, and this one is worth about forty-four pixels of
           content to a manager on a laptop. It stays quiet through colour instead. */}
-      <Tooltip content={isCollapsed ? "Expand the sidebar" : "Collapse the sidebar"}>
+      <Tooltip
+        content={isCollapsed ? "Expand the sidebar" : "Collapse the sidebar"}
+      >
         <button
           type="button"
           onClick={toggle}
           aria-expanded={!isCollapsed}
-          aria-label={isCollapsed ? "Expand the sidebar" : "Collapse the sidebar"}
+          aria-label={
+            isCollapsed ? "Expand the sidebar" : "Collapse the sidebar"
+          }
           className="absolute top-1/2 -right-3 z-20 flex size-6 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-surface text-subtle shadow-sm transition-colors hover:border-primary-border hover:bg-primary-soft hover:text-primary"
         >
           {isCollapsed ? (

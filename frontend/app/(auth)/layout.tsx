@@ -15,7 +15,7 @@ export default function AuthLayout({ children }: LayoutProps<"/">) {
             className="flex items-center justify-center gap-2.5 rounded-md"
           >
             <span
-              className="flex size-8 items-center justify-center rounded-md bg-primary text-primary-fg"
+              className="flex size-8 items-center justify-center rounded-md bg-primary-solid text-primary-fg"
               aria-hidden="true"
             >
               <UtensilsCrossed className="size-4.5" />

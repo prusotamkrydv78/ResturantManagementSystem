@@ -3,149 +3,187 @@
 /* ---------------------------------------------------------------------------
    Design tokens.
 
-   Every colour used in the app resolves through one of these semantic names.
-   Components never reach for a raw palette value, so the whole product can be
-   retoned from this block alone.
+   Every colour in the application resolves through one of these semantic names.
+   No component reaches for a raw palette value, so the whole product is retoned
+   from this one block.
 
-   Neutrals carry a slight cool-green bias so they sit with the pine primary
-   instead of fighting it.
+   THE PALETTE
+
+   Five colours were chosen for the dark theme, and the light theme is the same
+   five hues turned over onto a pale ground rather than a different scheme:
+
+     rich black    #1A1A1A   the ground, and the ink in the light theme
+     off-white     #F0F0F0   the ink, and what is printed on a filled colour
+     forest green  #3E5641   the brand: every affirmative action and CTA
+     dark teal     #004D61   affirmative state - paid, active, in stock
+     deep ruby     #822659   destructive state, and anything that has failed
+
+   Amber is the one addition. Caution has to be distinguishable from the brand
+   green, from teal and from ruby at a glance, and none of the five can carry it
+   without the badge for low stock reading as either normal or broken. It is
+   pitched warm and desaturated so it sits with the others rather than shouting.
+
+   SOLID VERSUS TYPE
+
+   Two tokens carry the brand, and the difference is the one thing to understand
+   before changing anything here.
+
+     --primary        the brand as TYPE: a link, an icon, an active label, a dot
+     --primary-solid  the brand as a FILLED SURFACE, with --primary-fg on it
+
+   In the light theme both are the same forest green, because one value can be
+   read against white and also carry white text. On a #1A1A1A ground it cannot:
+   forest green is only 2.2:1 against the background, which is unreadable as
+   type, while lightening it far enough to read as type drops white text on the
+   button below the same threshold. So dark keeps the specified green as the
+   button and lifts a second step for type. --danger splits for the same reason.
+
+   The rule at the call site is mechanical: a colour with --primary-fg printed on
+   it is -solid; a colour that is itself the mark is not.
+
+   HOW A TOKEN IS WRITTEN
+
+   Each one is `light-dark(<light value>, <dark value>)`, so both halves of a
+   decision sit on the same line and can never drift apart.
+
+   `light-dark()` reads whichever `color-scheme` is in force, which is what the
+   rules under this block set, and nothing else. Switching the theme is therefore
+   one property on one element.
+
+   TO CHANGE THE COLOUR COMBINATION
+
+   Edit the pairs below. The names are the contract, and they mean:
+
+     canvas          the page behind everything
+     surface         a panel sitting on the canvas
+     surface-2/-3    a panel on a panel, and a pressed or hovered row
+     border          a hairline between things
+     border-strong   the edge of a control you can type in
+     text            body copy
+     text-muted      secondary copy, still readable on its own
+     text-subtle     labels and meta, not meant to be read closely
+     text-inverse    copy on a filled pale ground
+     primary         the brand as type, per the split described above
+     primary-solid   the brand as a filled surface
+     primary-fg      copy printed on primary-solid
+     primary-soft    a tint of the brand, for a selected row
+     primary-border  the edge of something tinted
+     success/warning/danger and their -soft and -border follow the same shape;
+                     danger also has a -solid, because it fills a button
+     ring            the focus outline, one for the whole product
+
+   Every pair below was checked for contrast against the ground it is used on.
+   Type tokens clear 4.5:1, meta and non-text marks clear 3:1, and --primary-fg
+   clears 4.5:1 on its own solid. That is the constraint a replacement palette
+   has to meet; the hues are free.
+
+   TO ADD A NAMED THEME
+
+   Two steps, and no component changes.
+
+     1. Add a block here that overrides only the tokens that differ:
+
+          :root[data-theme="midnight"] {
+            color-scheme: dark;
+            --canvas: #07090f;
+            --primary: #6a7cff;
+          }
+
+     2. Add its name to THEMES in `lib/theme/theme.ts`.
+
+   The colour-scheme line matters: any token the block does not override still
+   resolves through `light-dark()`, so declaring which side to fall back on is
+   what keeps a partial theme coherent instead of half-lit.
    --------------------------------------------------------------------------- */
 
 :root {
-  /* Surfaces */
-  --canvas: #f4f6f5;
-  --surface: #ffffff;
-  --surface-2: #fafbfa;
-  --surface-3: #f0f3f1;
+  /* Follows the operating system until something says otherwise. Also what the
+     `light-dark()` pairs below are answering. */
+  color-scheme: light dark;
 
-  /* Lines */
-  --border: #e0e4e2;
-  --border-strong: #c9d0cd;
+  /* Surfaces. Neutral, because the specified black is neutral; the light side
+     carries a trace of warmth so a full page of it is not clinical. */
+  --canvas: light-dark(#f5f4f2, #1a1a1a);
+  --surface: light-dark(#ffffff, #222222);
+  --surface-2: light-dark(#fafaf9, #262626);
+  --surface-3: light-dark(#efeeeb, #2e2e2e);
 
-  /* Text */
-  --text: #141a19;
-  --text-muted: #5c6a66;
-  --text-subtle: #86928e;
-  --text-inverse: #ffffff;
+  /* Lines.
 
-  /* Action */
-  --primary: #0f6e5a;
-  --primary-hover: #0b5748;
-  --primary-active: #084538;
-  --primary-fg: #ffffff;
-  --primary-soft: #e4f1ec;
-  --primary-border: #b7dbd0;
+     --border is a hairline separating things and is meant to be quiet.
+     --border-strong is the edge of a control you can type into, which is what
+     tells somebody a field is there at all, so it clears the 3:1 that WCAG asks
+     of a user interface boundary. The palette this replaced sat at 1.6:1 and the
+     inputs read as edgeless boxes on a light screen. */
+  --border: light-dark(#e2e1dd, #333333);
+  --border-strong: light-dark(#918f8a, #767676);
 
-  /* Status */
-  --success: #16794a;
-  --success-soft: #e3f2e9;
-  --success-border: #b3dcc4;
+  /* Text. The two given values trade places: the dark ground becomes the ink. */
+  --text: light-dark(#1a1a1a, #f0f0f0);
+  --text-muted: light-dark(#565452, #a8a8a8);
+  --text-subtle: light-dark(#86837e, #7a7a7a);
+  --text-inverse: light-dark(#f0f0f0, #1a1a1a);
 
-  --warning: #9a5b06;
-  --warning-soft: #fbf0da;
-  --warning-border: #ecd39a;
+  /* Action - forest green. See SOLID VERSUS TYPE above for why dark has two. */
+  --primary: light-dark(#3e5641, #7fa486);
+  --primary-solid: #3e5641;
+  --primary-hover: light-dark(#344a37, #4a6650);
+  --primary-active: light-dark(#2a3d2d, #567359);
+  --primary-fg: #f0f0f0;
+  --primary-soft: light-dark(#e9efe9, #212c22);
+  --primary-border: light-dark(#c2d3c5, #374a3a);
 
-  --danger: #b32318;
-  --danger-hover: #92180f;
-  --danger-soft: #fdeae7;
-  --danger-border: #f2bfb8;
+  /* Affirmative - dark teal. Deliberately not a second green: beside the brand
+     it would read as the same thing said twice. */
+  --success: light-dark(#004d61, #4fa8c4);
+  --success-soft: light-dark(#e1eff3, #16303a);
+  --success-border: light-dark(#a8cfdb, #234d5c);
 
-  /* Focus */
-  --ring: #0f6e5a;
+  /* Caution - the added amber. */
+  --warning: light-dark(#8a5a12, #d9a441);
+  --warning-soft: light-dark(#fbf0dc, #33280f);
+  --warning-border: light-dark(#ead09b, #55431c);
 
-  /* Elevation. Deliberately shallow: this is a dense application, not a
-     stack of floating cards. */
-  --shadow-sm: 0 1px 2px 0 rgb(16 24 22 / 0.05);
+  /* Destructive - deep ruby, lifted to a rose in the dark theme so it is legible
+     as type while the button underneath keeps the specified colour. */
+  --danger: light-dark(#822659, #d2778c);
+  --danger-solid: #822659;
+  --danger-hover: light-dark(#6b1e49, #9a2f6a);
+  --danger-soft: light-dark(#fae8f0, #341a22);
+  --danger-border: light-dark(#e7bbd1, #56303c);
+
+  /* Focus. The brand, at whichever step is visible on the ground in use. */
+  --ring: light-dark(#3e5641, #7fa486);
+
+  /* Elevation.
+
+     A shadow is not a colour, so `light-dark()` cannot wrap the whole value -
+     it is a colour function. The four depths of ink are tokens instead, and the
+     geometry below is shared. Dark rooms need a much heavier shadow to read as
+     depth at all, which is the whole reason these differ per theme. */
+  --shadow-ink-1: light-dark(rgb(26 26 26 / 0.05), rgb(0 0 0 / 0.45));
+  --shadow-ink-2: light-dark(rgb(26 26 26 / 0.07), rgb(0 0 0 / 0.5));
+  --shadow-ink-3: light-dark(rgb(26 26 26 / 0.1), rgb(0 0 0 / 0.55));
+  --shadow-ink-4: light-dark(rgb(26 26 26 / 0.18), rgb(0 0 0 / 0.65));
+
+  /* Deliberately shallow: this is a dense application, not a stack of floating
+     cards. Only three depths exist, and nothing invents a fourth inline. */
+  --shadow-sm: 0 1px 2px 0 var(--shadow-ink-1);
   --shadow-md:
-    0 4px 6px -2px rgb(16 24 22 / 0.06), 0 2px 4px -2px rgb(16 24 22 / 0.06);
+    0 4px 6px -2px var(--shadow-ink-2), 0 2px 4px -2px var(--shadow-ink-2);
   --shadow-lg:
-    0 12px 28px -8px rgb(16 24 22 / 0.18), 0 4px 10px -4px rgb(16 24 22 / 0.1);
+    0 12px 28px -8px var(--shadow-ink-4), 0 4px 10px -4px var(--shadow-ink-3);
 }
 
-/* System dark. Guarded so an explicit light choice still wins. */
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --canvas: #0e1211;
-    --surface: #161b1a;
-    --surface-2: #1b2120;
-    --surface-3: #212827;
-
-    --border: #262e2c;
-    --border-strong: #35403d;
-
-    --text: #e7ebea;
-    --text-muted: #98a4a0;
-    --text-subtle: #6d7a76;
-    --text-inverse: #0e1211;
-
-    --primary: #2a8c74;
-    --primary-hover: #339e83;
-    --primary-active: #3cae90;
-    --primary-fg: #ffffff;
-    --primary-soft: #16302a;
-    --primary-border: #24483f;
-
-    --success: #3faa72;
-    --success-soft: #14301f;
-    --success-border: #23492f;
-
-    --warning: #d59742;
-    --warning-soft: #33260f;
-    --warning-border: #4d3a16;
-
-    --danger: #e0685c;
-    --danger-hover: #e87d72;
-    --danger-soft: #351a18;
-    --danger-border: #4d2622;
-
-    --ring: #3faa8c;
-
-    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.4);
-    --shadow-md: 0 4px 6px -2px rgb(0 0 0 / 0.45), 0 2px 4px -2px rgb(0 0 0 / 0.4);
-    --shadow-lg: 0 12px 28px -8px rgb(0 0 0 / 0.6), 0 4px 10px -4px rgb(0 0 0 / 0.5);
-  }
+/* The two explicit choices. Each pins `color-scheme`, which is what decides
+   every `light-dark()` above - and, for free, the colour of the scrollbars and
+   of any form control the browser draws itself. */
+:root[data-theme="light"] {
+  color-scheme: light;
 }
 
-/* Explicit dark choice wins over a light OS setting. */
 :root[data-theme="dark"] {
-  --canvas: #0e1211;
-  --surface: #161b1a;
-  --surface-2: #1b2120;
-  --surface-3: #212827;
-
-  --border: #262e2c;
-  --border-strong: #35403d;
-
-  --text: #e7ebea;
-  --text-muted: #98a4a0;
-  --text-subtle: #6d7a76;
-  --text-inverse: #0e1211;
-
-  --primary: #2a8c74;
-  --primary-hover: #339e83;
-  --primary-active: #3cae90;
-  --primary-fg: #ffffff;
-  --primary-soft: #16302a;
-  --primary-border: #24483f;
-
-  --success: #3faa72;
-  --success-soft: #14301f;
-  --success-border: #23492f;
-
-  --warning: #d59742;
-  --warning-soft: #33260f;
-  --warning-border: #4d3a16;
-
-  --danger: #e0685c;
-  --danger-hover: #e87d72;
-  --danger-soft: #351a18;
-  --danger-border: #4d2622;
-
-  --ring: #3faa8c;
-
-  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.4);
-  --shadow-md: 0 4px 6px -2px rgb(0 0 0 / 0.45), 0 2px 4px -2px rgb(0 0 0 / 0.4);
-  --shadow-lg: 0 12px 28px -8px rgb(0 0 0 / 0.6), 0 4px 10px -4px rgb(0 0 0 / 0.5);
+  color-scheme: dark;
 }
 
 /* ---------------------------------------------------------------------------
@@ -167,6 +205,7 @@
   --color-inverse: var(--text-inverse);
 
   --color-primary: var(--primary);
+  --color-primary-solid: var(--primary-solid);
   --color-primary-hover: var(--primary-hover);
   --color-primary-active: var(--primary-active);
   --color-primary-fg: var(--primary-fg);
@@ -182,6 +221,7 @@
   --color-warning-border: var(--warning-border);
 
   --color-danger: var(--danger);
+  --color-danger-solid: var(--danger-solid);
   --color-danger-hover: var(--danger-hover);
   --color-danger-soft: var(--danger-soft);
   --color-danger-border: var(--danger-border);
@@ -241,10 +281,6 @@
 /* ---------------------------------------------------------------------------
    Base
    --------------------------------------------------------------------------- */
-
-html {
-  color-scheme: light dark;
-}
 
 body {
   background: var(--canvas);
@@ -326,19 +362,34 @@ h4 {
  * screen rather than a separate template that could drift from it. Everything that
  * frames the app is marked `print:hidden` at the point it is rendered; this strips the
  * page down to the document and makes it legible in ink.
+ *
+ * `color-scheme: light` is the line that does the work. Every token above resolves
+ * through `light-dark()`, so forcing the light side here retones the entire page for
+ * paper in one property — including the tokens this block says nothing about. Before,
+ * a handful of names were overridden by hand and three of them were misspelled, so a
+ * receipt printed from a dark screen came out with dark greys where ink should be.
  */
 @media print {
   :root {
-    /* Ink on white, whatever theme the screen was using. */
-    --bg: #ffffff;
+    color-scheme: light;
+
+    /* Paper is already white, so every ground flattens to it and no panel wastes
+       toner drawing itself. */
+    --canvas: #ffffff;
     --surface: #ffffff;
     --surface-2: #ffffff;
     --surface-3: #ffffff;
+
+    /* Ink, rather than the screen's softened greys, which print as mud. */
     --text: #000000;
-    --muted: #333333;
-    --subtle: #555555;
+    --text-muted: #333333;
+    --text-subtle: #555555;
     --border: #999999;
     --border-strong: #666666;
+
+    --shadow-sm: none;
+    --shadow-md: none;
+    --shadow-lg: none;
   }
 
   html,

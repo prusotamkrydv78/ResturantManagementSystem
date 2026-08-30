@@ -5,14 +5,17 @@ type Variant = "primary" | "secondary" | "ghost" | "danger";
 type Size = "sm" | "md";
 
 const VARIANTS: Record<Variant, string> = {
+  // -solid rather than -primary: this is the brand as a filled surface with
+  // type printed on it, which on a dark ground is a different step of the ramp
+  // from the brand as type. See the token block in globals.css.
   primary:
-    "bg-primary text-primary-fg border border-primary hover:bg-primary-hover active:bg-primary-active",
+    "bg-primary-solid text-primary-fg border border-primary-solid hover:bg-primary-hover active:bg-primary-active",
   secondary:
     "bg-surface text-text border border-border-strong hover:bg-surface-3 active:bg-surface-3",
   ghost:
     "bg-transparent text-muted border border-transparent hover:bg-surface-3 hover:text-text",
   danger:
-    "bg-danger text-white border border-danger hover:bg-danger-hover active:bg-danger-hover",
+    "bg-danger-solid text-white border border-danger-solid hover:bg-danger-hover active:bg-danger-hover",
 };
 
 const SIZES: Record<Size, string> = {

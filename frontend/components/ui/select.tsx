@@ -322,7 +322,9 @@ export function Select({
         className={cn(
           controlClasses,
           "flex h-9 items-center justify-between gap-2 text-left",
-          "focus-visible:border-primary focus-visible:outline-none",
+          // The browser outline is left alone. Every other control in the product
+          // relies on it, and replacing it here with a border colour would make
+          // this the one field a keyboard cannot see itself on.
           isOpen && "border-primary",
         )}
       >
@@ -358,7 +360,11 @@ export function Select({
               width: box.width,
               maxHeight: box.maxHeight,
             }}
-            className="z-[60] overflow-y-auto overscroll-contain rounded-md border border-border-strong bg-surface p-1 shadow-lg shadow-black/25"
+            // pointer-events-auto is load-bearing. A modal dialog sets
+            // pointer-events:none on the body to seal off what is behind it, and
+            // this list is a child of the body, so without it every dropdown
+            // inside a dialog looks right and cannot be clicked.
+            className="pointer-events-auto z-[60] overflow-y-auto overscroll-contain rounded-md border border-border-strong bg-surface p-1 shadow-lg"
           >
             {options.length === 0 && (
               <li className="px-2 py-1.5 text-sm text-subtle">Nothing to choose</li>

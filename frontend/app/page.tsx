@@ -115,7 +115,7 @@ function Wordmark() {
   return (
     <span className="flex items-center gap-2.5">
       <span
-        className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-fg shadow-sm"
+        className="flex size-8 items-center justify-center rounded-lg bg-primary-solid text-primary-fg shadow-sm"
         aria-hidden="true"
       >
         <UtensilsCrossed className="size-4.5" />
@@ -697,7 +697,7 @@ function PhonePreview() {
                   </span>
                 )}
                 <span
-                  className="flex size-7 items-center justify-center rounded-md border border-primary bg-primary text-primary-fg"
+                  className="flex size-7 items-center justify-center rounded-md border border-primary-solid bg-primary-solid text-primary-fg"
                   aria-hidden="true"
                 >
                   <span className="text-sm leading-none">+</span>
@@ -708,7 +708,7 @@ function PhonePreview() {
         </ul>
 
         <div className="border-t border-border bg-surface p-3">
-          <span className="flex h-10 items-center justify-center rounded-md bg-primary px-3 text-sm font-medium text-primary-fg">
+          <span className="flex h-10 items-center justify-center rounded-md bg-primary-solid px-3 text-sm font-medium text-primary-fg">
             Order 3 items · 27.50
           </span>
         </div>
@@ -764,7 +764,7 @@ function AccessModel() {
 
         <div className="flex flex-col gap-4 rounded-xl border border-primary-border bg-primary-soft p-5 sm:flex-row sm:items-start sm:gap-5">
           <span
-            className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-fg"
+            className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary-solid text-primary-fg"
             aria-hidden="true"
           >
             <ShieldCheck className="size-4.5" />

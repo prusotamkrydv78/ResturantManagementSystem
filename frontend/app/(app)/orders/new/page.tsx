@@ -310,7 +310,7 @@ function NewOrder() {
                         "flex min-w-20 flex-col items-center gap-0.5 rounded-md border px-3 py-2",
                         "transition-colors",
                         isSelected
-                          ? "border-primary bg-primary text-primary-fg"
+                          ? "border-primary-solid bg-primary-solid text-primary-fg"
                           : "border-border-strong bg-surface text-text hover:bg-surface-3",
                       )}
                     >
