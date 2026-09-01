@@ -132,6 +132,14 @@ export function brandName(content: SiteContent, restaurantName: string): string 
 export interface TemplateProps {
   content: SiteContent;
   restaurantName: string;
+  /**
+   * Where the ordering page is, or undefined when there is none to offer.
+   *
+   * Passed in rather than built from a slug, so a template never has to know how this
+   * product routes. It is also the switch: a design draws the button only when it is
+   * given somewhere for it to go.
+   */
+  orderHref?: string;
 }
 
 /** Address, telephone and email, as links wherever a link is meaningful. */

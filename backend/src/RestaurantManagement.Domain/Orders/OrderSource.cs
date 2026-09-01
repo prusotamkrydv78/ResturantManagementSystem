@@ -21,4 +21,14 @@ public enum OrderSource
     /// stock deduction and the same bill.
     /// </summary>
     QrCode = 1,
+
+    /// <summary>
+    /// Placed by a customer on the restaurant's own website, who chose which table
+    /// they are sitting at.
+    ///
+    /// Distinct from <see cref="QrCode"/> even though both are guests and both end up
+    /// on a table, because where an order came from is the sort of thing a manager
+    /// asks about later and cannot reconstruct afterwards.
+    /// </summary>
+    Website = 2,
 }

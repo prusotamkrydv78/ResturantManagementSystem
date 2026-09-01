@@ -1288,6 +1288,7 @@ export default function WebsitePage() {
               template={template}
               content={previewContent}
               restaurantName={previewContent.brand.name || site.slug}
+              slug={site.slug}
               device={device}
               onDeviceChange={setDevice}
               focusedSection={focused}

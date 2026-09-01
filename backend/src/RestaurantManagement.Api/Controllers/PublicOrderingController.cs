@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using RestaurantManagement.Api.Authentication;
+using RestaurantManagement.Application.Authentication;
 using RestaurantManagement.Application.PublicOrdering;
 using RestaurantManagement.Application.PublicOrdering.Dtos;
 using RestaurantManagement.Shared.Results;
@@ -7,21 +9,21 @@ using RestaurantManagement.Shared.Results;
 namespace RestaurantManagement.Api.Controllers;
 
 /// <summary>
-/// Ordering from the code printed on a table.
+/// The order pad behind the code printed on a table.
 ///
-/// The only unauthenticated surface in this product apart from signing in, which is why it
-/// is deliberately narrow. Two actions, one route parameter, and no way to name a
-/// restaurant, a table, an order, a customer or a member of staff: the token in the link is
-/// the entire input, so there is nothing here for a caller to substitute.
+/// One printed code, two people. A member of staff who scans it gets the pad below: the
+/// menu, and whatever is already running on that table. Anybody else has no session, so
+/// they are turned away and sent to the restaurant own ordering page instead - which is
+/// what <see cref="ResolveRestaurant"/> exists to make possible, and the only action here
+/// that still answers without a session.
 ///
-/// <see cref="AllowAnonymousAttribute"/> is on the controller rather than assumed, because
-/// no guest has an account. Nothing else about authentication or authorisation changes:
-/// every other route in the application still requires a token and a role, and these two
-/// reach nothing those routes protect.
+/// The token used to be the entire authorisation. It is now half of it: the caller has to
+/// hold a session as well, and the table has to belong to the restaurant they work at.
+/// A card from another restaurant is refused and told nothing about whether it was real.
 /// </summary>
 [ApiController]
 [Route("api/public/tables")]
-[AllowAnonymous]
+[Authorize(Roles = PlatformRoles.RestaurantManager + "," + PlatformRoles.Staff)]
 public sealed class PublicOrderingController : ControllerBase
 {
     private readonly IPublicOrderingService _publicOrdering;
@@ -45,7 +47,17 @@ public sealed class PublicOrderingController : ControllerBase
         string token,
         CancellationToken cancellationToken)
     {
-        var result = await _publicOrdering.GetTableAsync(token, cancellationToken);
+        var staffId = User.GetUserId();
+
+        if (staffId is null)
+        {
+            return Unauthorized();
+        }
+
+        var result = await _publicOrdering.GetTableAsync(
+            staffId.Value,
+            token,
+            cancellationToken);
 
         return result.IsFailure
             ? ProblemFrom(result.Error!, StatusCodes.Status404NotFound)
@@ -69,13 +81,51 @@ public sealed class PublicOrderingController : ControllerBase
         PlacePublicOrderRequest request,
         CancellationToken cancellationToken)
     {
+        var staffId = User.GetUserId();
+
+        if (staffId is null)
+        {
+            return Unauthorized();
+        }
+
         var result = await _publicOrdering.PlaceOrderAsync(
+            staffId.Value,
             token,
             request,
             cancellationToken);
 
         return result.IsFailure
             ? ProblemFrom(result.Error!, StatusFor(result.Error!))
+            : Ok(result.Value);
+    }
+
+    /// <summary>
+    /// Which restaurant a printed code belongs to.
+    ///
+    /// The one action here without a session, and the hinge the whole arrangement turns
+    /// on: a customer scanning a table has no account, and the page they land on needs
+    /// the restaurant slug before it can send them to the right ordering page.
+    ///
+    /// It gives away nothing that somebody holding the printed card does not already
+    /// have. The slug is the restaurant public web address. Nothing about the table, the
+    /// menu or anybody order is reachable through it.
+    /// </summary>
+    /// <param name="token">The opaque token from the link.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    [HttpGet("{token}/restaurant")]
+    [AllowAnonymous]
+    [ProducesResponseType(typeof(ScannedTableRestaurantResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ScannedTableRestaurantResponse>> ResolveRestaurant(
+        string token,
+        CancellationToken cancellationToken)
+    {
+        var result = await _publicOrdering.ResolveScannedRestaurantAsync(
+            token,
+            cancellationToken);
+
+        return result.IsFailure
+            ? ProblemFrom(result.Error!, StatusCodes.Status404NotFound)
             : Ok(result.Value);
     }
 

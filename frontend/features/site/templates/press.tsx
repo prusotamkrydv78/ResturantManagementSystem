@@ -30,7 +30,11 @@ import { CardSlider } from "./card-slider";
  * the grey of the photographs, and every label the design supplies itself. What a
  * manager writes is the words and the pictures.
  */
-export function PressTemplate({ content, restaurantName }: TemplateProps) {
+export function PressTemplate({
+  content,
+  restaurantName,
+  orderHref,
+}: TemplateProps) {
   const name = brandName(content, restaurantName);
   const primary = safeHref(content.hero.primaryHref);
   const secondary = safeHref(content.hero.secondaryHref);
@@ -79,6 +83,18 @@ export function PressTemplate({ content, restaurantName }: TemplateProps) {
                 {link.label}
               </a>
             ))}
+
+            {/* Set apart with a rule rather than made into a button. This design has
+                one weight of type and a filled control anywhere in the masthead would
+                be the loudest thing on a page whose whole argument is restraint. */}
+            {orderHref !== undefined && (
+              <a
+                href={orderHref}
+                className="border-b border-[var(--accent)] pb-0.5 font-semibold text-[var(--accent)] transition-opacity hover:opacity-70"
+              >
+                Order
+              </a>
+            )}
           </nav>
         </div>
       </header>

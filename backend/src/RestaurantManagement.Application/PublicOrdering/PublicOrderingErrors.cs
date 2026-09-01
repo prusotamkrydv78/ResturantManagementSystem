@@ -6,6 +6,38 @@ namespace RestaurantManagement.Application.PublicOrdering;
 public static class PublicOrderingErrors
 {
     /// <summary>
+    /// The caller does not work at the restaurant this table belongs to.
+    ///
+    /// Reported as not found rather than as a refusal, and deliberately: the token is
+    /// unguessable, so somebody presenting one from another restaurant either has a
+    /// printed card they should not have or is probing. Neither is owed the
+    /// information that the code is real.
+    /// </summary>
+    public static readonly Error NotYourTable =
+        new("public.not_your_table", "That table could not be found.");
+
+    /// <summary>
+    /// The table a website customer chose is already in use.
+    ///
+    /// Refused rather than appended to, unlike the scanned path. A code on a table is
+    /// held by somebody sitting at it, so adding a second round to the order there is
+    /// almost certainly the same party; a table picked from a list on a website is a
+    /// claim by a stranger, and joining them to somebody else's bill is the one
+    /// mistake here that costs real money.
+    /// </summary>
+    public static readonly Error TableInUse =
+        new(
+            "public.table_in_use",
+            "Someone is already ordering at that table. Please pick another, or ask a "
+            + "member of staff.");
+
+    /// <summary>The restaurant is not open to website orders at all.</summary>
+    public static readonly Error NotAcceptingOrders =
+        new(
+            "public.not_accepting",
+            "This restaurant is not taking orders online at the moment.");
+
+    /// <summary>
     /// The link does not resolve.
     ///
     /// One error for every reason it might not: the token is malformed, it belongs to no

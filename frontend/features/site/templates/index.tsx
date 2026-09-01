@@ -15,12 +15,15 @@ export function SiteRenderer({
   template,
   content,
   restaurantName,
+  orderHref,
 }: {
   template: SiteTemplate;
   content: SiteContent;
   restaurantName: string;
+  /** Where the ordering page is. Omitted, no design draws an ordering button. */
+  orderHref?: string;
 }) {
-  const props = { content, restaurantName };
+  const props = { content, restaurantName, orderHref };
 
   switch (template) {
     case "Slate":

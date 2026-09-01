@@ -39,6 +39,7 @@ export function PreviewPane({
   template,
   content,
   restaurantName,
+  slug,
   device,
   onDeviceChange,
   /** Scrolls the preview here when it changes, so the form and page stay together. */
@@ -48,6 +49,8 @@ export function PreviewPane({
   template: SiteTemplate;
   content: SiteContent;
   restaurantName: string;
+  /** So the preview can show the ordering button the same way a visitor sees it. */
+  slug: string;
   device: DeviceId;
   onDeviceChange: (device: DeviceId) => void;
   focusedSection: string | null;
@@ -149,6 +152,7 @@ export function PreviewPane({
               template={template}
               content={content}
               restaurantName={restaurantName}
+              orderHref={`/r/${slug}/order`}
             />
           </PreviewFrame>
         </div>

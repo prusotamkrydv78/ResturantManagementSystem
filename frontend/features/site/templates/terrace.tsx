@@ -31,7 +31,11 @@ import { CardSlider } from "./card-slider";
  * between sections, the centred course headings, and every label the design supplies
  * itself. What a manager writes is the words and the pictures.
  */
-export function TerraceTemplate({ content, restaurantName }: TemplateProps) {
+export function TerraceTemplate({
+  content,
+  restaurantName,
+  orderHref,
+}: TemplateProps) {
   const name = brandName(content, restaurantName);
   const primary = safeHref(content.hero.primaryHref);
   const secondary = safeHref(content.hero.secondaryHref);
@@ -92,6 +96,15 @@ export function TerraceTemplate({ content, restaurantName }: TemplateProps) {
                 </a>
               ))}
             </div>
+
+            {orderHref !== undefined && (
+              <a
+                href={orderHref}
+                className="shrink-0 bg-[var(--accent)] px-3 py-1.5 font-sans text-2xs tracking-[0.12em] whitespace-nowrap text-[#faf6ee] uppercase transition-opacity hover:opacity-90 sm:px-4 sm:py-2 sm:text-xs"
+              >
+                Order
+              </a>
+            )}
 
             {bookingHref !== null && (
               <a

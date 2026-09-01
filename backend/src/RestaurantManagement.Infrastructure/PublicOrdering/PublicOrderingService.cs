@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using RestaurantManagement.Application.Orders.Dtos;
 using RestaurantManagement.Application.PublicOrdering;
 using RestaurantManagement.Application.PublicOrdering.Dtos;
+using RestaurantManagement.Domain.Identity;
 using RestaurantManagement.Domain.Menu;
 using RestaurantManagement.Domain.Orders;
 using RestaurantManagement.Domain.Restaurants;
@@ -47,9 +48,17 @@ public sealed class PublicOrderingService : IPublicOrderingService
 
     /// <inheritdoc />
     public async Task<Result<PublicTableResponse>> GetTableAsync(
+        Guid staffUserId,
         string token,
         CancellationToken cancellationToken)
     {
+        var caller = await ResolveCallerRestaurantIdAsync(staffUserId, cancellationToken);
+
+        if (caller is null)
+        {
+            return Result.Failure<PublicTableResponse>(PublicOrderingErrors.NotFound);
+        }
+
         var table = await ResolveTableAsync(token, tracked: false, cancellationToken);
 
         if (table is null)
@@ -57,28 +66,46 @@ public sealed class PublicOrderingService : IPublicOrderingService
             return Result.Failure<PublicTableResponse>(PublicOrderingErrors.NotFound);
         }
 
+        // The token used to be the whole authorisation. Now that a session is required
+        // as well, the two have to agree: a waiter holding a card from another
+        // restaurant is refused, and told nothing about whether the code was real.
+        if (table.RestaurantId != caller.Value)
+        {
+            return Result.Failure<PublicTableResponse>(PublicOrderingErrors.NotYourTable);
+        }
+
         var menu = await MenuOfAsync(table.RestaurantId, cancellationToken);
         var running = await OpenOrderOfAsync(table, tracked: false, cancellationToken);
 
-        // A staff order on this table is not the guest order, and is not shown through a
-        // public link. What they get told instead is to speak to the person serving them.
-        var isStaffOrder = running is not null && !running.IsSelfService;
+        // No gate here any more, and that is the point of the change. This pad used to
+        // be a guest, who had to be kept out of a waiter order; the caller is now the
+        // waiter, and whatever is running on this table belongs to the restaurant they
+        // work at. Hiding it would leave them unable to add a second round to an order
+        // they took themselves.
 
         return Result.Success(new PublicTableResponse(
             table.Restaurant.Name,
             table.Name,
-            !isStaffOrder,
-            isStaffOrder ? PublicOrderingErrors.StaffServing.Message : null,
+            true,
+            null,
             menu,
-            isStaffOrder || running is null ? null : ToResponse(running)));
+            running is null ? null : ToResponse(running)));
     }
 
     /// <inheritdoc />
     public async Task<Result<PublicOrderResponse>> PlaceOrderAsync(
+        Guid staffUserId,
         string token,
         PlacePublicOrderRequest request,
         CancellationToken cancellationToken)
     {
+        var caller = await ResolveCallerRestaurantIdAsync(staffUserId, cancellationToken);
+
+        if (caller is null)
+        {
+            return Result.Failure<PublicOrderResponse>(PublicOrderingErrors.NotFound);
+        }
+
         // Tracked, because starting an order is what occupies the table. The same rule the
         // waiter path follows, reached through the same property.
         var table = await ResolveTableAsync(token, tracked: true, cancellationToken);
@@ -87,6 +114,167 @@ public sealed class PublicOrderingService : IPublicOrderingService
         {
             return Result.Failure<PublicOrderResponse>(PublicOrderingErrors.NotFound);
         }
+
+        if (table.RestaurantId != caller.Value)
+        {
+            return Result.Failure<PublicOrderResponse>(PublicOrderingErrors.NotYourTable);
+        }
+
+        // Attributed to whoever scanned it, and recorded as a staff order rather than a
+        // guest one. That is the whole change in this route: it used to be a guest
+        // ordering for themselves, and it is now a member of staff standing at the table
+        // with their own phone. Leaving it as "Guest at the table" would put a lie in
+        // the answer to "who took this order".
+        return await PlaceForTableAsync(
+            table,
+            request.Items,
+            OrderSource.Staff,
+            cancellationToken,
+            staffUserId);
+    }
+
+    /// <inheritdoc />
+    public async Task<Result<ScannedTableRestaurantResponse>> ResolveScannedRestaurantAsync(
+        string token,
+        CancellationToken cancellationToken)
+    {
+        if (!PublicOrderingToken.CouldBeValid(token))
+        {
+            return Result.Failure<ScannedTableRestaurantResponse>(
+                PublicOrderingErrors.NotFound);
+        }
+
+        // Deliberately does not require the table to be open to guest ordering. Somebody
+        // has scanned a printed code and needs to be sent somewhere; whether that table
+        // takes guest orders is a question for the page they land on, not for the
+        // redirect that gets them there.
+        var found = await _dbContext.RestaurantTables
+            .AsNoTracking()
+            .Where(table =>
+                table.PublicOrderingToken == token &&
+                table.IsActive &&
+                table.Restaurant.IsActive)
+            .Select(table => new ScannedTableRestaurantResponse(
+                table.Restaurant.Slug,
+                table.Restaurant.Name))
+            .SingleOrDefaultAsync(cancellationToken);
+
+        return found is null
+            ? Result.Failure<ScannedTableRestaurantResponse>(PublicOrderingErrors.NotFound)
+            : Result.Success(found);
+    }
+
+    /// <inheritdoc />
+    public async Task<Result<PublicRestaurantResponse>> GetRestaurantAsync(
+        string slug,
+        CancellationToken cancellationToken)
+    {
+        var restaurant = await ResolveRestaurantAsync(slug, cancellationToken);
+
+        if (restaurant is null)
+        {
+            return Result.Failure<PublicRestaurantResponse>(PublicOrderingErrors.NotFound);
+        }
+
+        var menu = await MenuOfAsync(restaurant.Value.Id, cancellationToken);
+
+        // Only tables the manager has opened to ordering. A table with its code switched
+        // off is not offered on the website either: that switch is the one place a
+        // manager says whether guests may order at a table at all, and having it mean
+        // one thing for a scanned code and another for the website would be a trap.
+        var tables = await _dbContext.RestaurantTables
+            .AsNoTracking()
+            .Where(table =>
+                table.RestaurantId == restaurant.Value.Id &&
+                table.IsActive &&
+                table.IsOrderingEnabled)
+            .OrderBy(table => table.Name)
+            .Select(table => new PublicTableChoiceResponse(
+                table.Id,
+                table.Name,
+                table.Capacity,
+                // Free means nothing open on it. Computed here rather than read off
+                // TableStatus, because an order is what a customer would be joining and
+                // the status is a separate thing a manager can also set by hand.
+                !_dbContext.Orders.Any(order =>
+                    order.TableId == table.Id && order.Status == OrderStatus.Open)))
+            .ToListAsync(cancellationToken);
+
+        return Result.Success(new PublicRestaurantResponse(
+            restaurant.Value.Name,
+            menu,
+            tables,
+            tables.Count > 0));
+    }
+
+    /// <inheritdoc />
+    public async Task<Result<PublicOrderResponse>> PlaceWebsiteOrderAsync(
+        string slug,
+        PlaceWebsiteOrderRequest request,
+        CancellationToken cancellationToken)
+    {
+        var restaurant = await ResolveRestaurantAsync(slug, cancellationToken);
+
+        if (restaurant is null)
+        {
+            return Result.Failure<PublicOrderResponse>(PublicOrderingErrors.NotFound);
+        }
+
+        // The table is checked against this restaurant rather than trusted. It arrived in
+        // the request body from an unauthenticated caller, which the token path never has
+        // to deal with, so this is the one new thing that can be tampered with here.
+        var table = await _dbContext.RestaurantTables
+            .Include(candidate => candidate.Restaurant)
+            .SingleOrDefaultAsync(
+                candidate =>
+                    candidate.Id == request.TableId &&
+                    candidate.RestaurantId == restaurant.Value.Id &&
+                    candidate.IsActive &&
+                    candidate.IsOrderingEnabled,
+                cancellationToken);
+
+        if (table is null)
+        {
+            return Result.Failure<PublicOrderResponse>(PublicOrderingErrors.NotFound);
+        }
+
+        // Refused rather than appended to, which is where this path parts company with a
+        // scanned code. Somebody holding the code on a table is sitting at it, so a second
+        // round is almost certainly the same party. A table picked from a list on a
+        // website is a claim by a stranger, and adding them to somebody else's bill is the
+        // one mistake here that costs real money.
+        var running = await _dbContext.Orders.AnyAsync(
+            order => order.TableId == table.Id && order.Status == OrderStatus.Open,
+            cancellationToken);
+
+        if (running)
+        {
+            return Result.Failure<PublicOrderResponse>(PublicOrderingErrors.TableInUse);
+        }
+
+        return await PlaceForTableAsync(
+            table,
+            request.Items,
+            OrderSource.Website,
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Takes an order for a table that has already been resolved and authorised.
+    ///
+    /// Shared by both ways in, and that sharing is the point: the pricing, the folding of
+    /// identical lines, the per-line cap, the availability re-check and the seating of the
+    /// table are one implementation. A second copy for the website would be a second place
+    /// for a price to be trusted from a request.
+    /// </summary>
+    private async Task<Result<PublicOrderResponse>> PlaceForTableAsync(
+        RestaurantTable table,
+        List<CreateOrderItemRequest> items,
+        OrderSource source,
+        CancellationToken cancellationToken,
+        Guid? placedByStaffId = null)
+    {
+        var request = new PlacePublicOrderRequest { Items = items };
 
         // Identical lines are folded together, but a note is what makes one line different
         // from another, so two teas with different notes stay apart. Same rule as the
@@ -144,12 +332,11 @@ public sealed class PublicOrderingService : IPublicOrderingService
                         : "Some of the things you chose are no longer available. Please refresh the menu."));
         }
 
+        // Appended to whatever is already open on the table, whoever started it. The
+        // website path refuses a busy table outright before it reaches here, so the only
+        // caller that gets this far is a member of staff adding to their own restaurant
+        // order - which is exactly what a second round is.
         var running = await OpenOrderOfAsync(table, tracked: true, cancellationToken);
-
-        if (running is not null && !running.IsSelfService)
-        {
-            return Result.Failure<PublicOrderResponse>(PublicOrderingErrors.StaffServing);
-        }
 
         var now = DateTimeOffset.UtcNow;
         var isNew = running is null;
@@ -160,11 +347,12 @@ public sealed class PublicOrderingService : IPublicOrderingService
             RestaurantId = table.RestaurantId,
             TableId = table.Id,
             Status = OrderStatus.Open,
-            // Nobody placed this. Left null rather than filled with a placeholder staff
-            // account, because attributing a guest order to a member of staff is a lie
-            // that turns up later in somebody report.
-            CreatedByStaffId = null,
-            Source = OrderSource.QrCode,
+            // Null for a website order, because nobody at the restaurant placed it and
+            // filling in a placeholder staff account would be a lie that turns up later
+            // in somebody's report. Set when a member of staff scanned the table, because
+            // then somebody genuinely did.
+            CreatedByStaffId = placedByStaffId,
+            Source = source,
             CreatedAtUtc = now,
             UpdatedAtUtc = now,
         };
@@ -273,6 +461,63 @@ public sealed class PublicOrderingService : IPublicOrderingService
     /// it carries the whole permission: out of service and switched off are filtered here
     /// rather than reported, so every way of failing looks the same from outside.
     /// </summary>
+    /// <summary>
+    /// The restaurant an authenticated caller belongs to, whichever way they belong.
+    ///
+    /// Two different facts, because the two roles record it in different places: a staff
+    /// account carries its restaurant, and a manager is named by the restaurant. Both
+    /// are checked here so the scanned pad does not have to care which it is looking at,
+    /// and an inactive account resolves to nothing at all.
+    /// </summary>
+    private async Task<Guid?> ResolveCallerRestaurantIdAsync(
+        Guid userId,
+        CancellationToken cancellationToken)
+    {
+        var staffRestaurantId = await _dbContext.Users
+            .AsNoTracking()
+            .Where(user =>
+                user.Id == userId &&
+                user.IsActive &&
+                user.PlatformRole == PlatformRole.Staff &&
+                user.RestaurantId != null)
+            .Select(user => user.RestaurantId)
+            .SingleOrDefaultAsync(cancellationToken);
+
+        if (staffRestaurantId is not null)
+        {
+            return staffRestaurantId;
+        }
+
+        var managed = await _dbContext.Restaurants
+            .AsNoTracking()
+            .Where(restaurant =>
+                restaurant.ManagerId == userId && restaurant.IsActive)
+            .Select(restaurant => (Guid?)restaurant.Id)
+            .SingleOrDefaultAsync(cancellationToken);
+
+        return managed;
+    }
+
+    private async Task<(Guid Id, string Name)?> ResolveRestaurantAsync(
+        string slug,
+        CancellationToken cancellationToken)
+    {
+        var normalised = (slug ?? string.Empty).Trim().ToLowerInvariant();
+
+        if (normalised.Length == 0)
+        {
+            return null;
+        }
+
+        var found = await _dbContext.Restaurants
+            .AsNoTracking()
+            .Where(restaurant => restaurant.Slug == normalised && restaurant.IsActive)
+            .Select(restaurant => new { restaurant.Id, restaurant.Name })
+            .SingleOrDefaultAsync(cancellationToken);
+
+        return found is null ? null : (found.Id, found.Name);
+    }
+
     private async Task<RestaurantTable?> ResolveTableAsync(
         string token,
         bool tracked,

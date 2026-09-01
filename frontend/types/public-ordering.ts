@@ -60,6 +60,53 @@ export interface PublicTable {
   currentOrder: PublicOrder | null;
 }
 
+/**
+ * Which restaurant a printed table code belongs to.
+ *
+ * The only thing about a scanned code still answered without a session. It exists so a
+ * customer who scans a table can be sent to that restaurant ordering page, which the
+ * browser cannot work out on its own.
+ */
+export interface ScannedTableRestaurant {
+  slug: string;
+  restaurantName: string;
+}
+
+/** A table a customer may say they are sitting at. */
+export interface PublicTableChoice {
+  id: string;
+  name: string;
+  capacity: number;
+  /** False when an order is already running on it, so it cannot be chosen. */
+  isAvailable: boolean;
+}
+
+/**
+ * What the restaurant own website needs to take an order.
+ *
+ * The menu here is the real one, priced from the menu records - not the menu a manager
+ * types into their site content, which is prose with free-text prices and no
+ * identifiers, so nothing in it could ever be ordered.
+ */
+export interface PublicRestaurant {
+  restaurantName: string;
+  menu: PublicMenuSection[];
+  tables: PublicTableChoice[];
+  /** False when no table is open to ordering at all. */
+  isAcceptingOrders: boolean;
+}
+
+/**
+ * Payload for ordering from the website.
+ *
+ * Carries a table, which the scanned request does not: a code says where the guest is,
+ * and somebody on a website has to be asked. Still no prices and no total.
+ */
+export interface PlaceWebsiteOrderPayload {
+  tableId: string;
+  items: PublicOrderLinePayload[];
+}
+
 /** One line a guest is asking for. */
 export interface PublicOrderLinePayload {
   menuItemId: string;

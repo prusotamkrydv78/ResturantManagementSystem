@@ -112,6 +112,7 @@ export default async function RestaurantSitePage({ params }: PageProps<"/r/[slug
       template={site.template}
       content={withDefaults(site.content)}
       restaurantName={site.restaurantName}
+      orderHref={`/r/${slug}/order`}
     />
   );
 }

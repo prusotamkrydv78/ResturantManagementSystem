@@ -30,7 +30,11 @@ import { CardSlider } from "./card-slider";
  * the corner radii and spacing, the mosaic's shape, and every label the design
  * supplies itself. What they write is the words and the pictures.
  */
-export function AuroraTemplate({ content, restaurantName }: TemplateProps) {
+export function AuroraTemplate({
+  content,
+  restaurantName,
+  orderHref,
+}: TemplateProps) {
   const name = brandName(content, restaurantName);
   const primary = safeHref(content.hero.primaryHref);
   const secondary = safeHref(content.hero.secondaryHref);
@@ -90,12 +94,22 @@ export function AuroraTemplate({ content, restaurantName }: TemplateProps) {
             ))}
           </div>
 
-          {bookingHref !== null ? (
+          <div className="flex shrink-0 items-center gap-2">
+            {orderHref !== undefined && (
+              <a
+                href={orderHref}
+                className="rounded-full bg-[var(--accent)] px-4 py-2 text-xs font-semibold whitespace-nowrap text-white transition-opacity hover:opacity-90 sm:px-5 sm:text-sm"
+              >
+                Order
+              </a>
+            )}
+
+            {bookingHref !== null ? (
             <a
               href={bookingHref}
               target="_blank"
               rel="noreferrer noopener"
-              className="shrink-0 rounded-full bg-[var(--accent)] px-4 py-2 text-xs font-semibold whitespace-nowrap text-white transition-opacity hover:opacity-90 sm:px-5 sm:text-sm"
+              className="shrink-0 rounded-full border border-[var(--accent)] px-4 py-2 text-xs font-semibold whitespace-nowrap text-[var(--accent)] transition-colors hover:bg-[var(--accent)] hover:text-white sm:px-5 sm:text-sm"
             >
               Book a table
             </a>
@@ -109,6 +123,7 @@ export function AuroraTemplate({ content, restaurantName }: TemplateProps) {
               </a>
             )
           )}
+          </div>
         </div>
       </nav>
 

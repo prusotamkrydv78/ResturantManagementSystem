@@ -27,11 +27,11 @@ public static class PublicOrderLimits
 /// <param name="Name">Display name.</param>
 /// <param name="Description">Optional description.</param>
 /// <param name="Price">
-/// <param name="ImageUrl">
-/// The dish photograph, or null. The one image in this product a guest is shown.
-/// </param>
 /// Current price, for display only. The server prices the order again from its own menu
 /// and never reads a price out of a request.
+/// </param>
+/// <param name="ImageUrl">
+/// The dish photograph, or null. The one image in this product a guest is shown.
 /// </param>
 public sealed record PublicMenuItemResponse(
     Guid Id,
@@ -123,6 +123,87 @@ public sealed record PublicTableResponse(
     string? UnavailableReason,
     IReadOnlyList<PublicMenuSectionResponse> Menu,
     PublicOrderResponse? CurrentOrder);
+
+/// <summary>
+/// Which restaurant a printed table code belongs to.
+///
+/// The one thing about a scanned code that is still answered without a session, and it
+/// exists for exactly one purpose: a customer scanning a table needs to be sent to that
+/// restaurant's ordering page, and the browser cannot work out where that is on its own.
+///
+/// It gives away nothing a person holding the printed code does not already have. The
+/// slug is the restaurant's own public web address, and nothing about the table, the
+/// menu or anybody's order is reachable through it.
+/// </summary>
+/// <param name="Slug">The restaurant's public slug, for building its web address.</param>
+/// <param name="RestaurantName">Display name, so a redirect can say where it is going.</param>
+public sealed record ScannedTableRestaurantResponse(string Slug, string RestaurantName);
+
+/// <summary>
+/// A table a customer may say they are sitting at.
+///
+/// Offered by the website rather than resolved from a scanned code, which is the whole
+/// difference between the two ways in. Nothing here identifies the table to anybody but
+/// this restaurant: the name is what is painted on it, and the identifier is only useful
+/// against this one slug.
+/// </summary>
+/// <param name="Id">What to send back when ordering.</param>
+/// <param name="Name">What the table is called in the room.</param>
+/// <param name="Capacity">How many it seats, so somebody can pick a sensible one.</param>
+/// <param name="IsAvailable">
+/// False when an order is already running on it. Offered but not choosable rather than
+/// hidden, so a customer sitting at a taken table understands why they cannot pick it
+/// instead of wondering where their table went.
+/// </param>
+public sealed record PublicTableChoiceResponse(
+    Guid Id,
+    string Name,
+    int Capacity,
+    bool IsAvailable);
+
+/// <summary>
+/// What the restaurant own website needs to take an order.
+///
+/// The menu here is the real one, priced from the menu records. It is deliberately not
+/// the menu a manager types into their site content: that is prose about the food, its
+/// prices are free text, and nothing in it can be ordered because none of it has an
+/// identifier.
+/// </summary>
+/// <param name="RestaurantName">Display name.</param>
+/// <param name="Menu">The orderable menu, by section.</param>
+/// <param name="Tables">Tables a customer may say they are at.</param>
+/// <param name="IsAcceptingOrders">
+/// False when no table is open to ordering at all, which is the difference between "we
+/// do not take orders online" and "something is broken".
+/// </param>
+public sealed record PublicRestaurantResponse(
+    string RestaurantName,
+    IReadOnlyList<PublicMenuSectionResponse> Menu,
+    IReadOnlyList<PublicTableChoiceResponse> Tables,
+    bool IsAcceptingOrders);
+
+/// <summary>
+/// Payload for ordering from the website.
+///
+/// Carries a table, which the token request deliberately does not: a scanned code says
+/// where the guest is, and somebody on a website has to be asked. It is still only an
+/// identifier - no name, no price, no total - and the server checks the table belongs to
+/// this restaurant and is free before accepting it.
+/// </summary>
+public sealed class PlaceWebsiteOrderRequest
+{
+    /// <summary>Which table the customer says they are sitting at.</summary>
+    [Required(ErrorMessage = "Choose the table you are sitting at.")]
+    public Guid TableId { get; set; }
+
+    /// <summary>What they want. At least one line is required.</summary>
+    [Required(ErrorMessage = "Add something to your order first.")]
+    [MinLength(1, ErrorMessage = "Add something to your order first.")]
+    [MaxLength(
+        PublicOrderLimits.MaxLines,
+        ErrorMessage = "That is too many separate items for one order.")]
+    public List<CreateOrderItemRequest> Items { get; set; } = [];
+}
 
 /// <summary>
 /// Payload for a guest placing an order.

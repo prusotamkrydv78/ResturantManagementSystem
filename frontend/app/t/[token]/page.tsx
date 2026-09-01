@@ -1,38 +1,47 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { Check, ChefHat, Minus, Plus, UtensilsCrossed } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/input";
 import { Surface } from "@/components/ui/surface";
 import { EmptyState, FormError, Spinner } from "@/components/ui/states";
-import { getPublicTable, placePublicOrder } from "@/features/public/api";
+import { useAuth } from "@/features/auth/auth-context";
+import {
+  getPublicTable,
+  placePublicOrder,
+  resolveScannedRestaurant,
+} from "@/features/public/api";
 import { apiAssetSrc } from "@/lib/api/asset-url";
 import { ApiError } from "@/lib/api/client";
 import { cn } from "@/lib/utils/cn";
 import type { PublicMenuItem, PublicTable } from "@/types/public-ordering";
 
 /**
- * Ordering from the code on a table.
+ * The order pad behind the code printed on a table.
  *
- * The one page in this product with no account behind it, which changes almost every
- * decision on it. A guest arrives on a phone, in a restaurant, with one hand free, and
- * has never seen this before: so there is no navigation, no sign-in, no jargon, nothing
- * to learn, and every control is thumb-sized.
+ * One printed code, two people, and this page is the fork.
  *
- * What they are told is deliberately limited to their own table. The link carries the
- * whole permission, and this page never asks for a restaurant, a table or an order by
- * identifier, because it has none to ask with.
+ * A member of staff who scans it is standing at the table with their own phone, so they
+ * get the pad: the menu, whatever is already running on that table, and thumb-sized
+ * controls because they are working one-handed in a busy room.
  *
- * Nothing here reaches the kitchen on its own. What a guest orders arrives as an
- * ordinary order that staff send through, which is said plainly on the page rather than
- * left as a surprise: somebody at the table needs to know their food is not yet cooking.
+ * Anybody else has no session, and rather than being refused they are sent to the
+ * restaurant's own ordering page - the same menu, reached the way a customer at home
+ * reaches it, where they are asked which table they are at. That redirect is why one
+ * anonymous call survives on this route: the browser has to be told which restaurant
+ * the code belongs to before it can send them anywhere.
+ *
+ * Nothing here reaches the kitchen on its own. An order placed on this pad still has to
+ * be sent through, which the page says plainly rather than leaving as a surprise.
  */
 export default function PublicOrderingPage() {
   const params = useParams<{ token: string }>();
   const token = params.token;
+  const router = useRouter();
+  const { isAuthenticated, isLoading } = useAuth();
 
   const [table, setTable] = useState<PublicTable | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
@@ -46,7 +55,14 @@ export default function PublicOrderingPage() {
   useEffect(() => {
     let cancelled = false;
 
-    async function load() {
+    // Nothing is decided until the refresh cookie has been checked. Fetching before
+    // then would send an anonymous request for a member of staff who is about to be
+    // recognised, and redirect them away from their own order pad.
+    if (isLoading) {
+      return;
+    }
+
+    async function loadPad() {
       try {
         const loaded = await getPublicTable(token);
 
@@ -66,12 +82,31 @@ export default function PublicOrderingPage() {
       }
     }
 
-    void load();
+    async function sendToWebsite() {
+      try {
+        const where = await resolveScannedRestaurant(token);
+
+        if (!cancelled) {
+          // Replaced rather than pushed, so the back button returns to whatever they
+          // were doing before scanning rather than to a page that only bounces them
+          // here again.
+          router.replace(`/r/${where.slug}/order`);
+        }
+      } catch {
+        if (!cancelled) {
+          setFailed(
+            "This code does not belong to a restaurant we can find. Please ask a member of staff.",
+          );
+        }
+      }
+    }
+
+    void (isAuthenticated ? loadPad() : sendToWebsite());
 
     return () => {
       cancelled = true;
     };
-  }, [token, reloadKey]);
+  }, [token, reloadKey, isAuthenticated, isLoading, router]);
 
   const chosen = useMemo(
     () => Object.entries(quantities).filter(([, quantity]) => quantity > 0),
@@ -167,7 +202,13 @@ export default function PublicOrderingPage() {
     return (
       <Centre>
         <div className="flex justify-center py-12">
-          <Spinner label="Loading the menu…" />
+          <Spinner
+            label={
+              isLoading || !isAuthenticated
+                ? "Taking you to the menu…"
+                : "Loading the menu…"
+            }
+          />
         </div>
       </Centre>
     );

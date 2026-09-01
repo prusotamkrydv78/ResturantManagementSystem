@@ -1,25 +1,74 @@
 import { apiFetch } from "@/lib/api/client";
 import type {
   PlacePublicOrderPayload,
+  ScannedTableRestaurant,
+  PlaceWebsiteOrderPayload,
   PublicOrder,
+  PublicRestaurant,
   PublicTable,
 } from "@/types/public-ordering";
 
 /**
- * Calls a guest makes from the code on their table.
+ * Calls behind the code printed on a table, and from a restaurant own website.
  *
- * `auth: false` on both, and not as an optimisation. A guest has no account, so there
- * is no token to attach; sending one would be worse than pointless, because a manager
- * who happened to be signed in on the same phone would have their session travelling
- * with every scan. The token in the URL is the entire credential, and it authorises
- * exactly one table.
+ * The scanned pad now needs a session: it is a member of staff standing at the table
+ * with their own phone, not a guest ordering for themselves. So those two calls send
+ * the access token like any other, and the table token in the URL narrows them to one
+ * table rather than authorising them on its own.
+ *
+ * The rest stay `auth: false`, and not as an optimisation. A customer has no account,
+ * so there is no token to attach; sending one would be worse than pointless, because a
+ * manager signed in on the same phone would have their session travelling with every
+ * scan.
  */
+
+/**
+ * Which restaurant a scanned table belongs to.
+ *
+ * Anonymous on purpose. It is what lets one printed code serve two people: staff get
+ * the pad, and everybody else is redirected to this restaurant ordering page.
+ */
+export function resolveScannedRestaurant(
+  token: string,
+): Promise<ScannedTableRestaurant> {
+  return apiFetch<ScannedTableRestaurant>(
+    `/api/public/tables/${encodeURIComponent(token)}/restaurant`,
+    { auth: false },
+  );
+}
+
+/**
+ * What the restaurant own website needs: the real menu, and the tables to pick from.
+ *
+ * Keyed by the public slug rather than a table token, because a customer reading a
+ * website has not scanned anything.
+ */
+export function getPublicRestaurant(slug: string): Promise<PublicRestaurant> {
+  return apiFetch<PublicRestaurant>(
+    `/api/public/restaurants/${encodeURIComponent(slug)}/menu`,
+    { auth: false },
+  );
+}
+
+/** Place an order from the website, on the table the customer chose. */
+export function placeWebsiteOrder(
+  slug: string,
+  payload: PlaceWebsiteOrderPayload,
+): Promise<PublicOrder> {
+  return apiFetch<PublicOrder>(
+    `/api/public/restaurants/${encodeURIComponent(slug)}/orders`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+      auth: false,
+    },
+  );
+}
 
 /** What the scanned page needs: where they are, the menu, and their order so far. */
 export function getPublicTable(token: string): Promise<PublicTable> {
   return apiFetch<PublicTable>(
     `/api/public/tables/${encodeURIComponent(token)}`,
-    { auth: false },
   );
 }
 
@@ -38,7 +87,6 @@ export function placePublicOrder(
     {
       method: "POST",
       body: JSON.stringify(payload),
-      auth: false,
     },
   );
 }

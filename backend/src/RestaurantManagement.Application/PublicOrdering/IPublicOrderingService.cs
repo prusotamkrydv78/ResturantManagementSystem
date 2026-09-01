@@ -32,6 +32,7 @@ public interface IPublicOrderingService
     /// switched off, all reported identically.
     /// </summary>
     Task<Result<PublicTableResponse>> GetTableAsync(
+        Guid staffUserId,
         string token,
         CancellationToken cancellationToken);
 
@@ -42,8 +43,43 @@ public interface IPublicOrderingService
     /// round is one bill rather than two. Starts a fresh order when the table has none.
     /// Refused while a member of staff is running an order on the table.
     /// </summary>
+    /// <summary>
+    /// What the restaurant's own website needs: the real menu, and the tables a
+    /// customer may say they are sitting at.
+    /// </summary>
+    /// <remarks>
+    /// Keyed by the public slug rather than by a table token, because somebody
+    /// reading a website has not scanned anything. That is the only difference; the
+    /// order they place goes through the same pricing, the same caps and the same
+    /// availability checks as a scanned one.
+    /// </remarks>
+    Task<Result<PublicRestaurantResponse>> GetRestaurantAsync(
+        string slug,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Places an order from the website, on the table the customer chose.
+    /// </summary>
+    Task<Result<PublicOrderResponse>> PlaceWebsiteOrderAsync(
+        string slug,
+        PlaceWebsiteOrderRequest request,
+        CancellationToken cancellationToken);
+
     Task<Result<PublicOrderResponse>> PlaceOrderAsync(
+        Guid staffUserId,
         string token,
         PlacePublicOrderRequest request,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Which restaurant a printed table code belongs to.
+    ///
+    /// The only thing left on the scanned path that answers without a session, and it
+    /// is what makes one printed code serve two people: a member of staff scanning it
+    /// gets the order pad for that table, and anybody else is sent to the
+    /// restaurant's own ordering page. The browser needs the slug to do that.
+    /// </summary>
+    Task<Result<ScannedTableRestaurantResponse>> ResolveScannedRestaurantAsync(
+        string token,
         CancellationToken cancellationToken);
 }

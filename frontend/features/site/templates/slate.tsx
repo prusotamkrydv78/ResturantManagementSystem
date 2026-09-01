@@ -28,7 +28,11 @@ import { CardSlider } from "./card-slider";
  * write is the words and the pictures. That line is the product — a page that looks
  * composed, by somebody who cannot decompose it.
  */
-export function SlateTemplate({ content, restaurantName }: TemplateProps) {
+export function SlateTemplate({
+  content,
+  restaurantName,
+  orderHref,
+}: TemplateProps) {
   const name = brandName(content, restaurantName);
   const primary = safeHref(content.hero.primaryHref);
   const secondary = safeHref(content.hero.secondaryHref);
@@ -79,7 +83,17 @@ export function SlateTemplate({ content, restaurantName }: TemplateProps) {
             ))}
           </div>
 
-          {bookingHref !== null ? (
+          <div className="flex shrink-0 items-center gap-3">
+            {orderHref !== undefined && (
+              <a
+                href={orderHref}
+                className="bg-[var(--accent)] px-4 py-2 text-xs font-semibold tracking-[0.15em] whitespace-nowrap text-zinc-950 uppercase transition-opacity hover:opacity-90"
+              >
+                Order
+              </a>
+            )}
+
+            {bookingHref !== null ? (
             <a
               href={bookingHref}
               target="_blank"
@@ -98,6 +112,7 @@ export function SlateTemplate({ content, restaurantName }: TemplateProps) {
               </a>
             )
           )}
+          </div>
         </div>
       </nav>
 
