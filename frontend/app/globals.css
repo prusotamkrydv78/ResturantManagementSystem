@@ -345,6 +345,95 @@ h4 {
   animation: rise 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
+/* ---------------------------------------------------------------------------
+   Sending an order.
+
+   The one moment in the product worth a flourish. Everywhere else a confirmation
+   is a line of green text, because staff see those forty times a shift and a
+   celebration would wear out by ten. This one is different: it is the end of the
+   only task a guest ever performs here, they do it once, and until it lands they
+   have no idea whether the restaurant heard them.
+
+   Three parts, staggered rather than simultaneous, because things that arrive
+   together read as one flat event: the ring expands and fades like something
+   landing, the disc pops, and the tick draws itself. Drawing the tick rather than
+   fading one in is the whole trick - a stroke that completes reads as a decision
+   being made, which is exactly what just happened.
+
+   Nothing here needs disabling for reduced motion. The block below already clamps
+   every animation in the product to effectively zero, so this arrives complete
+   and instant instead of never arriving at all.
+   --------------------------------------------------------------------------- */
+
+@keyframes sent-ring {
+  from {
+    opacity: 0.55;
+    transform: scale(0.4);
+  }
+
+  to {
+    opacity: 0;
+    transform: scale(2.1);
+  }
+}
+
+@keyframes sent-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+
+  /* Slightly past full size before settling. A disc that stops dead at its final
+     size looks placed; one that overshoots looks like it arrived. */
+  70% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes sent-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes sent-rise {
+  from {
+    opacity: 0;
+    transform: translateY(0.5rem);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.sent-ring {
+  animation: sent-ring 0.9s ease-out both;
+}
+
+.sent-pop {
+  animation: sent-pop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.sent-draw {
+  /* The path is 32 units long; hiding it by that much and animating the offset to
+     zero is what makes it draw rather than appear. */
+  stroke-dasharray: 32;
+  stroke-dashoffset: 32;
+  animation: sent-draw 0.4s 0.28s ease-out both;
+}
+
+.sent-rise {
+  animation: sent-rise 0.4s 0.34s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
