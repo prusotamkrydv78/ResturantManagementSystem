@@ -8,10 +8,11 @@ import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Surface } from "@/components/ui/surface";
 import { FormError } from "@/components/ui/states";
+import { homeFor } from "@/components/layout/nav-config";
 import { useAuth } from "@/features/auth/auth-context";
 
 export default function LoginPage() {
-  const { signIn, isAuthenticated, isLoading } = useAuth();
+  const { signIn, isAuthenticated, isLoading, user } = useAuth();
   const router = useRouter();
 
   const [email, setEmail] = useState("");
@@ -19,12 +20,14 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Someone already signed in has no reason to see the sign-in form.
+  // Someone already signed in has no reason to see the sign-in form. Sent to their
+  // own role home rather than to a fixed path, so a waiter who follows an old
+  // bookmark lands somewhere they are allowed to be.
   useEffect(() => {
     if (!isLoading && isAuthenticated) {
-      router.replace("/dashboard");
+      router.replace(homeFor(user?.platformRole, user?.staffRole));
     }
-  }, [isAuthenticated, isLoading, router]);
+  }, [isAuthenticated, isLoading, router, user]);
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -32,8 +35,11 @@ export default function LoginPage() {
     setIsSubmitting(true);
 
     try {
-      await signIn({ email, password });
-      router.replace("/dashboard");
+      // The signed-in user is returned rather than read from context, which has not
+      // re-rendered yet at this point in the handler.
+      const session = await signIn({ email, password });
+
+      router.replace(homeFor(session.platformRole, session.staffRole));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to sign in.");
     } finally {

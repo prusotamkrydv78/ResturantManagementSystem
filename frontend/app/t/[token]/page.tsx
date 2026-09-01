@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/input";
 import { Surface } from "@/components/ui/surface";
 import { EmptyState, FormError, Spinner } from "@/components/ui/states";
 import { getPublicTable, placePublicOrder } from "@/features/public/api";
+import { apiAssetSrc } from "@/lib/api/asset-url";
 import { ApiError } from "@/lib/api/client";
 import { cn } from "@/lib/utils/cn";
 import type { PublicMenuItem, PublicTable } from "@/types/public-ordering";
@@ -272,13 +273,52 @@ export default function PublicOrderingPage() {
         {table.canOrder &&
           table.menu.map((section) => (
             <Surface key={section.name} className="overflow-hidden">
-              <h2 className="border-b border-border bg-surface-2 px-4 py-2.5 text-sm font-semibold text-text">
-                {section.name}
-              </h2>
+              {/* A section photograph when there is one, with the name laid over it.
+                  Scrolling a long menu on a phone is mostly a search for the right
+                  heading, and a picture is found faster than a line of text. */}
+              {section.imageUrl === null ? (
+                <h2 className="border-b border-border bg-surface-2 px-4 py-2.5 text-sm font-semibold text-text">
+                  {section.name}
+                </h2>
+              ) : (
+                <div className="relative isolate flex h-28 items-end border-b border-border">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={apiAssetSrc(section.imageUrl)}
+                    alt=""
+                    loading="lazy"
+                    decoding="async"
+                    className="absolute inset-0 -z-10 size-full object-cover"
+                  />
+                  {/* Darkened from the bottom only, so the half carrying the name is
+                      readable without dulling the whole picture. */}
+                  <div
+                    aria-hidden="true"
+                    className="absolute inset-0 -z-10 bg-gradient-to-t from-black/75 to-black/10"
+                  />
+                  <h2 className="px-4 py-2.5 text-base font-semibold text-white">
+                    {section.name}
+                  </h2>
+                </div>
+              )}
 
               <ul className="flex flex-col divide-y divide-border">
                 {section.items.map((item) => (
                   <li key={item.id} className="flex items-start gap-3 px-4 py-3">
+                    {/* Only shown when the restaurant has added one. A placeholder
+                        beside every dish would be a page of grey boxes, which reads
+                        worse than a plain list of names. */}
+                    {item.imageUrl !== null && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={apiAssetSrc(item.imageUrl)}
+                        alt=""
+                        loading="lazy"
+                        decoding="async"
+                        className="size-20 shrink-0 rounded-md border border-border object-cover"
+                      />
+                    )}
+
                     <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                       <p className="text-base font-medium text-text">{item.name}</p>
                       {item.description !== null && (

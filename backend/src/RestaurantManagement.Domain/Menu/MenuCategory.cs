@@ -11,6 +11,9 @@ namespace RestaurantManagement.Domain.Menu;
 /// </summary>
 public class MenuCategory
 {
+    /// <summary>Largest photograph accepted, in bytes.</summary>
+    public const int MaxImageBytes = 2 * 1024 * 1024;
+
     /// <summary>Primary key.</summary>
     public Guid Id { get; set; }
 
@@ -25,6 +28,21 @@ public class MenuCategory
 
     /// <summary>Optional note about what belongs in this category.</summary>
     public string? Description { get; set; }
+
+    /// <summary>
+    /// When this section's photograph was last set, or null when it has none.
+    ///
+    /// Says whether a picture exists, so listing a menu never touches the image
+    /// table, and doubles as the cache version in the URL. Denormalised from
+    /// <see cref="Image"/> and written in the same transaction as it.
+    /// </summary>
+    public DateTimeOffset? ImageUpdatedAtUtc { get; set; }
+
+    /// <summary>
+    /// The photograph heading this section, in a table of its own so it is never
+    /// loaded by a query that only wanted the name.
+    /// </summary>
+    public MenuCategoryImage? Image { get; set; }
 
     /// <summary>
     /// Where this category sits on the menu. A menu has a natural order, so it is

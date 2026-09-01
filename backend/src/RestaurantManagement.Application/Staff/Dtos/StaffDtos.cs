@@ -16,6 +16,10 @@ namespace RestaurantManagement.Application.Staff.Dtos;
 /// <param name="IsActive">Whether the account may sign in.</param>
 /// <param name="RestaurantName">The restaurant they work in.</param>
 /// <param name="CreatedAtUtc">When the account was created.</param>
+/// <param name="ImageUrl">
+/// Their photograph, or null. Carries a version stamp so a replacement is not hidden
+/// behind the cache of the old one.
+/// </param>
 public sealed record StaffResponse(
     Guid Id,
     string FullName,
@@ -23,7 +27,8 @@ public sealed record StaffResponse(
     StaffRole Role,
     bool IsActive,
     string RestaurantName,
-    DateTimeOffset CreatedAtUtc);
+    DateTimeOffset CreatedAtUtc,
+    string? ImageUrl);
 
 /// <summary>
 /// Payload for creating a staff account.

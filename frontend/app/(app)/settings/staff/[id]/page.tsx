@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, KeyRound, Trash2, UserCog } from "lucide-react";
+import { ArrowLeft, ImagePlus, KeyRound, Trash2, UserCog } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button, LinkButton } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
@@ -23,11 +23,14 @@ import { RequireAuth } from "@/features/auth/require-auth";
 import {
   deleteStaff,
   getStaffMember,
+  removeStaffImage,
   resetStaffPassword,
   setStaffActive,
+  setStaffImage,
   updateStaff,
 } from "@/features/staff/api";
-import { STAFF_ROLES } from "@/types/staff";
+import { apiAssetSrc } from "@/lib/api/asset-url";
+import { STAFF_IMAGE, STAFF_ROLES } from "@/types/staff";
 import type { StaffMember, StaffRole } from "@/types/staff";
 
 /**
@@ -147,7 +150,8 @@ function StaffMemberView() {
             </div>
 
             <div className="flex flex-col gap-5">
-              <StatusPanel member={member} onChanged={refresh} />
+              <PhotoPanel member={member} onChanged={refresh} />
+            <StatusPanel member={member} onChanged={refresh} />
               <PasswordPanel member={member} />
               <DangerPanel
                 member={member}
@@ -284,6 +288,167 @@ function DetailsPanel({
         </div>
       </form>
     </Surface>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Photograph                                                                 */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * A photograph of the person.
+ *
+ * For recognition, not for a personnel file. A manager with thirty people across
+ * three shifts is matching a name on a roster to a face, and nothing else in the
+ * product helps with that.
+ *
+ * Square and shown at the size the roster draws it, because that is the only place it
+ * is ever seen and a portrait that works large can be unreadable at 40 pixels.
+ */
+function PhotoPanel({
+  member,
+  onChanged,
+}: {
+  member: StaffMember;
+  onChanged: (next: StaffMember) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [state, setState] = useState<PanelState>(idle);
+
+  async function upload(file: File) {
+    // Checked here as well as by the server, so a photograph straight off a phone is
+    // refused instantly rather than after a megabyte has gone up the wire.
+    if (file.size > STAFF_IMAGE.maxBytes) {
+      setState({
+        status: "error",
+        message: `That picture is ${(file.size / 1024 / 1024).toFixed(
+          1,
+        )} MB. The limit is ${STAFF_IMAGE.maxBytes / 1024 / 1024} MB.`,
+        fieldErrors: {},
+      });
+      return;
+    }
+
+    setState({ status: "busy" });
+
+    try {
+      onChanged(await setStaffImage(member.id, file));
+      setState({ status: "done", message: "Picture saved." });
+    } catch (caught) {
+      setState(failure(caught, "Could not upload that picture."));
+    }
+  }
+
+  async function remove() {
+    setState({ status: "busy" });
+
+    try {
+      onChanged(await removeStaffImage(member.id));
+      setState(idle);
+    } catch (caught) {
+      setState(failure(caught, "Could not remove the picture."));
+    }
+  }
+
+  return (
+    <Surface>
+      <SurfaceHeader title="Picture" description="So a name has a face against it" />
+
+      <div className="flex flex-col gap-4 p-4">
+        {state.status === "error" && <FormError message={state.message} />}
+
+        <div className="flex items-center gap-4">
+          {member.imageUrl === null ? (
+            <span
+              aria-hidden="true"
+              className="flex size-20 shrink-0 items-center justify-center rounded-full border border-border bg-surface-3 text-lg font-semibold text-muted"
+            >
+              {initialsOf(member.fullName)}
+            </span>
+          ) : (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={apiAssetSrc(member.imageUrl)}
+              alt={member.fullName}
+              className="size-20 shrink-0 rounded-full border border-border object-cover"
+            />
+          )}
+
+          <p className="text-sm text-muted">
+            {member.imageUrl === null
+              ? "No picture yet, so the roster shows their initials."
+              : "Shown on the roster and here."}
+          </p>
+        </div>
+
+        {/* Hidden and driven by the button: a bare file input cannot be styled to
+            match anything else, and its "no file chosen" text says nothing once a
+            picture is already showing. */}
+        <input
+          ref={inputRef}
+          type="file"
+          accept={STAFF_IMAGE.accept}
+          className="hidden"
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+
+            // Cleared so choosing the same file twice still fires a change, which is
+            // what somebody does straight after a failed upload.
+            event.target.value = "";
+
+            if (file !== undefined) {
+              void upload(file);
+            }
+          }}
+        />
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={<ImagePlus />}
+            disabled={state.status === "busy"}
+            onClick={() => inputRef.current?.click()}
+          >
+            {state.status === "busy"
+              ? "Uploading…"
+              : member.imageUrl === null
+                ? "Add a picture"
+                : "Replace"}
+          </Button>
+
+          {member.imageUrl !== null && (
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={state.status === "busy"}
+              onClick={() => void remove()}
+            >
+              Remove
+            </Button>
+          )}
+
+          <Notice state={state} />
+        </div>
+
+        <p className="text-2xs text-subtle">
+          JPEG, PNG, WebP or AVIF, up to {STAFF_IMAGE.maxBytes / 1024 / 1024} MB. Shown
+          cropped to a circle, so keep the face in the middle.
+        </p>
+      </div>
+    </Surface>
+  );
+}
+
+/** Up to two initials, for somebody with no photograph. */
+function initialsOf(fullName: string): string {
+  return (
+    fullName
+      .split(" ")
+      .filter((part) => part.length > 0)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase() ?? "")
+      .join("") || "?"
   );
 }
 

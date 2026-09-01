@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using RestaurantManagement.Infrastructure.Persistence;
 
@@ -11,9 +12,11 @@ using RestaurantManagement.Infrastructure.Persistence;
 namespace RestaurantManagement.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260901065135_AddMenuItemImages")]
+    partial class AddMenuItemImages
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -162,9 +165,6 @@ namespace RestaurantManagement.Infrastructure.Persistence.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
-                    b.Property<DateTimeOffset?>("ImageUpdatedAtUtc")
-                        .HasColumnType("datetimeoffset");
-
                     b.Property<bool>("IsActive")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bit")
@@ -269,36 +269,6 @@ namespace RestaurantManagement.Infrastructure.Persistence.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("RefreshTokens", (string)null);
-                });
-
-            modelBuilder.Entity("RestaurantManagement.Domain.Identity.StaffImage", b =>
-                {
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<int>("ByteCount")
-                        .HasColumnType("int");
-
-                    b.Property<byte[]>("Content")
-                        .IsRequired()
-                        .HasColumnType("varbinary(max)");
-
-                    b.Property<string>("ContentType")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<Guid>("RestaurantId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTimeOffset>("UpdatedAtUtc")
-                        .HasColumnType("datetimeoffset");
-
-                    b.HasKey("UserId");
-
-                    b.HasIndex("RestaurantId");
-
-                    b.ToTable("StaffImages", (string)null);
                 });
 
             modelBuilder.Entity("RestaurantManagement.Domain.Inventory.InventoryItem", b =>
@@ -522,9 +492,6 @@ namespace RestaurantManagement.Infrastructure.Persistence.Migrations
                         .HasColumnType("int")
                         .HasDefaultValue(0);
 
-                    b.Property<DateTimeOffset?>("ImageUpdatedAtUtc")
-                        .HasColumnType("datetimeoffset");
-
                     b.Property<bool>("IsActive")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bit")
@@ -549,36 +516,6 @@ namespace RestaurantManagement.Infrastructure.Persistence.Migrations
                         .IsUnique();
 
                     b.ToTable("MenuCategories", (string)null);
-                });
-
-            modelBuilder.Entity("RestaurantManagement.Domain.Menu.MenuCategoryImage", b =>
-                {
-                    b.Property<Guid>("MenuCategoryId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<int>("ByteCount")
-                        .HasColumnType("int");
-
-                    b.Property<byte[]>("Content")
-                        .IsRequired()
-                        .HasColumnType("varbinary(max)");
-
-                    b.Property<string>("ContentType")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<Guid>("RestaurantId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTimeOffset>("UpdatedAtUtc")
-                        .HasColumnType("datetimeoffset");
-
-                    b.HasKey("MenuCategoryId");
-
-                    b.HasIndex("RestaurantId");
-
-                    b.ToTable("MenuCategoryImages", (string)null);
                 });
 
             modelBuilder.Entity("RestaurantManagement.Domain.Menu.MenuItem", b =>
@@ -1285,17 +1222,6 @@ namespace RestaurantManagement.Infrastructure.Persistence.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("RestaurantManagement.Domain.Identity.StaffImage", b =>
-                {
-                    b.HasOne("RestaurantManagement.Domain.Identity.ApplicationUser", "User")
-                        .WithOne("Image")
-                        .HasForeignKey("RestaurantManagement.Domain.Identity.StaffImage", "UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("User");
-                });
-
             modelBuilder.Entity("RestaurantManagement.Domain.Inventory.InventoryItem", b =>
                 {
                     b.HasOne("RestaurantManagement.Domain.Restaurants.Restaurant", "Restaurant")
@@ -1360,17 +1286,6 @@ namespace RestaurantManagement.Infrastructure.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("Restaurant");
-                });
-
-            modelBuilder.Entity("RestaurantManagement.Domain.Menu.MenuCategoryImage", b =>
-                {
-                    b.HasOne("RestaurantManagement.Domain.Menu.MenuCategory", "MenuCategory")
-                        .WithOne("Image")
-                        .HasForeignKey("RestaurantManagement.Domain.Menu.MenuCategoryImage", "MenuCategoryId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("MenuCategory");
                 });
 
             modelBuilder.Entity("RestaurantManagement.Domain.Menu.MenuItem", b =>
@@ -1548,8 +1463,6 @@ namespace RestaurantManagement.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("RestaurantManagement.Domain.Identity.ApplicationUser", b =>
                 {
-                    b.Navigation("Image");
-
                     b.Navigation("RefreshTokens");
                 });
 
@@ -1562,8 +1475,6 @@ namespace RestaurantManagement.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("RestaurantManagement.Domain.Menu.MenuCategory", b =>
                 {
-                    b.Navigation("Image");
-
                     b.Navigation("Items");
                 });
 

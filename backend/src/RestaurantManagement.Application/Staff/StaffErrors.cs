@@ -11,6 +11,27 @@ public static class StaffErrors
     /// A record belonging to a different restaurant produces this same error, so
     /// probing identifiers reveals nothing about other restaurants.
     /// </summary>
+    /// <summary>The upload had no bytes in it.</summary>
+    public static readonly Error ImageEmpty =
+        new("staff.image_empty", "Choose a picture to upload.");
+
+    /// <summary>The upload is bigger than the limit.</summary>
+    public static Error ImageTooLarge(int maxBytes) =>
+        new(
+            "staff.image_too_large",
+            $"A picture cannot be larger than {maxBytes / (1024 * 1024)} MB.");
+
+    /// <summary>
+    /// The file is not one of the accepted picture formats, or does not begin the way
+    /// the type it claims should.
+    /// </summary>
+    public static readonly Error ImageTypeNotAllowed =
+        new("staff.image_type", "Pictures must be JPEG, PNG, WebP or AVIF.");
+
+    /// <summary>There is no picture on this account to remove.</summary>
+    public static readonly Error ImageNotFound =
+        new("staff.image_not_found", "This person has no picture.");
+
     public static readonly Error NotFound =
         new("staff.not_found", "The staff member could not be found.");
 

@@ -10,6 +10,7 @@ import {
   Users,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Card, CardGrid, CardGridSkeleton } from "@/components/ui/card-grid";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -26,9 +27,7 @@ import {
   EmptyState,
   ErrorState,
   FormError,
-  TableSkeleton,
 } from "@/components/ui/states";
-import { Table, TableWrap, Td, Th, Tr } from "@/components/ui/table";
 import { PageBody, PageHeader } from "@/components/layout/page-header";
 import { RequireAuth } from "@/features/auth/require-auth";
 import { NoRestaurantAssigned } from "@/features/restaurants/no-restaurant";
@@ -178,7 +177,7 @@ function Reservations() {
               {error !== null && <ErrorState message={error} onRetry={refresh} />}
 
               {board === null ? (
-                <TableSkeleton rows={5} columns={5} />
+                <CardGridSkeleton count={10} />
               ) : board.reservations.length === 0 ? (
                 <EmptyState
                   icon={<CalendarClock />}
@@ -191,82 +190,83 @@ function Reservations() {
                   action={onDate === "" ? <ReservationDialog onSaved={refresh} /> : undefined}
                 />
               ) : (
-                <TableWrap>
-                  <Table>
-                    <thead>
-                      <tr>
-                        <Th>Expected</Th>
-                        <Th>Customer</Th>
-                        <Th className="text-right">Guests</Th>
-                        <Th>Table</Th>
-                        <Th>Status</Th>
-                        <Th>
-                          <span className="sr-only">Actions</span>
-                        </Th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {board.reservations.map((reservation) => (
-                        <Tr key={reservation.id}>
-                          <Td className="whitespace-nowrap">
-                            <span className="font-medium text-text">
-                              {formatTime(reservation.reservedForUtc)}
-                            </span>
-                            <span className="ml-1.5 text-xs text-muted">
-                              {formatDay(reservation.reservedForUtc)}
-                            </span>
-                            <p className="text-xs text-muted">
-                              until {formatTime(reservation.endsAtUtc)}
-                            </p>
-                          </Td>
-                          <Td>
-                            <span className="font-medium text-text">
-                              {reservation.customerName}
-                            </span>
-                            {reservation.customerPhone !== null && (
-                              <p className="text-xs text-muted">
-                                {reservation.customerPhone}
-                              </p>
-                            )}
-                            {reservation.notes !== null && (
-                              <p className="mt-0.5 line-clamp-2 max-w-xs text-xs text-muted">
-                                {reservation.notes}
-                              </p>
-                            )}
-                          </Td>
-                          <Td className="text-right tabular text-muted">
-                            {reservation.guestCount}
-                          </Td>
-                          <Td className="text-muted">
-                            {reservation.tableName ?? "Not decided"}
-                            {reservation.tableCapacity !== null &&
-                              reservation.guestCount > reservation.tableCapacity && (
-                                <p className="text-xs text-warning">
-                                  Seats {reservation.tableCapacity}
-                                </p>
-                              )}
-                          </Td>
-                          <Td>
-                            <Badge tone={toneFor(reservation.status)} dot>
-                              {reservation.status}
-                            </Badge>
-                            {reservation.cancellationReason !== null && (
-                              <p className="mt-0.5 max-w-xs text-xs text-muted">
-                                {reservation.cancellationReason}
-                              </p>
-                            )}
-                          </Td>
-                          <Td className="text-right">
-                            <ReservationActions
-                              reservation={reservation}
-                              onChanged={refresh}
-                            />
-                          </Td>
-                        </Tr>
-                      ))}
-                    </tbody>
-                  </Table>
-                </TableWrap>
+                <CardGrid>
+                  {board.reservations.map((reservation) => (
+                    <Card key={reservation.id} className="p-3.5">
+                      {/* The time leads. A booking is looked up by when it is, and
+                          on a board sorted by time that is the thing the eye is
+                          running down. */}
+                      <div className="flex items-baseline justify-between gap-2">
+                        <p className="flex items-baseline gap-1.5">
+                          <span className="text-lg font-semibold text-text tabular">
+                            {formatTime(reservation.reservedForUtc)}
+                          </span>
+                          <span className="text-2xs text-muted">
+                            {formatDay(reservation.reservedForUtc)}
+                          </span>
+                        </p>
+                        <Badge tone={toneFor(reservation.status)} dot>
+                          {reservation.status}
+                        </Badge>
+                      </div>
+
+                      <p className="text-2xs text-subtle">
+                        until {formatTime(reservation.endsAtUtc)}
+                      </p>
+
+                      <div className="mt-2.5 min-w-0">
+                        <p className="truncate font-medium text-text">
+                          {reservation.customerName}
+                        </p>
+                        {reservation.customerPhone !== null && (
+                          <p className="truncate text-2xs text-muted">
+                            {reservation.customerPhone}
+                          </p>
+                        )}
+                      </div>
+
+                      <p className="mt-2 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs text-muted">
+                        <span className="tabular">
+                          {reservation.guestCount}{" "}
+                          {reservation.guestCount === 1 ? "guest" : "guests"}
+                        </span>
+                        <span aria-hidden="true" className="text-subtle">
+                          ·
+                        </span>
+                        <span>{reservation.tableName ?? "Table not decided"}</span>
+                      </p>
+
+                      {/* The one thing on this card somebody has to act on before
+                          service, so it is called out rather than left as a number
+                          to compare against another number. */}
+                      {reservation.tableCapacity !== null &&
+                        reservation.guestCount > reservation.tableCapacity && (
+                          <p className="mt-1.5 rounded-md border border-warning-border bg-warning-soft px-2 py-1 text-2xs text-warning">
+                            That table seats {reservation.tableCapacity}
+                          </p>
+                        )}
+
+                      {reservation.notes !== null && (
+                        <p className="mt-1.5 line-clamp-2 text-xs text-muted italic">
+                          {reservation.notes}
+                        </p>
+                      )}
+
+                      {reservation.cancellationReason !== null && (
+                        <p className="mt-1.5 line-clamp-2 text-xs text-muted">
+                          {reservation.cancellationReason}
+                        </p>
+                      )}
+
+                      <div className="mt-auto flex justify-end pt-3.5">
+                        <ReservationActions
+                          reservation={reservation}
+                          onChanged={refresh}
+                        />
+                      </div>
+                    </Card>
+                  ))}
+                </CardGrid>
               )}
             </Surface>
 

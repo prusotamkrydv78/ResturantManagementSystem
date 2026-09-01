@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import {
   ChevronDown,
   ChevronUp,
@@ -9,10 +10,12 @@ import {
   Plus,
   Search,
   ScrollText,
+  SlidersHorizontal,
   Tags,
+  Utensils,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, LinkButton } from "@/components/ui/button";
 import {
   Dialog,
   DialogClose,
@@ -28,12 +31,12 @@ import {
   EmptyState,
   ErrorState,
   FormError,
-  TableSkeleton,
+  Skeleton,
 } from "@/components/ui/states";
-import { Table, TableWrap, Td, Th, Tr } from "@/components/ui/table";
+import { apiAssetSrc } from "@/lib/api/asset-url";
+import { cn } from "@/lib/utils/cn";
 import { PageBody, PageHeader } from "@/components/layout/page-header";
 import { RequireAuth } from "@/features/auth/require-auth";
-import { RecipeDialog } from "@/features/inventory/recipe-dialog";
 import {
   createCategory,
   createItem,
@@ -196,7 +199,7 @@ function MenuManager() {
           />
 
           {categories === null ? (
-            <TableSkeleton rows={3} columns={4} />
+            <CardSkeleton count={5} className="sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5" />
           ) : categories.length === 0 ? (
             <EmptyState
               icon={<Tags />}
@@ -205,94 +208,112 @@ function MenuManager() {
               action={<CategoryDialog categories={[]} onSaved={refresh} />}
             />
           ) : (
-            <TableWrap>
-              <Table>
-                <thead>
-                  <tr>
-                    <Th>Category</Th>
-                    <Th>Items</Th>
-                    <Th>Status</Th>
-                    <Th className="text-right">Order</Th>
-                    <Th>
-                      <span className="sr-only">Actions</span>
-                    </Th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {categories.map((category, index) => (
-                    <Tr key={category.id}>
-                      <Td>
-                        <span className="font-medium text-text">{category.name}</span>
-                        {category.description !== null && (
-                          <span className="block truncate text-2xs text-muted">
-                            {category.description}
-                          </span>
-                        )}
-                      </Td>
-                      <Td className="text-muted tabular">
-                        {category.itemCount === 0 ? (
-                          "—"
-                        ) : (
-                          <>
-                            {category.itemCount}
-                            {category.activeItemCount !== category.itemCount && (
-                              <span className="text-subtle">
-                                {" "}
-                                ({category.activeItemCount} on)
-                              </span>
-                            )}
-                          </>
-                        )}
-                      </Td>
-                      <Td>
-                        {category.isActive ? (
-                          <Badge tone="success" dot>
-                            On menu
-                          </Badge>
-                        ) : (
-                          <Badge tone="neutral" dot>
-                            Hidden
-                          </Badge>
-                        )}
-                      </Td>
-                      <Td className="text-right">
-                        {/* Buttons rather than an editable number. Position is
-                            relative, so "move this one up" is the operation a
-                            manager actually has in mind; typing 3 into a box means
-                            working out what everything else should become. */}
-                        <div className="flex items-center justify-end gap-1">
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            aria-label={`Move ${category.name} up`}
-                            disabled={isReordering || index === 0}
-                            onClick={() => void moveCategory(category.id, -1)}
-                          >
-                            <ChevronUp className="size-3.5" aria-hidden="true" />
-                          </Button>
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            aria-label={`Move ${category.name} down`}
-                            disabled={isReordering || index === categories.length - 1}
-                            onClick={() => void moveCategory(category.id, 1)}
-                          >
-                            <ChevronDown className="size-3.5" aria-hidden="true" />
-                          </Button>
-                        </div>
-                      </Td>
-                      <Td className="text-right">
-                        <CategoryDialog
-                          categories={categories}
-                          category={category}
-                          onSaved={refresh}
-                        />
-                      </Td>
-                    </Tr>
-                  ))}
-                </tbody>
-              </Table>
-            </TableWrap>
+            <div className="grid gap-4 p-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+              {categories.map((category, index) => (
+                <article
+                  key={category.id}
+                  className="flex flex-col overflow-hidden rounded-lg border border-border bg-surface-2"
+                >
+                  {/* The same shape as a dish card, so the two grids on this page
+                      read as one thing. Guests see this cropped to a wide band with
+                      the name over it, which is not what a manager needs while
+                      scanning - the section page previews that crop properly. */}
+                  <div className="relative aspect-4/3 w-full overflow-hidden bg-surface-3">
+                    {category.imageUrl === null ? (
+                      <span className="flex size-full items-center justify-center">
+                        <Tags className="size-6 text-subtle" aria-hidden="true" />
+                      </span>
+                    ) : (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={apiAssetSrc(category.imageUrl)}
+                        alt=""
+                        loading="lazy"
+                        decoding="async"
+                        className="size-full object-cover"
+                      />
+                    )}
+
+                    <span className="absolute top-2 right-2">
+                      {category.isActive ? (
+                        <Badge tone="success" dot>
+                          On menu
+                        </Badge>
+                      ) : (
+                        <Badge tone="neutral" dot>
+                          Hidden
+                        </Badge>
+                      )}
+                    </span>
+                  </div>
+
+                  <div className="flex flex-1 flex-col gap-1 p-3.5">
+                    <Link
+                      href={`/menu/categories/${category.id}`}
+                      className="font-medium text-text hover:underline"
+                    >
+                      {category.name}
+                    </Link>
+
+                    {category.description !== null && (
+                      <p className="line-clamp-2 text-xs text-muted">
+                        {category.description}
+                      </p>
+                    )}
+
+                    <p className="text-2xs text-subtle tabular">
+                      {category.itemCount === 0
+                        ? "No items yet"
+                        : `${category.itemCount} ${
+                            category.itemCount === 1 ? "item" : "items"
+                          }${
+                            category.activeItemCount === category.itemCount
+                              ? ""
+                              : ` · ${category.activeItemCount} on the menu`
+                          }`}
+                    </p>
+
+                    <div className="mt-auto flex items-center justify-between gap-2 pt-2.5">
+                      {/* Buttons rather than an editable number. Position is
+                          relative, so "move this one earlier" is the operation a
+                          manager has in mind; typing 3 into a box means working out
+                          what everything else should become. Earlier and later
+                          rather than up and down, because in a grid they are not
+                          above and below each other. */}
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          aria-label={`Move ${category.name} earlier`}
+                          disabled={isReordering || index === 0}
+                          onClick={() => void moveCategory(category.id, -1)}
+                        >
+                          <ChevronUp className="size-3.5" aria-hidden="true" />
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          aria-label={`Move ${category.name} later`}
+                          disabled={isReordering || index === categories.length - 1}
+                          onClick={() => void moveCategory(category.id, 1)}
+                        >
+                          <ChevronDown className="size-3.5" aria-hidden="true" />
+                        </Button>
+                      </div>
+
+                      <LinkButton
+                        href={`/menu/categories/${category.id}`}
+                        variant="secondary"
+                        size="sm"
+                        icon={<SlidersHorizontal />}
+                      >
+                        Manage
+                      </LinkButton>
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
           )}
         </Surface>
 
@@ -341,7 +362,7 @@ function MenuManager() {
           </div>
 
           {items === null ? (
-            <TableSkeleton rows={5} columns={4} />
+            <CardSkeleton count={10} className="sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5" />
           ) : items.length === 0 ? (
             isFiltering ? (
               <EmptyState
@@ -377,58 +398,78 @@ function MenuManager() {
               />
             )
           ) : (
-            <TableWrap>
-              <Table>
-                <thead>
-                  <tr>
-                    <Th>Item</Th>
-                    <Th>Category</Th>
-                    <Th className="text-right">Price</Th>
-                    <Th>Status</Th>
-                    <Th>
-                      <span className="sr-only">Actions</span>
-                    </Th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map((item) => (
-                    <Tr key={item.id}>
-                      <Td>
-                        <span className="font-medium text-text">{item.name}</span>
-                        {item.description !== null && (
-                          <span className="block max-w-xs truncate text-2xs text-muted">
-                            {item.description}
-                          </span>
-                        )}
-                      </Td>
-                      <Td className="text-muted">{item.categoryName}</Td>
-                      <Td className="text-right text-text tabular">
-                        {formatPrice(item.price)}
-                      </Td>
-                      <Td>
+            <div className="grid gap-4 p-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+              {items.map((item) => (
+                <article
+                  key={item.id}
+                  className="group flex flex-col overflow-hidden rounded-lg border border-border bg-surface-2 transition-shadow hover:shadow-md"
+                >
+                  {/* The photograph, at the shape a guest is shown it. An item
+                      without one gets the same box rather than a shorter card, so a
+                      grid of mixed rows still lines up. */}
+                  <div className="relative aspect-4/3 w-full overflow-hidden bg-surface-3">
+                    {item.imageUrl === null ? (
+                      <span className="flex size-full items-center justify-center">
+                        <Utensils className="size-7 text-subtle" aria-hidden="true" />
+                      </span>
+                    ) : (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={apiAssetSrc(item.imageUrl)}
+                        alt=""
+                        loading="lazy"
+                        decoding="async"
+                        className="size-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+                      />
+                    )}
+
+                    {/* Only when it is not on the menu. A badge on every card would
+                        be a grid of green stickers saying nothing. */}
+                    {!item.isAvailable && (
+                      <span className="absolute top-2 left-2">
                         <ItemStatusBadge item={item} />
-                      </Td>
-                      <Td className="text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          {/* What it is made from lives next to the item itself, since
-                              that is where a manager is when they think of it. */}
-                          <RecipeDialog
-                            menuItemId={item.id}
-                            menuItemName={item.name}
-                            onSaved={refresh}
-                          />
-                          <ItemDialog
-                            categories={categories ?? []}
-                            item={item}
-                            onSaved={refresh}
-                          />
-                        </div>
-                      </Td>
-                    </Tr>
-                  ))}
-                </tbody>
-              </Table>
-            </TableWrap>
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex flex-1 flex-col gap-1.5 p-3.5">
+                    <div className="flex items-baseline justify-between gap-3">
+                      <Link
+                        href={`/menu/${item.id}`}
+                        className="min-w-0 font-medium text-text hover:underline"
+                      >
+                        {item.name}
+                      </Link>
+                      <span className="shrink-0 font-semibold text-text tabular">
+                        {formatPrice(item.price)}
+                      </span>
+                    </div>
+
+                    {item.description !== null && (
+                      <p className="line-clamp-2 text-xs text-muted">
+                        {item.description}
+                      </p>
+                    )}
+
+                    {/* Pushed to the bottom, so the button sits on one line across
+                        the row however long the descriptions above it are. */}
+                    <div className="mt-auto flex items-center justify-between gap-2 pt-2.5">
+                      <span className="min-w-0 truncate text-2xs text-subtle">
+                        {item.categoryName}
+                      </span>
+                      <LinkButton
+                        href={`/menu/${item.id}`}
+                        variant="secondary"
+                        size="sm"
+                        icon={<SlidersHorizontal />}
+                      >
+                        Manage
+                      </LinkButton>
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
           )}
         </Surface>
       </PageBody>
@@ -440,6 +481,38 @@ function MenuManager() {
  * An item can be off the menu for two different reasons, and a manager needs to
  * tell them apart: its own switch, or the category it sits in.
  */
+/**
+ * Placeholder cards while a grid loads.
+ *
+ * Shaped like what is coming rather than like a table, so the page does not rearrange
+ * itself the moment the data lands.
+ */
+function CardSkeleton({
+  count,
+  className,
+}: {
+  count: number;
+  className?: string;
+}) {
+  return (
+    <div className={cn("grid gap-4 p-4", className)}>
+      {Array.from({ length: count }, (_, index) => (
+        <div
+          key={index}
+          className="overflow-hidden rounded-lg border border-border bg-surface-2"
+        >
+          <Skeleton className="aspect-4/3 w-full rounded-none" />
+          <div className="flex flex-col gap-2 p-3.5">
+            <Skeleton className="h-4 w-2/3" />
+            <Skeleton className="h-3 w-full" />
+            <Skeleton className="h-8 w-24 self-end" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function ItemStatusBadge({ item }: { item: MenuItem }) {
   if (item.isAvailable) {
     return (

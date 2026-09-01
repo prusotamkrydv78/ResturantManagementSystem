@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { Armchair, ChevronRight, Plus, SlidersHorizontal } from "lucide-react";
+import { Armchair, Plus, SlidersHorizontal } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button, LinkButton } from "@/components/ui/button";
+import { Card, CardGrid, CardGridSkeleton } from "@/components/ui/card-grid";
 import {
   Dialog,
   DialogClose,
@@ -19,9 +20,7 @@ import {
   EmptyState,
   ErrorState,
   FormError,
-  TableSkeleton,
 } from "@/components/ui/states";
-import { Table, TableWrap, Td, Th, Tr } from "@/components/ui/table";
 import { PageBody, PageHeader } from "@/components/layout/page-header";
 import { RequireAuth } from "@/features/auth/require-auth";
 import { createTable, listTables } from "@/features/tables/api";
@@ -121,7 +120,7 @@ function Tables() {
           {error !== null && <ErrorState message={error} onRetry={() => void refresh()} />}
 
           {tables === null ? (
-            <TableSkeleton rows={5} columns={5} />
+            <CardGridSkeleton count={10} />
           ) : tables.length === 0 ? (
             <EmptyState
               icon={<Armchair />}
@@ -130,76 +129,61 @@ function Tables() {
               action={<CreateTableDialog onCreated={refresh} />}
             />
           ) : (
-            <TableWrap>
-              <Table>
-                <thead>
-                  <tr>
-                    <Th>Table</Th>
-                    <Th>Seats</Th>
-                    <Th>Status</Th>
-                    <Th>Self-service</Th>
-                    <Th className="text-right">Added</Th>
-                    <Th>
-                      <span className="sr-only">Actions</span>
-                    </Th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {tables.map((table) => (
-                    <Tr key={table.id}>
-                      <Td>
-                        <Link
-                          href={`/settings/tables/${table.id}`}
-                          className="group flex items-center gap-1.5"
-                        >
-                          <span className="font-medium text-text group-hover:underline">
-                            {table.name}
-                          </span>
-                          <ChevronRight
-                            className="size-3.5 shrink-0 text-subtle transition-transform group-hover:translate-x-0.5"
-                            aria-hidden="true"
-                          />
-                        </Link>
-                      </Td>
-                      <Td className="text-muted tabular">{table.capacity}</Td>
-                      <Td>
-                        {table.isActive ? (
-                          <Badge tone="success" dot>
-                            In service
-                          </Badge>
-                        ) : (
-                          <Badge tone="neutral" dot>
-                            Out of service
-                          </Badge>
-                        )}
-                      </Td>
-                      <Td>
-                        {table.isOrderingEnabled ? (
-                          <Badge tone="primary" dot>
-                            Guests can order
-                          </Badge>
-                        ) : (
-                          <Badge tone="neutral">Off</Badge>
-                        )}
-                      </Td>
-                      <Td className="text-right whitespace-nowrap text-muted">
-                        {formatDate(table.createdAtUtc)}
-                      </Td>
-                      <Td className="text-right">
-                        <LinkButton
-                          href={`/settings/tables/${table.id}`}
-                          variant="secondary"
-                          size="sm"
-                          icon={<SlidersHorizontal />}
-                        >
-                          Manage
-                        </LinkButton>
-                      </Td>
-                    </Tr>
-                  ))}
-                </tbody>
-              </Table>
-            </TableWrap>
+            <CardGrid>
+              {tables.map((table) => (
+                <Card key={table.id} className="p-3.5">
+                  <div className="flex items-start justify-between gap-3">
+                    <Link
+                      href={`/settings/tables/${table.id}`}
+                      className="min-w-0 text-base font-medium text-text hover:underline"
+                    >
+                      {table.name}
+                    </Link>
+
+                    {/* The seat count as a figure rather than a column. It is the
+                        one number anybody looks a table up by. */}
+                    <span className="flex shrink-0 items-center gap-1 text-muted">
+                      <Armchair className="size-3.5" aria-hidden="true" />
+                      <span className="tabular text-sm">{table.capacity}</span>
+                    </span>
+                  </div>
+
+                  <div className="mt-2.5 flex flex-wrap gap-1.5">
+                    {table.isActive ? (
+                      <Badge tone="success" dot>
+                        In service
+                      </Badge>
+                    ) : (
+                      <Badge tone="neutral" dot>
+                        Out of service
+                      </Badge>
+                    )}
+
+                    {/* Only when it is on. Off is the default for every table, and a
+                        grid of "Off" chips would say nothing about any of them. */}
+                    {table.isOrderingEnabled && (
+                      <Badge tone="primary" dot>
+                        Guests can order
+                      </Badge>
+                    )}
+                  </div>
+
+                  <div className="mt-auto flex items-center justify-between gap-2 pt-3.5">
+                    <span className="text-2xs text-subtle">
+                      Added {formatDate(table.createdAtUtc)}
+                    </span>
+                    <LinkButton
+                      href={`/settings/tables/${table.id}`}
+                      variant="secondary"
+                      size="sm"
+                      icon={<SlidersHorizontal />}
+                    >
+                      Manage
+                    </LinkButton>
+                  </div>
+                </Card>
+              ))}
+            </CardGrid>
           )}
         </Surface>
       </PageBody>

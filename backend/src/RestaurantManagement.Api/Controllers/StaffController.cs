@@ -4,6 +4,7 @@ using RestaurantManagement.Api.Authentication;
 using RestaurantManagement.Application.Authentication;
 using RestaurantManagement.Application.Staff;
 using RestaurantManagement.Application.Staff.Dtos;
+using RestaurantManagement.Domain.Identity;
 using RestaurantManagement.Shared.Results;
 
 namespace RestaurantManagement.Api.Controllers;
@@ -228,6 +229,117 @@ public sealed class StaffController : ControllerBase
             ? ProblemFrom(result.Error!, StatusFor(result.Error!))
             : NoContent();
     }
+
+    /* --------------------------------------------------------------------- Images */
+
+    /// <summary>Puts a photograph on a staff account, replacing any it already had.</summary>
+    [HttpPost("{id:guid}/image")]
+    [RequestSizeLimit(StaffImage.MaxBytes + 8192)]
+    [ProducesResponseType(typeof(StaffResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<StaffResponse>> SetImage(
+        Guid id,
+        IFormFile file,
+        CancellationToken cancellationToken)
+    {
+        var managerId = User.GetUserId();
+
+        if (managerId is null)
+        {
+            return Unauthorized();
+        }
+
+        if (file is null || file.Length == 0)
+        {
+            return ProblemFrom(StaffErrors.ImageEmpty, StatusCodes.Status400BadRequest);
+        }
+
+        await using var stream = file.OpenReadStream();
+
+        var result = await _staffService.SetImageAsync(
+            managerId.Value,
+            id,
+            file.FileName,
+            file.ContentType ?? string.Empty,
+            stream,
+            file.Length,
+            cancellationToken);
+
+        return result.IsFailure
+            ? ProblemFrom(result.Error!, ImageStatusFor(result.Error!))
+            : Ok(result.Value);
+    }
+
+    /// <summary>Takes the photograph off a staff account.</summary>
+    [HttpDelete("{id:guid}/image")]
+    [ProducesResponseType(typeof(StaffResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<StaffResponse>> RemoveImage(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var managerId = User.GetUserId();
+
+        if (managerId is null)
+        {
+            return Unauthorized();
+        }
+
+        var result = await _staffService.RemoveImageAsync(
+            managerId.Value,
+            id,
+            cancellationToken);
+
+        return result.IsFailure
+            ? ProblemFrom(result.Error!, ImageStatusFor(result.Error!))
+            : Ok(result.Value);
+    }
+
+    /// <summary>
+    /// The bytes of a staff photograph.
+    ///
+    /// Open, unlike everything else on this controller, because an image tag cannot
+    /// send an access token and there is no other way for a browser to draw one.
+    ///
+    /// Worth being plain about: this is the most personal thing the product serves
+    /// without a session, and the only thing standing in front of it is that the
+    /// account identifier is handed out to nobody but the manager who runs that
+    /// roster. Nothing else about the person - their name, their email, their shifts -
+    /// is reachable here, and that is deliberate.
+    /// </summary>
+    [HttpGet("{id:guid}/image")]
+    [AllowAnonymous]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetImage(Guid id, CancellationToken cancellationToken)
+    {
+        var result = await _staffService.GetImageBytesAsync(id, cancellationToken);
+
+        if (result.IsFailure)
+        {
+            return NotFound();
+        }
+
+        var (content, contentType) = result.Value;
+
+        Response.Headers.CacheControl = "public, max-age=31536000, immutable";
+
+        return File(content, contentType);
+    }
+
+    /// <summary>
+    /// Which code an image failure gets. A missing picture or person is a 404; a file
+    /// too big or of the wrong kind is the caller sending something wrong.
+    /// </summary>
+    private static int ImageStatusFor(Error error) =>
+        error == StaffErrors.NotFound ||
+        error == StaffErrors.ImageNotFound ||
+        error == StaffErrors.NoRestaurantAssigned
+            ? StatusCodes.Status404NotFound
+            : StatusCodes.Status400BadRequest;
 
     private static int StatusFor(Error error) =>
         error == StaffErrors.NotFound || error == StaffErrors.NoRestaurantAssigned

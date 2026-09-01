@@ -5,13 +5,13 @@ import Link from "next/link";
 import {
   Archive,
   ArchiveRestore,
-  ChevronRight,
   Contact,
   Plus,
   Search,
   Trash2,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Card, CardGrid, CardGridSkeleton } from "@/components/ui/card-grid";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -27,9 +27,7 @@ import {
   EmptyState,
   ErrorState,
   FormError,
-  TableSkeleton,
 } from "@/components/ui/states";
-import { Table, TableWrap, Td, Th, Tr } from "@/components/ui/table";
 import { PageBody, PageHeader } from "@/components/layout/page-header";
 import { RequireAuth } from "@/features/auth/require-auth";
 import { NoRestaurantAssigned } from "@/features/restaurants/no-restaurant";
@@ -176,7 +174,7 @@ function CustomerList() {
             {error !== null && <ErrorState message={error} onRetry={refresh} />}
 
             {customers === null ? (
-              <TableSkeleton rows={5} columns={5} />
+              <CardGridSkeleton count={10} />
             ) : customers.length === 0 ? (
               <EmptyState
                 icon={<Contact />}
@@ -189,67 +187,60 @@ function CustomerList() {
                 action={applied === "" ? <CustomerDialog onSaved={refresh} /> : undefined}
               />
             ) : (
-              <TableWrap>
-                <Table>
-                  <thead>
-                    <tr>
-                      <Th>Customer</Th>
-                      <Th>Phone</Th>
-                      <Th className="text-right">Visits</Th>
-                      <Th className="text-right">Bookings</Th>
-                      <Th className="text-right">Last in</Th>
-                      <Th>
-                        <span className="sr-only">Actions</span>
-                      </Th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {customers.map((customer) => (
-                      <Tr key={customer.id}>
-                        <Td>
-                          <Link
-                            href={`/settings/customers/${customer.id}`}
-                            className="group flex items-center gap-1.5"
-                          >
-                            <span className="font-medium text-text group-hover:underline">
-                              {customer.name}
-                            </span>
-                            {!customer.isActive && (
-                              <Badge tone="neutral">Archived</Badge>
-                            )}
-                            <ChevronRight
-                              className="size-3.5 shrink-0 text-subtle"
-                              aria-hidden="true"
-                            />
-                          </Link>
-                          {customer.notes !== null && (
-                            <p className="mt-0.5 line-clamp-1 max-w-xs text-xs text-muted">
-                              {customer.notes}
-                            </p>
-                          )}
-                        </Td>
-                        <Td className="whitespace-nowrap text-muted">
-                          {customer.phone ?? "—"}
-                        </Td>
-                        <Td className="text-right tabular text-muted">
+              <CardGrid>
+                {customers.map((customer) => (
+                  <Card
+                    key={customer.id}
+                    className={customer.isActive ? "p-3.5" : "p-3.5 opacity-70"}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <Link
+                        href={`/settings/customers/${customer.id}`}
+                        className="min-w-0 font-medium text-text hover:underline"
+                      >
+                        {customer.name}
+                      </Link>
+                      {!customer.isActive && <Badge tone="neutral">Archived</Badge>}
+                    </div>
+
+                    <p className="mt-0.5 truncate text-2xs text-muted">
+                      {customer.phone ?? "No phone number"}
+                    </p>
+
+                    {customer.notes !== null && (
+                      <p className="mt-1.5 line-clamp-2 text-xs text-muted italic">
+                        {customer.notes}
+                      </p>
+                    )}
+
+                    {/* The two counts are why a customer record is kept at all, so
+                        they read as figures rather than as columns to scan down. */}
+                    <dl className="mt-3 flex gap-4">
+                      <div>
+                        <dt className="text-2xs text-subtle">Visits</dt>
+                        <dd className="text-base font-semibold text-text tabular">
                           {customer.orderCount}
-                        </Td>
-                        <Td className="text-right tabular text-muted">
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="text-2xs text-subtle">Bookings</dt>
+                        <dd className="text-base font-semibold text-text tabular">
                           {customer.reservationCount}
-                        </Td>
-                        <Td className="text-right whitespace-nowrap text-muted">
-                          {customer.lastVisitAtUtc === null
-                            ? "Never"
-                            : formatDate(customer.lastVisitAtUtc)}
-                        </Td>
-                        <Td className="text-right">
-                          <CustomerRowActions customer={customer} onSaved={refresh} />
-                        </Td>
-                      </Tr>
-                    ))}
-                  </tbody>
-                </Table>
-              </TableWrap>
+                        </dd>
+                      </div>
+                    </dl>
+
+                    <div className="mt-auto flex items-center justify-between gap-2 pt-3.5">
+                      <span className="text-2xs text-subtle">
+                        {customer.lastVisitAtUtc === null
+                          ? "Never been in"
+                          : `Last in ${formatDate(customer.lastVisitAtUtc)}`}
+                      </span>
+                      <CustomerRowActions customer={customer} onSaved={refresh} />
+                    </div>
+                  </Card>
+                ))}
+              </CardGrid>
             )}
           </Surface>
         )}

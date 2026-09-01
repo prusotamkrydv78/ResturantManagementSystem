@@ -136,6 +136,53 @@ export function reorderCategories(categoryIds: string[]): Promise<MenuCategory[]
 }
 
 /** Delete an item added by mistake. Rejected with 409 once it has been ordered. */
+/** Load one category. */
+export function getCategory(id: string): Promise<MenuCategory> {
+  return apiFetch<MenuCategory>(`/api/menu/categories/${id}`);
+}
+
+/** Put a photograph on a section, replacing any it already had. */
+export function setCategoryImage(id: string, file: File): Promise<MenuCategory> {
+  const body = new FormData();
+  body.append("file", file);
+
+  return apiFetch<MenuCategory>(`/api/menu/categories/${id}/image`, {
+    method: "POST",
+    body,
+  });
+}
+
+/** Take the photograph off a section. */
+export function removeCategoryImage(id: string): Promise<MenuCategory> {
+  return apiFetch<MenuCategory>(`/api/menu/categories/${id}/image`, {
+    method: "DELETE",
+  });
+}
+
+/** Load one item. */
+export function getItem(id: string): Promise<MenuItem> {
+  return apiFetch<MenuItem>(`/api/menu/items/${id}`);
+}
+
+/**
+ * Put a photograph on an item, replacing any it already had.
+ *
+ * FormData rather than JSON: the bytes would be a third larger base64-encoded, and
+ * the API client leaves the content type alone for FormData so the browser can set
+ * the multipart boundary itself.
+ */
+export function setItemImage(id: string, file: File): Promise<MenuItem> {
+  const body = new FormData();
+  body.append("file", file);
+
+  return apiFetch<MenuItem>(`/api/menu/items/${id}/image`, { method: "POST", body });
+}
+
+/** Take the photograph off an item. */
+export function removeItemImage(id: string): Promise<MenuItem> {
+  return apiFetch<MenuItem>(`/api/menu/items/${id}/image`, { method: "DELETE" });
+}
+
 export function deleteItem(id: string): Promise<void> {
   return apiFetch<void>(`/api/menu/items/${id}`, { method: "DELETE" });
 }

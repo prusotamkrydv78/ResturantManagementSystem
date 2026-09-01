@@ -48,9 +48,39 @@ public sealed class ApplicationUserConfiguration : IEntityTypeConfiguration<Appl
             "([StaffRole] IS NULL AND [RestaurantId] IS NULL) "
             + "OR ([StaffRole] IS NOT NULL AND [RestaurantId] IS NOT NULL)"));
 
+        // One photograph at most, in its own table, and it goes when the account
+        // does. Cascade rather than restrict: unlike a movement or an order, nobody
+        // needs to look a deleted person's face up afterwards.
+        builder.HasOne(user => user.Image)
+            .WithOne(image => image.User)
+            .HasForeignKey<StaffImage>(image => image.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
         builder.HasMany(user => user.RefreshTokens)
             .WithOne(token => token.User)
             .HasForeignKey(token => token.UserId)
             .OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+/// <summary>Maps a staff member's photograph.</summary>
+public sealed class StaffImageConfiguration : IEntityTypeConfiguration<StaffImage>
+{
+    /// <inheritdoc />
+    public void Configure(EntityTypeBuilder<StaffImage> builder)
+    {
+        builder.ToTable("StaffImages");
+
+        // The account identifier is the key, so one picture per person is a fact
+        // about the schema rather than a rule to remember.
+        builder.HasKey(image => image.UserId);
+
+        builder.Property(image => image.ContentType)
+            .IsRequired()
+            .HasMaxLength(100);
+
+        builder.Property(image => image.Content).IsRequired();
+
+        builder.HasIndex(image => image.RestaurantId);
     }
 }

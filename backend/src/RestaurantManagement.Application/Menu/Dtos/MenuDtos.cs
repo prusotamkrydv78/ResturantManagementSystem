@@ -30,6 +30,10 @@ public static class MenuLimits
 /// </param>
 /// <param name="CreatedAtUtc">When it was created.</param>
 /// <param name="UpdatedAtUtc">When it was last changed.</param>
+/// <param name="ImageUrl">
+/// The photograph heading this section, or null. Carries a version stamp so a
+/// replacement is not hidden behind the cache of the old one.
+/// </param>
 public sealed record MenuCategoryResponse(
     Guid Id,
     string Name,
@@ -39,7 +43,8 @@ public sealed record MenuCategoryResponse(
     int ItemCount,
     int ActiveItemCount,
     DateTimeOffset CreatedAtUtc,
-    DateTimeOffset UpdatedAtUtc);
+    DateTimeOffset UpdatedAtUtc,
+    string? ImageUrl);
 
 /// <summary>
 /// A menu item, as returned to its restaurant manager.
@@ -59,6 +64,10 @@ public sealed record MenuCategoryResponse(
 /// </param>
 /// <param name="CreatedAtUtc">When it was created.</param>
 /// <param name="UpdatedAtUtc">When it was last changed.</param>
+/// <param name="ImageUrl">
+/// Where the optional photograph is served from, or null when there is none. Carries
+/// a version stamp, so a replacement is not hidden behind the cache of the old one.
+/// </param>
 public sealed record MenuItemResponse(
     Guid Id,
     string Name,
@@ -70,7 +79,8 @@ public sealed record MenuItemResponse(
     bool IsCategoryActive,
     bool IsAvailable,
     DateTimeOffset CreatedAtUtc,
-    DateTimeOffset UpdatedAtUtc);
+    DateTimeOffset UpdatedAtUtc,
+    string? ImageUrl);
 
 /// <summary>
 /// Payload for adding a category. There is no restaurant field: it is placed in the

@@ -256,6 +256,24 @@ export function navigationFor(
   }
 }
 
+/**
+ * Where a signed-in account belongs when it has not asked for anywhere in particular.
+ *
+ * Derived from the navigation rather than written down again, so the front door and
+ * the sidebar can never disagree about where a role starts. Every role happens to
+ * begin at the same overview today; the moment one does not, this follows without
+ * anybody remembering to change it.
+ */
+export function homeFor(
+  role: PlatformRole | undefined,
+  staffRole?: StaffRole | null,
+): string {
+  const first = navigationFor(role, staffRole)[0]?.items[0]?.href;
+
+  // A nav with no rows at all should still land somewhere real rather than nowhere.
+  return first ?? "/dashboard";
+}
+
 /** Human label shown in the account area. */
 export function roleLabel(
   role: PlatformRole | undefined,

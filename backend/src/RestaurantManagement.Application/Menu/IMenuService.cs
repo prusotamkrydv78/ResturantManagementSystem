@@ -125,6 +125,38 @@ public interface IMenuService
     /// Refused once it has been ordered. Its recipe lines go with it, because a recipe
     /// cannot mean anything without the dish.
     /// </summary>
+    /// <summary>
+    /// Puts a photograph on a menu item, replacing any it already had.
+    ///
+    /// The only picture in the product a paying guest sees: it appears on the page they
+    /// reach by scanning the code on their table.
+    /// </summary>
+    Task<Result<MenuItemResponse>> SetItemImageAsync(
+        Guid managerUserId,
+        Guid itemId,
+        string fileName,
+        string contentType,
+        Stream content,
+        long length,
+        CancellationToken cancellationToken);
+
+    /// <summary>Takes the photograph off a menu item.</summary>
+    Task<Result<MenuItemResponse>> RemoveItemImageAsync(
+        Guid managerUserId,
+        Guid itemId,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// The bytes of a menu item's photograph.
+    ///
+    /// Takes no caller. A guest scanning a table has no account, and an image tag
+    /// cannot send a token even when there is one, so the route serving this is open by
+    /// necessity. It has to be: this picture is meant to be seen by strangers.
+    /// </summary>
+    Task<Result<(byte[] Content, string ContentType)>> GetItemImageBytesAsync(
+        Guid itemId,
+        CancellationToken cancellationToken);
+
     Task<Result<bool>> DeleteItemAsync(
         Guid managerUserId,
         Guid itemId,
@@ -137,6 +169,34 @@ public interface IMenuService
     /// schema, so allowing it would delete dishes - possibly sold ones - as a side
     /// effect of tidying the menu.
     /// </summary>
+    /// <summary>
+    /// Puts a photograph on a menu section, replacing any it already had.
+    ///
+    /// Shown to guests above the section on the page they reach by scanning.
+    /// </summary>
+    Task<Result<MenuCategoryResponse>> SetCategoryImageAsync(
+        Guid managerUserId,
+        Guid categoryId,
+        string fileName,
+        string contentType,
+        Stream content,
+        long length,
+        CancellationToken cancellationToken);
+
+    /// <summary>Takes the photograph off a menu section.</summary>
+    Task<Result<MenuCategoryResponse>> RemoveCategoryImageAsync(
+        Guid managerUserId,
+        Guid categoryId,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// The bytes of a section photograph. Takes no caller: a guest scanning a table
+    /// has no account, and an image tag could not send a token even if they had one.
+    /// </summary>
+    Task<Result<(byte[] Content, string ContentType)>> GetCategoryImageBytesAsync(
+        Guid categoryId,
+        CancellationToken cancellationToken);
+
     Task<Result<bool>> DeleteCategoryAsync(
         Guid managerUserId,
         Guid categoryId,

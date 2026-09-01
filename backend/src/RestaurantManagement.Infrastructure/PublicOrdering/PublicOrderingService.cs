@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using RestaurantManagement.Application.Orders.Dtos;
 using RestaurantManagement.Application.PublicOrdering;
 using RestaurantManagement.Application.PublicOrdering.Dtos;
+using RestaurantManagement.Domain.Menu;
 using RestaurantManagement.Domain.Orders;
 using RestaurantManagement.Domain.Restaurants;
 using RestaurantManagement.Infrastructure.Persistence;
@@ -345,12 +346,16 @@ public sealed class PublicOrderingService : IPublicOrderingService
                 category.Items
                     .Where(item => item.IsActive)
                     .OrderBy(item => item.Name)
+                    // Projected, so the picture's bytes are never loaded here. Only
+                    // the stamp is read, and it is all the URL needs.
                     .Select(item => new PublicMenuItemResponse(
                         item.Id,
                         item.Name,
                         item.Description,
-                        item.Price))
-                    .ToList()))
+                        item.Price,
+                        MenuItemImage.UrlFor(item.Id, item.ImageUpdatedAtUtc)))
+                    .ToList(),
+                MenuCategoryImage.UrlFor(category.Id, category.ImageUpdatedAtUtc)))
             .ToListAsync(cancellationToken);
 
         // An empty section is a heading with nothing under it, which on a phone reads as

@@ -74,6 +74,25 @@ export function resetStaffPassword(
 }
 
 /**
+ * Put a photograph on a staff account, replacing any it already had.
+ *
+ * FormData rather than JSON: the bytes would be a third larger base64-encoded, and
+ * the API client leaves the content type alone for FormData so the browser can set
+ * the multipart boundary itself.
+ */
+export function setStaffImage(id: string, file: File): Promise<StaffMember> {
+  const body = new FormData();
+  body.append("file", file);
+
+  return apiFetch<StaffMember>(`/api/staff/${id}/image`, { method: "POST", body });
+}
+
+/** Take the photograph off a staff account. */
+export function removeStaffImage(id: string): Promise<StaffMember> {
+  return apiFetch<StaffMember>(`/api/staff/${id}/image`, { method: "DELETE" });
+}
+
+/**
  * Delete a staff account added by mistake.
  *
  * Rejected with 409 once the account has taken an order, recorded a payment or moved

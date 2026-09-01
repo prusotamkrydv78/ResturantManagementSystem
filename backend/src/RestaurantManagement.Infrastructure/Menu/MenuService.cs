@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RestaurantManagement.Application.Menu;
 using RestaurantManagement.Application.Menu.Dtos;
+using RestaurantManagement.Domain.Media;
 using RestaurantManagement.Domain.Menu;
 using RestaurantManagement.Infrastructure.Persistence;
 using RestaurantManagement.Shared.Results;
@@ -56,7 +57,10 @@ public sealed class MenuService : IMenuService
                 category.Items.Count,
                 category.Items.Count(item => item.IsActive),
                 category.CreatedAtUtc,
-                category.UpdatedAtUtc))
+                category.UpdatedAtUtc,
+                // Projected, so the picture bytes are never read here - only the
+                // stamp, which is all the URL needs.
+                MenuCategoryImage.UrlFor(category.Id, category.ImageUpdatedAtUtc)))
             .ToListAsync(cancellationToken);
 
         return Result.Success<IReadOnlyList<MenuCategoryResponse>>(categories);
@@ -680,6 +684,358 @@ public sealed class MenuService : IMenuService
         return orders.Count == 0 ? 0 : orders.Max() + 1;
     }
 
+    /* ------------------------------------------------------------ Section images */
+
+    /// <inheritdoc />
+    public async Task<Result<MenuCategoryResponse>> SetCategoryImageAsync(
+        Guid managerUserId,
+        Guid categoryId,
+        string fileName,
+        string contentType,
+        Stream content,
+        long length,
+        CancellationToken cancellationToken)
+    {
+        var restaurantId = await ResolveRestaurantIdAsync(managerUserId, cancellationToken);
+
+        if (restaurantId is null)
+        {
+            return Result.Failure<MenuCategoryResponse>(MenuErrors.NoRestaurantAssigned);
+        }
+
+        if (length <= 0)
+        {
+            return Result.Failure<MenuCategoryResponse>(MenuErrors.ImageEmpty);
+        }
+
+        // Checked before reading, so an oversized upload is refused without being
+        // pulled into memory first.
+        if (length > MenuCategory.MaxImageBytes)
+        {
+            return Result.Failure<MenuCategoryResponse>(
+                MenuErrors.ImageTooLarge(MenuCategory.MaxImageBytes));
+        }
+
+        if (!ImageMedia.AllowedTypes.ContainsKey(contentType))
+        {
+            return Result.Failure<MenuCategoryResponse>(MenuErrors.ImageTypeNotAllowed);
+        }
+
+        var category = await _dbContext.MenuCategories
+            .Include(candidate => candidate.Items)
+            .SingleOrDefaultAsync(
+                candidate =>
+                    candidate.Id == categoryId &&
+                    candidate.RestaurantId == restaurantId.Value,
+                cancellationToken);
+
+        if (category is null)
+        {
+            return Result.Failure<MenuCategoryResponse>(MenuErrors.CategoryNotFound);
+        }
+
+        using var buffer = new MemoryStream();
+        await content.CopyToAsync(buffer, cancellationToken);
+        var bytes = buffer.ToArray();
+
+        // The declared length was a claim. This is what actually arrived.
+        if (bytes.Length == 0)
+        {
+            return Result.Failure<MenuCategoryResponse>(MenuErrors.ImageEmpty);
+        }
+
+        if (bytes.Length > MenuCategory.MaxImageBytes)
+        {
+            return Result.Failure<MenuCategoryResponse>(
+                MenuErrors.ImageTooLarge(MenuCategory.MaxImageBytes));
+        }
+
+        // The browser's content type is a claim too, and this picture is served to a
+        // stranger's phone, so the bytes have to begin the way the type says.
+        if (!ImageMedia.LooksLikeImage(bytes, contentType))
+        {
+            return Result.Failure<MenuCategoryResponse>(MenuErrors.ImageTypeNotAllowed);
+        }
+
+        var now = DateTimeOffset.UtcNow;
+
+        var existing = await _dbContext.MenuCategoryImages
+            .SingleOrDefaultAsync(image => image.MenuCategoryId == categoryId, cancellationToken);
+
+        if (existing is null)
+        {
+            _dbContext.MenuCategoryImages.Add(new MenuCategoryImage
+            {
+                MenuCategoryId = category.Id,
+                RestaurantId = restaurantId.Value,
+                ContentType = contentType.ToLowerInvariant(),
+                ByteCount = bytes.Length,
+                Content = bytes,
+                UpdatedAtUtc = now,
+            });
+        }
+        else
+        {
+            existing.ContentType = contentType.ToLowerInvariant();
+            existing.ByteCount = bytes.Length;
+            existing.Content = bytes;
+            existing.UpdatedAtUtc = now;
+        }
+
+        // Saved in the same transaction as the row above: the stamp is what a listing
+        // reads to know a picture exists, and what versions the URL.
+        category.ImageUpdatedAtUtc = now;
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation(
+            "Manager {ManagerId} set a {ByteCount} byte picture on menu section {CategoryId}.",
+            managerUserId,
+            bytes.Length,
+            categoryId);
+
+        return Result.Success(ToResponse(category));
+    }
+
+    /// <inheritdoc />
+    public async Task<Result<MenuCategoryResponse>> RemoveCategoryImageAsync(
+        Guid managerUserId,
+        Guid categoryId,
+        CancellationToken cancellationToken)
+    {
+        var restaurantId = await ResolveRestaurantIdAsync(managerUserId, cancellationToken);
+
+        if (restaurantId is null)
+        {
+            return Result.Failure<MenuCategoryResponse>(MenuErrors.NoRestaurantAssigned);
+        }
+
+        var category = await _dbContext.MenuCategories
+            .Include(candidate => candidate.Items)
+            .SingleOrDefaultAsync(
+                candidate =>
+                    candidate.Id == categoryId &&
+                    candidate.RestaurantId == restaurantId.Value,
+                cancellationToken);
+
+        if (category is null)
+        {
+            return Result.Failure<MenuCategoryResponse>(MenuErrors.CategoryNotFound);
+        }
+
+        if (category.ImageUpdatedAtUtc is null)
+        {
+            return Result.Failure<MenuCategoryResponse>(MenuErrors.ImageNotFound);
+        }
+
+        // Deleted by key, so the bytes never travel back only to be thrown away.
+        await _dbContext.MenuCategoryImages
+            .Where(image => image.MenuCategoryId == categoryId)
+            .ExecuteDeleteAsync(cancellationToken);
+
+        category.ImageUpdatedAtUtc = null;
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation(
+            "Manager {ManagerId} removed the picture from menu section {CategoryId}.",
+            managerUserId,
+            categoryId);
+
+        return Result.Success(ToResponse(category));
+    }
+
+    /// <inheritdoc />
+    public async Task<Result<(byte[] Content, string ContentType)>> GetCategoryImageBytesAsync(
+        Guid categoryId,
+        CancellationToken cancellationToken)
+    {
+        var image = await _dbContext.MenuCategoryImages
+            .AsNoTracking()
+            .Where(candidate => candidate.MenuCategoryId == categoryId)
+            .Select(candidate => new { candidate.Content, candidate.ContentType })
+            .SingleOrDefaultAsync(cancellationToken);
+
+        return image is null
+            ? Result.Failure<(byte[], string)>(MenuErrors.ImageNotFound)
+            : Result.Success((image.Content, image.ContentType));
+    }
+
+    /* --------------------------------------------------------------------- Images */
+
+    /// <inheritdoc />
+    public async Task<Result<MenuItemResponse>> SetItemImageAsync(
+        Guid managerUserId,
+        Guid itemId,
+        string fileName,
+        string contentType,
+        Stream content,
+        long length,
+        CancellationToken cancellationToken)
+    {
+        var restaurantId = await ResolveRestaurantIdAsync(managerUserId, cancellationToken);
+
+        if (restaurantId is null)
+        {
+            return Result.Failure<MenuItemResponse>(MenuErrors.NoRestaurantAssigned);
+        }
+
+        if (length <= 0)
+        {
+            return Result.Failure<MenuItemResponse>(MenuErrors.ImageEmpty);
+        }
+
+        // Checked before reading, so an oversized upload is refused without being
+        // pulled into memory first.
+        if (length > MenuItem.MaxImageBytes)
+        {
+            return Result.Failure<MenuItemResponse>(
+                MenuErrors.ImageTooLarge(MenuItem.MaxImageBytes));
+        }
+
+        if (!ImageMedia.AllowedTypes.ContainsKey(contentType))
+        {
+            return Result.Failure<MenuItemResponse>(MenuErrors.ImageTypeNotAllowed);
+        }
+
+        var item = await _dbContext.MenuItems
+            .Include(candidate => candidate.Category)
+            .SingleOrDefaultAsync(
+                candidate => candidate.Id == itemId && candidate.RestaurantId == restaurantId.Value,
+                cancellationToken);
+
+        if (item is null)
+        {
+            return Result.Failure<MenuItemResponse>(MenuErrors.ItemNotFound);
+        }
+
+        using var buffer = new MemoryStream();
+        await content.CopyToAsync(buffer, cancellationToken);
+        var bytes = buffer.ToArray();
+
+        // The declared length was a claim. This is what actually arrived, and it is the
+        // one the limit has to hold against.
+        if (bytes.Length == 0)
+        {
+            return Result.Failure<MenuItemResponse>(MenuErrors.ImageEmpty);
+        }
+
+        if (bytes.Length > MenuItem.MaxImageBytes)
+        {
+            return Result.Failure<MenuItemResponse>(
+                MenuErrors.ImageTooLarge(MenuItem.MaxImageBytes));
+        }
+
+        // The browser's content type is a claim too. This checks the bytes begin the
+        // way that type should, which matters more here than anywhere else in the
+        // product: this is the one image a stranger's phone is told to load.
+        if (!ImageMedia.LooksLikeImage(bytes, contentType))
+        {
+            return Result.Failure<MenuItemResponse>(MenuErrors.ImageTypeNotAllowed);
+        }
+
+        var now = DateTimeOffset.UtcNow;
+
+        var existing = await _dbContext.MenuItemImages
+            .SingleOrDefaultAsync(image => image.MenuItemId == itemId, cancellationToken);
+
+        if (existing is null)
+        {
+            _dbContext.MenuItemImages.Add(new MenuItemImage
+            {
+                MenuItemId = item.Id,
+                RestaurantId = restaurantId.Value,
+                ContentType = contentType.ToLowerInvariant(),
+                ByteCount = bytes.Length,
+                Content = bytes,
+                UpdatedAtUtc = now,
+            });
+        }
+        else
+        {
+            existing.ContentType = contentType.ToLowerInvariant();
+            existing.ByteCount = bytes.Length;
+            existing.Content = bytes;
+            existing.UpdatedAtUtc = now;
+        }
+
+        // Saved in the same transaction as the row above. The stamp is what every menu
+        // listing reads to know a picture exists and what versions the URL, so the two
+        // halves must never be written apart.
+        item.ImageUpdatedAtUtc = now;
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation(
+            "Manager {ManagerId} set a {ByteCount} byte picture on menu item {ItemId}.",
+            managerUserId,
+            bytes.Length,
+            itemId);
+
+        return Result.Success(Project(item));
+    }
+
+    /// <inheritdoc />
+    public async Task<Result<MenuItemResponse>> RemoveItemImageAsync(
+        Guid managerUserId,
+        Guid itemId,
+        CancellationToken cancellationToken)
+    {
+        var restaurantId = await ResolveRestaurantIdAsync(managerUserId, cancellationToken);
+
+        if (restaurantId is null)
+        {
+            return Result.Failure<MenuItemResponse>(MenuErrors.NoRestaurantAssigned);
+        }
+
+        var item = await _dbContext.MenuItems
+            .Include(candidate => candidate.Category)
+            .SingleOrDefaultAsync(
+                candidate => candidate.Id == itemId && candidate.RestaurantId == restaurantId.Value,
+                cancellationToken);
+
+        if (item is null)
+        {
+            return Result.Failure<MenuItemResponse>(MenuErrors.ItemNotFound);
+        }
+
+        if (item.ImageUpdatedAtUtc is null)
+        {
+            return Result.Failure<MenuItemResponse>(MenuErrors.ImageNotFound);
+        }
+
+        // Deleted by key rather than loaded and removed, so the bytes never travel back
+        // from the database only to be thrown away.
+        await _dbContext.MenuItemImages
+            .Where(image => image.MenuItemId == itemId)
+            .ExecuteDeleteAsync(cancellationToken);
+
+        item.ImageUpdatedAtUtc = null;
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation(
+            "Manager {ManagerId} removed the picture from menu item {ItemId}.",
+            managerUserId,
+            itemId);
+
+        return Result.Success(Project(item));
+    }
+
+    /// <inheritdoc />
+    public async Task<Result<(byte[] Content, string ContentType)>> GetItemImageBytesAsync(
+        Guid itemId,
+        CancellationToken cancellationToken)
+    {
+        var image = await _dbContext.MenuItemImages
+            .AsNoTracking()
+            .Where(candidate => candidate.MenuItemId == itemId)
+            .Select(candidate => new { candidate.Content, candidate.ContentType })
+            .SingleOrDefaultAsync(cancellationToken);
+
+        return image is null
+            ? Result.Failure<(byte[], string)>(MenuErrors.ImageNotFound)
+            : Result.Success((image.Content, image.ContentType));
+    }
+
     /// <summary>Projection used by the item queries, so the shape stays in one place.</summary>
     private static MenuItemResponse Project(MenuItem item) =>
         new(
@@ -693,7 +1049,8 @@ public sealed class MenuService : IMenuService
             item.Category.IsActive,
             item.IsActive && item.Category.IsActive,
             item.CreatedAtUtc,
-            item.UpdatedAtUtc);
+            item.UpdatedAtUtc,
+            MenuItemImage.UrlFor(item.Id, item.ImageUpdatedAtUtc));
 
     private static MenuItemResponse ToResponse(
         MenuItem item,
@@ -710,7 +1067,8 @@ public sealed class MenuService : IMenuService
             isCategoryActive,
             item.IsActive && isCategoryActive,
             item.CreatedAtUtc,
-            item.UpdatedAtUtc);
+            item.UpdatedAtUtc,
+            MenuItemImage.UrlFor(item.Id, item.ImageUpdatedAtUtc));
 
     private static MenuCategoryResponse ToResponse(MenuCategory category) =>
         new(
@@ -722,7 +1080,8 @@ public sealed class MenuService : IMenuService
             category.Items.Count,
             category.Items.Count(item => item.IsActive),
             category.CreatedAtUtc,
-            category.UpdatedAtUtc);
+            category.UpdatedAtUtc,
+            MenuCategoryImage.UrlFor(category.Id, category.ImageUpdatedAtUtc));
 
     private static string? Normalise(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();

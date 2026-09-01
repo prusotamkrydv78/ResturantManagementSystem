@@ -4,6 +4,7 @@ using RestaurantManagement.Api.Authentication;
 using RestaurantManagement.Application.Authentication;
 using RestaurantManagement.Application.Menu;
 using RestaurantManagement.Application.Menu.Dtos;
+using RestaurantManagement.Domain.Menu;
 using RestaurantManagement.Shared.Results;
 
 namespace RestaurantManagement.Api.Controllers;
@@ -238,6 +239,122 @@ public sealed class MenuItemsController : ControllerBase
 
         return NoContent();
     }
+
+    /* --------------------------------------------------------------------- Images */
+
+    /// <summary>
+    /// Puts a photograph on a menu item, replacing any it already had.
+    ///
+    /// The size limit is on the action as well as in the service, so an oversized body
+    /// is rejected by the framework before it is buffered rather than after.
+    /// </summary>
+    [HttpPost("{id:guid}/image")]
+    [RequestSizeLimit(MenuItem.MaxImageBytes + 8192)]
+    [ProducesResponseType(typeof(MenuItemResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<MenuItemResponse>> SetImage(
+        Guid id,
+        IFormFile file,
+        CancellationToken cancellationToken)
+    {
+        var managerId = User.GetUserId();
+
+        if (managerId is null)
+        {
+            return Unauthorized();
+        }
+
+        if (file is null || file.Length == 0)
+        {
+            return ProblemFrom(MenuErrors.ImageEmpty, StatusCodes.Status400BadRequest);
+        }
+
+        await using var stream = file.OpenReadStream();
+
+        var result = await _menuService.SetItemImageAsync(
+            managerId.Value,
+            id,
+            file.FileName,
+            file.ContentType ?? string.Empty,
+            stream,
+            file.Length,
+            cancellationToken);
+
+        return result.IsFailure
+            ? ProblemFrom(result.Error!, ImageStatusFor(result.Error!))
+            : Ok(result.Value);
+    }
+
+    /// <summary>Takes the photograph off a menu item.</summary>
+    [HttpDelete("{id:guid}/image")]
+    [ProducesResponseType(typeof(MenuItemResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<MenuItemResponse>> RemoveImage(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var managerId = User.GetUserId();
+
+        if (managerId is null)
+        {
+            return Unauthorized();
+        }
+
+        var result = await _menuService.RemoveItemImageAsync(
+            managerId.Value,
+            id,
+            cancellationToken);
+
+        return result.IsFailure
+            ? ProblemFrom(result.Error!, ImageStatusFor(result.Error!))
+            : Ok(result.Value);
+    }
+
+    /// <summary>
+    /// The bytes of a menu item photograph.
+    ///
+    /// Open, unlike everything else on this controller, and by necessity rather than
+    /// convenience: this picture is drawn on the page a guest reaches by scanning the
+    /// code on their table, and that guest has no account at all. An image tag could
+    /// not send a token even if they did.
+    ///
+    /// Nothing about the item beyond the picture is reachable here - not its price, not
+    /// its restaurant, not whether it is on sale. Cached for a year, which is safe only
+    /// because the URL carries a stamp that moves whenever the bytes do.
+    /// </summary>
+    [HttpGet("{id:guid}/image")]
+    [AllowAnonymous]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetImage(Guid id, CancellationToken cancellationToken)
+    {
+        var result = await _menuService.GetItemImageBytesAsync(id, cancellationToken);
+
+        if (result.IsFailure)
+        {
+            return NotFound();
+        }
+
+        var (content, contentType) = result.Value;
+
+        Response.Headers.CacheControl = "public, max-age=31536000, immutable";
+
+        return File(content, contentType);
+    }
+
+    /// <summary>
+    /// Which code an image failure gets. A missing picture or a missing item is a 404;
+    /// a file that is too big or the wrong kind is the caller sending something wrong.
+    /// </summary>
+    private static int ImageStatusFor(Error error) =>
+        error == MenuErrors.ItemNotFound ||
+        error == MenuErrors.ImageNotFound ||
+        error == MenuErrors.NoRestaurantAssigned
+            ? StatusCodes.Status404NotFound
+            : StatusCodes.Status400BadRequest;
 
     private ObjectResult ProblemFrom(Error error, int statusCode) =>
         Problem(

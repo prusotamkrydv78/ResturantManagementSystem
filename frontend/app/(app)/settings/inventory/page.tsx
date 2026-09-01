@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { Boxes, ChevronRight, Plus, Search, SlidersHorizontal, TriangleAlert } from "lucide-react";
+import { Boxes, Plus, Search, SlidersHorizontal, TriangleAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Card, CardGrid, CardGridSkeleton } from "@/components/ui/card-grid";
 import { Button, LinkButton } from "@/components/ui/button";
 import {
   Dialog,
@@ -20,9 +21,7 @@ import {
   EmptyState,
   ErrorState,
   FormError,
-  TableSkeleton,
 } from "@/components/ui/states";
-import { Table, TableWrap, Td, Th, Tr } from "@/components/ui/table";
 import { PageBody, PageHeader } from "@/components/layout/page-header";
 import { RequireAuth } from "@/features/auth/require-auth";
 import { NoRestaurantAssigned } from "@/features/restaurants/no-restaurant";
@@ -297,7 +296,7 @@ function InventoryList() {
               )}
 
               {overview === null && error === null ? (
-                <TableSkeleton />
+                <CardGridSkeleton count={10} hasMedia />
               ) : overview !== null && overview.items.length === 0 ? (
                 <EmptyState
                   icon={<Boxes />}
@@ -323,27 +322,11 @@ function InventoryList() {
                   }
                 />
               ) : (
-                <TableWrap>
-                  <Table>
-                    <thead>
-                      <tr>
-                        <Th>Item</Th>
-                        <Th className="text-right">In stock</Th>
-                        <Th className="text-right">Reorder at</Th>
-                        <Th>State</Th>
-                        <Th className="text-right">Used in</Th>
-                        <Th>
-                          <span className="sr-only">Actions</span>
-                        </Th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {shown.map((item) => (
-                        <ItemRow key={item.id} item={item} />
-                      ))}
-                    </tbody>
-                  </Table>
-                </TableWrap>
+                <CardGrid>
+                  {shown.map((item) => (
+                    <ItemCard key={item.id} item={item} />
+                  ))}
+                </CardGrid>
               )}
             </Surface>
           </>
@@ -353,119 +336,95 @@ function InventoryList() {
   );
 }
 
-function ItemRow({ item }: { item: InventoryItem }) {
-  return (
-    <Tr className={item.isActive ? undefined : "opacity-60"}>
-      <Td>
-        <div className="flex items-center gap-3">
-          {/* A fixed slot whether or not there is a picture, so rows without one do
-              not shunt the names of rows with one sideways. */}
-          <span
-            aria-hidden="true"
-            className="flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border bg-surface-2"
-          >
-            {item.imageUrl === null ? (
-              <Boxes className="size-4 text-subtle" />
-            ) : (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={apiAssetSrc(item.imageUrl)}
-                alt=""
-                loading="lazy"
-                decoding="async"
-                className="size-full object-cover"
-              />
-            )}
-          </span>
+function ItemCard({ item }: { item: InventoryItem }) {
+  // The one number the card is really for, coloured by how worried to be about it.
+  const stockTone = item.isNegative
+    ? "text-danger"
+    : item.isOutOfStock
+      ? "text-danger"
+      : item.isLowStock
+        ? "text-warning"
+        : "text-text";
 
-          <div className="min-w-0">
-            <Link
-              href={`/settings/inventory/${item.id}`}
-              className="group inline-flex items-center gap-1 font-medium text-text"
-            >
-              <span className="group-hover:underline">{item.name}</span>
-              <ChevronRight
-                className="size-3.5 shrink-0 text-subtle transition-transform group-hover:translate-x-0.5"
-                aria-hidden="true"
-              />
-            </Link>
-            <span className="block text-2xs text-subtle">
-              measured in {item.unit.toLowerCase()}
-              {item.movementCount > 0 && ` · ${item.movementCount} movements`}
-            </span>
-          </div>
-        </div>
-      </Td>
-      <Td className="text-right">
-        <span
-          className={cn(
-            "tabular font-semibold",
-            item.isNegative
-              ? "text-danger"
-              : item.isOutOfStock
-                ? "text-danger"
-                : item.isLowStock
-                  ? "text-warning"
-                  : "text-text",
-          )}
-        >
-          {formatQuantity(item.quantityInStock)}
+  return (
+    <Card className={item.isActive ? undefined : "opacity-60"}>
+      <div className="relative aspect-4/3 w-full overflow-hidden bg-surface-3">
+        {item.imageUrl === null ? (
+          <span className="flex size-full items-center justify-center">
+            <Boxes className="size-7 text-subtle" aria-hidden="true" />
+          </span>
+        ) : (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={apiAssetSrc(item.imageUrl)}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            className="size-full object-cover"
+          />
+        )}
+
+        {/* Only when something is wrong with it. A badge on every card would be a
+            grid of stickers, and the point of this screen is spotting the few that
+            need attention. */}
+        <span className="absolute top-2 left-2">
+          {!item.isActive ? (
+            <Badge tone="neutral">Archived</Badge>
+          ) : item.isNegative ? (
+            <Badge tone="danger" dot>
+              Below zero
+            </Badge>
+          ) : item.isOutOfStock ? (
+            <Badge tone="danger" dot>
+              Out of stock
+            </Badge>
+          ) : item.isLowStock ? (
+            <Badge tone="warning" dot>
+              Low
+            </Badge>
+          ) : null}
         </span>
-        <span className="ml-1 text-2xs text-subtle">{UNIT_SHORT[item.unit]}</span>
-      </Td>
-      <Td className="text-right text-muted tabular">
-        {item.minimumQuantity > 0 ? (
-          <>
-            {formatQuantity(item.minimumQuantity)}
-            <span className="ml-1 text-2xs text-subtle">{UNIT_SHORT[item.unit]}</span>
-          </>
-        ) : (
-          <span className="text-subtle">not set</span>
-        )}
-      </Td>
-      <Td>
-        {!item.isActive ? (
-          <Badge tone="neutral">Archived</Badge>
-        ) : item.isNegative ? (
-          <Badge tone="danger" dot>
-            Below zero
-          </Badge>
-        ) : item.isOutOfStock ? (
-          <Badge tone="danger" dot>
-            Out of stock
-          </Badge>
-        ) : item.isLowStock ? (
-          <Badge tone="warning" dot>
-            Low
-          </Badge>
-        ) : (
-          <Badge tone="success" dot>
-            In stock
-          </Badge>
-        )}
-      </Td>
-      <Td className="text-right text-muted tabular">
-        {item.recipeUseCount === 0 ? (
-          <span className="text-subtle">—</span>
-        ) : (
-          `${item.recipeUseCount} ${item.recipeUseCount === 1 ? "recipe" : "recipes"}`
-        )}
-      </Td>
-      {/* Renaming it, archiving it and deleting it all live on the item's own page
-          now, beside the history that explains why you would do any of them. Three
-          controls per row also meant three ways to change something by mis-clicking
-          while scanning a long list for what is low. */}
-      <Td className="text-right">
-        <LinkButton
+      </div>
+
+      <div className="flex flex-1 flex-col gap-1.5 p-3.5">
+        <Link
           href={`/settings/inventory/${item.id}`}
-          variant="secondary"
-          size="sm"
-          icon={<SlidersHorizontal />}
+          className="font-medium text-text hover:underline"
         >
-          Manage
-        </LinkButton>
-      </Td>
-    </Tr>
+          {item.name}
+        </Link>
+
+        <p className="flex items-baseline gap-1">
+          <span className={cn("text-xl font-semibold tabular", stockTone)}>
+            {formatQuantity(item.quantityInStock)}
+          </span>
+          <span className="text-xs text-muted">{UNIT_SHORT[item.unit]}</span>
+          {item.minimumQuantity > 0 && (
+            <span className="ml-1 text-2xs text-subtle tabular">
+              warn below {formatQuantity(item.minimumQuantity)}
+            </span>
+          )}
+        </p>
+
+        <div className="mt-auto flex items-center justify-between gap-2 pt-2.5">
+          <span className="text-2xs text-subtle">
+            {item.recipeUseCount === 0
+              ? "No recipes"
+              : `${item.recipeUseCount} ${
+                  item.recipeUseCount === 1 ? "recipe" : "recipes"
+                }`}
+          </span>
+          <LinkButton
+            href={`/settings/inventory/${item.id}`}
+            variant="secondary"
+            size="sm"
+            icon={<SlidersHorizontal />}
+          >
+            Manage
+          </LinkButton>
+        </div>
+      </div>
+    </Card>
   );
 }
 

@@ -64,6 +64,15 @@ public class ApplicationDbContext : IdentityUserContext<ApplicationUser, Guid>
     /// <summary>Photographs of inventory items, kept apart from the item rows.</summary>
     public DbSet<InventoryItemImage> InventoryItemImages => Set<InventoryItemImage>();
 
+    /// <summary>Photographs of menu items, kept apart from the item rows.</summary>
+    public DbSet<MenuItemImage> MenuItemImages => Set<MenuItemImage>();
+
+    /// <summary>Photographs heading menu sections, kept apart from the category rows.</summary>
+    public DbSet<MenuCategoryImage> MenuCategoryImages => Set<MenuCategoryImage>();
+
+    /// <summary>Staff photographs, kept apart from the account rows Identity reads.</summary>
+    public DbSet<StaffImage> StaffImages => Set<StaffImage>();
+
     /// <summary>Every change to a stock figure, and why. Append only.</summary>
     public DbSet<StockMovement> StockMovements => Set<StockMovement>();
 

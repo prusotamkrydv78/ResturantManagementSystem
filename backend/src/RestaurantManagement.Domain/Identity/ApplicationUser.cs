@@ -43,6 +43,23 @@ public class ApplicationUser : IdentityUser<Guid>
     /// </summary>
     public bool IsActive { get; set; } = true;
 
+    /// <summary>
+    /// When this person's photograph was last set, or null when they have none.
+    ///
+    /// Says whether a picture exists, so a roster never touches the image table, and
+    /// doubles as the cache version in the URL. Denormalised from <see cref="Image"/>
+    /// and written in the same transaction as it.
+    /// </summary>
+    public DateTimeOffset? ImageUpdatedAtUtc { get; set; }
+
+    /// <summary>
+    /// The photograph, in a table of its own.
+    ///
+    /// Emphatically not a column here. This row is read by Identity on every sign-in
+    /// and every token refresh, and a blob on it would ride along on all of them.
+    /// </summary>
+    public StaffImage? Image { get; set; }
+
     /// <summary>When the account was created.</summary>
     public DateTimeOffset CreatedAtUtc { get; set; }
 

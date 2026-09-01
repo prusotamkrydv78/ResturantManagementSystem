@@ -37,6 +37,12 @@ public sealed class MenuCategoryConfiguration : IEntityTypeConfiguration<MenuCat
 
         builder.HasIndex(category => new { category.RestaurantId, category.DisplayOrder });
 
+        // One photograph at most, in its own table, and it goes when the section does.
+        builder.HasOne(category => category.Image)
+            .WithOne(image => image.MenuCategory)
+            .HasForeignKey<MenuCategoryImage>(image => image.MenuCategoryId)
+            .OnDelete(DeleteBehavior.Cascade);
+
         // Target of the composite foreign key on MenuItem below. Declaring it here
         // is what lets the database guarantee an item and its category always agree
         // about which restaurant they belong to.
@@ -78,6 +84,12 @@ public sealed class MenuItemConfiguration : IEntityTypeConfiguration<MenuItem>
         builder.HasIndex(item => new { item.RestaurantId, item.IsActive });
         builder.HasIndex(item => new { item.RestaurantId, item.CategoryId });
 
+        // One photograph at most, in its own table, and it goes when the item does.
+        builder.HasOne(item => item.Image)
+            .WithOne(image => image.MenuItem)
+            .HasForeignKey<MenuItemImage>(image => image.MenuItemId)
+            .OnDelete(DeleteBehavior.Cascade);
+
         // The whole point of this configuration.
         //
         // The foreign key carries RestaurantId as well as CategoryId, and points at
@@ -104,5 +116,50 @@ public sealed class MenuItemConfiguration : IEntityTypeConfiguration<MenuItem>
         builder.ToTable(table => table.HasCheckConstraint(
             "CK_MenuItems_Price",
             "[Price] >= 0"));
+    }
+}
+
+/// <summary>Maps the photograph heading a menu section.</summary>
+public sealed class MenuCategoryImageConfiguration
+    : IEntityTypeConfiguration<MenuCategoryImage>
+{
+    /// <inheritdoc />
+    public void Configure(EntityTypeBuilder<MenuCategoryImage> builder)
+    {
+        builder.ToTable("MenuCategoryImages");
+
+        builder.HasKey(image => image.MenuCategoryId);
+
+        builder.Property(image => image.ContentType)
+            .IsRequired()
+            .HasMaxLength(100);
+
+        builder.Property(image => image.Content).IsRequired();
+
+        builder.HasIndex(image => image.RestaurantId);
+    }
+}
+
+/// <summary>Maps the photograph belonging to a menu item.</summary>
+public sealed class MenuItemImageConfiguration : IEntityTypeConfiguration<MenuItemImage>
+{
+    /// <inheritdoc />
+    public void Configure(EntityTypeBuilder<MenuItemImage> builder)
+    {
+        builder.ToTable("MenuItemImages");
+
+        // The item identifier is the key, so one picture per item is a fact about the
+        // schema rather than a rule somebody has to remember.
+        builder.HasKey(image => image.MenuItemId);
+
+        builder.Property(image => image.ContentType)
+            .IsRequired()
+            .HasMaxLength(100);
+
+        builder.Property(image => image.Content).IsRequired();
+
+        // Denormalised from the item so a request can be authorised without a join;
+        // the item already carries the real relationship.
+        builder.HasIndex(image => image.RestaurantId);
     }
 }

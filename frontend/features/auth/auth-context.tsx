@@ -23,7 +23,14 @@ interface AuthContextValue {
   isLoading: boolean;
   /** Convenience flag derived from {@link AuthContextValue.user}. */
   isAuthenticated: boolean;
-  signIn: (payload: LoginPayload) => Promise<void>;
+  /**
+   * Signs in and returns the account.
+   *
+   * Returns it rather than only storing it, because the caller usually needs to
+   * route on the role immediately and the context has not re-rendered by the time
+   * the awaiting handler continues.
+   */
+  signIn: (payload: LoginPayload) => Promise<AuthUser>;
   signOut: () => Promise<void>;
 }
 
@@ -72,6 +79,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const result = await authApi.login(payload);
     setAccessToken(result.accessToken);
     setUser(result.user);
+
+    return result.user;
   }, []);
 
   const signOut = useCallback(async () => {

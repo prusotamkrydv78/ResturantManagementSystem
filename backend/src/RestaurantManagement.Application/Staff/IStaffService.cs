@@ -89,6 +89,39 @@ public interface IStaffService
     /// by id and would be left pointing at nobody. Deactivating is the answer for
     /// somebody who has actually worked and then left.
     /// </summary>
+    /// <summary>
+    /// Puts a photograph on a staff account, replacing any it already had.
+    ///
+    /// For recognition: a manager matching a name on a roster to a face on a shift.
+    /// </summary>
+    Task<Result<StaffResponse>> SetImageAsync(
+        Guid managerUserId,
+        Guid staffId,
+        string fileName,
+        string contentType,
+        Stream content,
+        long length,
+        CancellationToken cancellationToken);
+
+    /// <summary>Takes the photograph off a staff account.</summary>
+    Task<Result<StaffResponse>> RemoveImageAsync(
+        Guid managerUserId,
+        Guid staffId,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// The bytes of a staff photograph.
+    ///
+    /// Takes no caller, because an image tag cannot send an access token. What stands
+    /// in for authorisation is the identifier: the account id is only ever handed to
+    /// the manager who runs that roster. That is a weaker guarantee than every other
+    /// route in this module has, and it is the reason this is a photograph and not a
+    /// personnel file.
+    /// </summary>
+    Task<Result<(byte[] Content, string ContentType)>> GetImageBytesAsync(
+        Guid staffId,
+        CancellationToken cancellationToken);
+
     Task<Result<bool>> DeleteAsync(
         Guid managerUserId,
         Guid staffId,

@@ -14,12 +14,16 @@ export interface PublicMenuItem {
   description: string | null;
   /** For display. The server prices the order again from its own menu. */
   price: number;
+  /** The dish photograph, or null when the restaurant has not added one. */
+  imageUrl: string | null;
 }
 
 /** A course or section of the menu. */
 export interface PublicMenuSection {
   name: string;
   items: PublicMenuItem[];
+  /** The photograph heading the section, or null. */
+  imageUrl: string | null;
 }
 
 /** One line of a guest own order. */

@@ -4,6 +4,7 @@ using RestaurantManagement.Api.Authentication;
 using RestaurantManagement.Application.Authentication;
 using RestaurantManagement.Application.Menu;
 using RestaurantManagement.Application.Menu.Dtos;
+using RestaurantManagement.Domain.Menu;
 using RestaurantManagement.Shared.Results;
 
 namespace RestaurantManagement.Api.Controllers;
@@ -234,6 +235,113 @@ public sealed class MenuCategoriesController : ControllerBase
 
         return NoContent();
     }
+
+    /* --------------------------------------------------------------------- Images */
+
+    /// <summary>Puts a photograph on a menu section, replacing any it already had.</summary>
+    [HttpPost("{id:guid}/image")]
+    [RequestSizeLimit(MenuCategory.MaxImageBytes + 8192)]
+    [ProducesResponseType(typeof(MenuCategoryResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<MenuCategoryResponse>> SetImage(
+        Guid id,
+        IFormFile file,
+        CancellationToken cancellationToken)
+    {
+        var managerId = User.GetUserId();
+
+        if (managerId is null)
+        {
+            return Unauthorized();
+        }
+
+        if (file is null || file.Length == 0)
+        {
+            return ProblemFrom(MenuErrors.ImageEmpty, StatusCodes.Status400BadRequest);
+        }
+
+        await using var stream = file.OpenReadStream();
+
+        var result = await _menuService.SetCategoryImageAsync(
+            managerId.Value,
+            id,
+            file.FileName,
+            file.ContentType ?? string.Empty,
+            stream,
+            file.Length,
+            cancellationToken);
+
+        return result.IsFailure
+            ? ProblemFrom(result.Error!, ImageStatusFor(result.Error!))
+            : Ok(result.Value);
+    }
+
+    /// <summary>Takes the photograph off a menu section.</summary>
+    [HttpDelete("{id:guid}/image")]
+    [ProducesResponseType(typeof(MenuCategoryResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<MenuCategoryResponse>> RemoveImage(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var managerId = User.GetUserId();
+
+        if (managerId is null)
+        {
+            return Unauthorized();
+        }
+
+        var result = await _menuService.RemoveCategoryImageAsync(
+            managerId.Value,
+            id,
+            cancellationToken);
+
+        return result.IsFailure
+            ? ProblemFrom(result.Error!, ImageStatusFor(result.Error!))
+            : Ok(result.Value);
+    }
+
+    /// <summary>
+    /// The bytes of a section photograph.
+    ///
+    /// Open, like the dish photographs, and for the same reason: this is drawn above
+    /// the section on the page a guest reaches by scanning their table, and that guest
+    /// has no account. Cached for a year, safe only because the URL carries a stamp
+    /// that moves whenever the bytes do.
+    /// </summary>
+    [HttpGet("{id:guid}/image")]
+    [AllowAnonymous]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetImage(Guid id, CancellationToken cancellationToken)
+    {
+        var result = await _menuService.GetCategoryImageBytesAsync(id, cancellationToken);
+
+        if (result.IsFailure)
+        {
+            return NotFound();
+        }
+
+        var (content, contentType) = result.Value;
+
+        Response.Headers.CacheControl = "public, max-age=31536000, immutable";
+
+        return File(content, contentType);
+    }
+
+    /// <summary>
+    /// Which code an image failure gets. A missing picture or section is a 404; a file
+    /// that is too big or the wrong kind is the caller sending something wrong.
+    /// </summary>
+    private static int ImageStatusFor(Error error) =>
+        error == MenuErrors.CategoryNotFound ||
+        error == MenuErrors.ImageNotFound ||
+        error == MenuErrors.NoRestaurantAssigned
+            ? StatusCodes.Status404NotFound
+            : StatusCodes.Status400BadRequest;
 
     private static int StatusFor(Error error) =>
         error == MenuErrors.CategoryNameTaken

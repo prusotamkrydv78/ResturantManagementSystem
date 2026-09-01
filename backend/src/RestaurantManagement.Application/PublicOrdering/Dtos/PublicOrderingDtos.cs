@@ -27,6 +27,9 @@ public static class PublicOrderLimits
 /// <param name="Name">Display name.</param>
 /// <param name="Description">Optional description.</param>
 /// <param name="Price">
+/// <param name="ImageUrl">
+/// The dish photograph, or null. The one image in this product a guest is shown.
+/// </param>
 /// Current price, for display only. The server prices the order again from its own menu
 /// and never reads a price out of a request.
 /// </param>
@@ -34,14 +37,17 @@ public sealed record PublicMenuItemResponse(
     Guid Id,
     string Name,
     string? Description,
-    decimal Price);
+    decimal Price,
+    string? ImageUrl);
 
 /// <summary>A course or section of the menu, with what a guest may order from it.</summary>
 /// <param name="Name">Display name.</param>
 /// <param name="Items">The orderable items.</param>
+/// <param name="ImageUrl">The photograph heading the section, or null.</param>
 public sealed record PublicMenuSectionResponse(
     string Name,
-    IReadOnlyList<PublicMenuItemResponse> Items);
+    IReadOnlyList<PublicMenuItemResponse> Items,
+    string? ImageUrl);
 
 /// <summary>One line of a guest own order, as it was recorded.</summary>
 /// <param name="ItemName">Name as it was when ordered.</param>

@@ -1,6 +1,9 @@
 import Link from "next/link";
 import {
-  ArrowRight,
+  WorkspaceLink,
+  WorkspaceTextLink,
+} from "@/features/auth/workspace-link";
+import {
   Boxes,
   CalendarClock,
   ChartNoAxesColumn,
@@ -164,9 +167,7 @@ function SiteHeader() {
           ))}
         </nav>
 
-        <LinkButton href="/login" size="sm" icon={<ArrowRight />}>
-          Sign in
-        </LinkButton>
+        <WorkspaceLink size="sm" />
       </Well>
     </header>
   );
@@ -227,9 +228,10 @@ function Hero() {
             className="rise flex flex-wrap items-center gap-3"
             style={{ animationDelay: "210ms" }}
           >
-            <LinkButton href="/login" icon={<ArrowRight />} className="h-11 px-5 text-base">
-              Sign in to your restaurant
-            </LinkButton>
+            <WorkspaceLink
+              signedOutLabel="Sign in to your restaurant"
+              className="h-11 px-5 text-base"
+            />
             <LinkButton
               href="#how-it-works"
               variant="secondary"
@@ -812,9 +814,7 @@ function Closing() {
           Sign in with the account your administrator issued. If you do not have one
           yet, they are the person to ask.
         </p>
-        <LinkButton href="/login" icon={<ArrowRight />} className="h-11 px-6 text-base">
-          Sign in
-        </LinkButton>
+        <WorkspaceLink className="h-11 px-6 text-base" />
       </Well>
     </section>
   );
@@ -845,12 +845,7 @@ function SiteFooter() {
               {item.label}
             </a>
           ))}
-          <Link
-            href="/login"
-            className="rounded text-sm font-medium text-primary hover:underline"
-          >
-            Sign in
-          </Link>
+          <WorkspaceTextLink />
         </nav>
       </Well>
     </footer>

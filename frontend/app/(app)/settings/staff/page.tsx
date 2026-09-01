@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { ChevronRight, Search, SlidersHorizontal, UserPlus, Users } from "lucide-react";
+import { Search, SlidersHorizontal, UserPlus, Users } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Card, CardGrid, CardGridSkeleton } from "@/components/ui/card-grid";
 import { Button, LinkButton } from "@/components/ui/button";
 import {
   Dialog,
@@ -21,13 +22,12 @@ import {
   EmptyState,
   ErrorState,
   FormError,
-  TableSkeleton,
 } from "@/components/ui/states";
-import { Table, TableWrap, Td, Th, Tr } from "@/components/ui/table";
 import { PageBody, PageHeader } from "@/components/layout/page-header";
 import { RequireAuth } from "@/features/auth/require-auth";
 import { createStaff, listStaff } from "@/features/staff/api";
 import { ApiError } from "@/lib/api/client";
+import { apiAssetSrc } from "@/lib/api/asset-url";
 import { STAFF_ROLES } from "@/types/staff";
 import type { StaffMember, StaffRole } from "@/types/staff";
 
@@ -135,7 +135,7 @@ function StaffRoster() {
           {error !== null && <ErrorState message={error} onRetry={() => void refresh()} />}
 
           {staff === null ? (
-            <TableSkeleton rows={5} columns={4} />
+            <CardGridSkeleton count={10} />
           ) : staff.length === 0 ? (
             isSearching ? (
               <EmptyState
@@ -157,75 +157,96 @@ function StaffRoster() {
               />
             )
           ) : (
-            <TableWrap>
-              <Table>
-                <thead>
-                  <tr>
-                    <Th>Name</Th>
-                    <Th>Role</Th>
-                    <Th>Status</Th>
-                    <Th className="text-right">Added</Th>
-                    <Th>
-                      <span className="sr-only">Actions</span>
-                    </Th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {staff.map((member) => (
-                    <Tr key={member.id}>
-                      <Td>
-                        <Link
-                          href={`/settings/staff/${member.id}`}
-                          className="group flex items-center gap-1.5"
-                        >
-                          <span className="font-medium text-text group-hover:underline">
-                            {member.fullName}
-                          </span>
-                          <ChevronRight
-                            className="size-3.5 shrink-0 text-subtle transition-transform group-hover:translate-x-0.5"
-                            aria-hidden="true"
-                          />
-                        </Link>
-                        <span className="block truncate text-2xs text-muted">
-                          {member.email}
-                        </span>
-                      </Td>
-                      <Td>
-                        <Badge tone="primary">{member.role}</Badge>
-                      </Td>
-                      <Td>
-                        {member.isActive ? (
-                          <Badge tone="success" dot>
-                            Active
-                          </Badge>
-                        ) : (
-                          <Badge tone="neutral" dot>
-                            Inactive
-                          </Badge>
-                        )}
-                      </Td>
-                      <Td className="text-right whitespace-nowrap text-muted">
-                        {formatDate(member.createdAtUtc)}
-                      </Td>
-                      <Td className="text-right">
-                        <LinkButton
-                          href={`/settings/staff/${member.id}`}
-                          variant="secondary"
-                          size="sm"
-                          icon={<SlidersHorizontal />}
-                        >
-                          Manage
-                        </LinkButton>
-                      </Td>
-                    </Tr>
-                  ))}
-                </tbody>
-              </Table>
-            </TableWrap>
+            <CardGrid>
+              {staff.map((member) => (
+                <Card
+                  key={member.id}
+                  className={member.isActive ? "p-3.5" : "p-3.5 opacity-70"}
+                >
+                  <div className="flex items-start gap-3">
+                    {/* Their photograph when there is one, initials when there is
+                        not. The same circular mark either way, so a roster of mixed
+                        rows still lines up. */}
+                    {member.imageUrl === null ? (
+                      <span
+                        aria-hidden="true"
+                        className="flex size-10 shrink-0 items-center justify-center rounded-full border border-border bg-surface-3 text-2xs font-semibold text-muted"
+                      >
+                        {initialsOf(member.fullName)}
+                      </span>
+                    ) : (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={apiAssetSrc(member.imageUrl)}
+                        alt=""
+                        loading="lazy"
+                        decoding="async"
+                        className="size-10 shrink-0 rounded-full border border-border object-cover"
+                      />
+                    )}
+
+                    <div className="min-w-0 flex-1">
+                      <Link
+                        href={`/settings/staff/${member.id}`}
+                        className="block truncate font-medium text-text hover:underline"
+                      >
+                        {member.fullName}
+                      </Link>
+                      <span className="block truncate text-2xs text-muted">
+                        {member.email}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    <Badge tone="primary">{member.role}</Badge>
+                    {/* Only when they cannot sign in. Active is the ordinary state
+                        and a badge on every card would say nothing. */}
+                    {!member.isActive && (
+                      <Badge tone="neutral" dot>
+                        Inactive
+                      </Badge>
+                    )}
+                  </div>
+
+                  <div className="mt-auto flex items-center justify-between gap-2 pt-3.5">
+                    <span className="text-2xs text-subtle">
+                      Added {formatDate(member.createdAtUtc)}
+                    </span>
+                    <LinkButton
+                      href={`/settings/staff/${member.id}`}
+                      variant="secondary"
+                      size="sm"
+                      icon={<SlidersHorizontal />}
+                    >
+                      Manage
+                    </LinkButton>
+                  </div>
+                </Card>
+              ))}
+            </CardGrid>
           )}
         </Surface>
       </PageBody>
     </>
+  );
+}
+
+/**
+ * Up to two initials for the avatar mark.
+ *
+ * Falls back to a question mark rather than rendering an empty circle: a name is
+ * required by the API, but a record written before that rule would otherwise leave a
+ * hole in the grid.
+ */
+function initialsOf(fullName: string): string {
+  return (
+    fullName
+      .split(" ")
+      .filter((part) => part.length > 0)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase() ?? "")
+      .join("") || "?"
   );
 }
 

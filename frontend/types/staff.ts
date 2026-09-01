@@ -24,7 +24,21 @@ export interface StaffMember {
   isActive: boolean;
   restaurantName: string;
   createdAtUtc: string;
+  /**
+   * Their photograph, or null.
+   *
+   * For recognition rather than for show: a manager matching a name on the roster to
+   * a face on a shift. Carries a version stamp so the browser can cache it hard and
+   * still see a replacement at once.
+   */
+  imageUrl: string | null;
 }
+
+/** What a staff photograph upload has to stay inside. Mirrors the API. */
+export const STAFF_IMAGE = {
+  maxBytes: 2 * 1024 * 1024,
+  accept: "image/jpeg,image/png,image/webp,image/avif",
+} as const;
 
 /**
  * Payload for creating a staff account. There is no restaurant field: the backend

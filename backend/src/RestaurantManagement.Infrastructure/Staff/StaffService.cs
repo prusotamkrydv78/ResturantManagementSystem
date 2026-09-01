@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using RestaurantManagement.Application.Staff;
 using RestaurantManagement.Application.Staff.Dtos;
 using RestaurantManagement.Domain.Identity;
+using RestaurantManagement.Domain.Media;
 using RestaurantManagement.Infrastructure.Persistence;
 using RestaurantManagement.Shared.Results;
 
@@ -405,6 +406,173 @@ public sealed class StaffService : IStaffService
         return Result.Success(true);
     }
 
+    /* --------------------------------------------------------------------- Images */
+
+    /// <inheritdoc />
+    public async Task<Result<StaffResponse>> SetImageAsync(
+        Guid managerUserId,
+        Guid staffId,
+        string fileName,
+        string contentType,
+        Stream content,
+        long length,
+        CancellationToken cancellationToken)
+    {
+        var restaurant = await ResolveRestaurantAsync(managerUserId, cancellationToken);
+
+        if (restaurant is null)
+        {
+            return Result.Failure<StaffResponse>(StaffErrors.NoRestaurantAssigned);
+        }
+
+        if (length <= 0)
+        {
+            return Result.Failure<StaffResponse>(StaffErrors.ImageEmpty);
+        }
+
+        // Checked before reading, so an oversized upload is refused without being
+        // pulled into memory first.
+        if (length > StaffImage.MaxBytes)
+        {
+            return Result.Failure<StaffResponse>(
+                StaffErrors.ImageTooLarge(StaffImage.MaxBytes));
+        }
+
+        if (!ImageMedia.AllowedTypes.ContainsKey(contentType))
+        {
+            return Result.Failure<StaffResponse>(StaffErrors.ImageTypeNotAllowed);
+        }
+
+        var member = await StaffOf(restaurant.Value.Id)
+            .SingleOrDefaultAsync(candidate => candidate.Id == staffId, cancellationToken);
+
+        if (member is null)
+        {
+            return Result.Failure<StaffResponse>(StaffErrors.NotFound);
+        }
+
+        using var buffer = new MemoryStream();
+        await content.CopyToAsync(buffer, cancellationToken);
+        var bytes = buffer.ToArray();
+
+        // The declared length was a claim. This is what actually arrived.
+        if (bytes.Length == 0)
+        {
+            return Result.Failure<StaffResponse>(StaffErrors.ImageEmpty);
+        }
+
+        if (bytes.Length > StaffImage.MaxBytes)
+        {
+            return Result.Failure<StaffResponse>(
+                StaffErrors.ImageTooLarge(StaffImage.MaxBytes));
+        }
+
+        // The browser's content type is a claim too. This checks the bytes begin the
+        // way that type says, so nothing stored as a picture can be served back as
+        // something a browser would run.
+        if (!ImageMedia.LooksLikeImage(bytes, contentType))
+        {
+            return Result.Failure<StaffResponse>(StaffErrors.ImageTypeNotAllowed);
+        }
+
+        var now = DateTimeOffset.UtcNow;
+
+        var existing = await _dbContext.StaffImages
+            .SingleOrDefaultAsync(image => image.UserId == staffId, cancellationToken);
+
+        if (existing is null)
+        {
+            _dbContext.StaffImages.Add(new StaffImage
+            {
+                UserId = member.Id,
+                RestaurantId = restaurant.Value.Id,
+                ContentType = contentType.ToLowerInvariant(),
+                ByteCount = bytes.Length,
+                Content = bytes,
+                UpdatedAtUtc = now,
+            });
+        }
+        else
+        {
+            existing.ContentType = contentType.ToLowerInvariant();
+            existing.ByteCount = bytes.Length;
+            existing.Content = bytes;
+            existing.UpdatedAtUtc = now;
+        }
+
+        // Written in the same transaction as the row above: the stamp is what a
+        // roster reads to know a picture exists, and what versions the URL.
+        member.ImageUpdatedAtUtc = now;
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation(
+            "Manager {ManagerId} set a {ByteCount} byte picture on staff account {StaffId}.",
+            managerUserId,
+            bytes.Length,
+            staffId);
+
+        return Result.Success(ToResponse(member, restaurant.Value.Name));
+    }
+
+    /// <inheritdoc />
+    public async Task<Result<StaffResponse>> RemoveImageAsync(
+        Guid managerUserId,
+        Guid staffId,
+        CancellationToken cancellationToken)
+    {
+        var restaurant = await ResolveRestaurantAsync(managerUserId, cancellationToken);
+
+        if (restaurant is null)
+        {
+            return Result.Failure<StaffResponse>(StaffErrors.NoRestaurantAssigned);
+        }
+
+        var member = await StaffOf(restaurant.Value.Id)
+            .SingleOrDefaultAsync(candidate => candidate.Id == staffId, cancellationToken);
+
+        if (member is null)
+        {
+            return Result.Failure<StaffResponse>(StaffErrors.NotFound);
+        }
+
+        if (member.ImageUpdatedAtUtc is null)
+        {
+            return Result.Failure<StaffResponse>(StaffErrors.ImageNotFound);
+        }
+
+        // Deleted by key, so the bytes never travel back only to be thrown away.
+        await _dbContext.StaffImages
+            .Where(image => image.UserId == staffId)
+            .ExecuteDeleteAsync(cancellationToken);
+
+        member.ImageUpdatedAtUtc = null;
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation(
+            "Manager {ManagerId} removed the picture from staff account {StaffId}.",
+            managerUserId,
+            staffId);
+
+        return Result.Success(ToResponse(member, restaurant.Value.Name));
+    }
+
+    /// <inheritdoc />
+    public async Task<Result<(byte[] Content, string ContentType)>> GetImageBytesAsync(
+        Guid staffId,
+        CancellationToken cancellationToken)
+    {
+        var image = await _dbContext.StaffImages
+            .AsNoTracking()
+            .Where(candidate => candidate.UserId == staffId)
+            .Select(candidate => new { candidate.Content, candidate.ContentType })
+            .SingleOrDefaultAsync(cancellationToken);
+
+        return image is null
+            ? Result.Failure<(byte[], string)>(StaffErrors.ImageNotFound)
+            : Result.Success((image.Content, image.ContentType));
+    }
+
     /// <summary>
     /// Finds the restaurant the caller manages. Ownership is read from the
     /// restaurant record, which is the only place it is stored.
@@ -456,7 +624,9 @@ public sealed class StaffService : IStaffService
                 member.StaffRole!.Value,
                 member.IsActive,
                 restaurantName,
-                member.CreatedAtUtc))
+                member.CreatedAtUtc,
+                // Projected, so a roster never reads a single byte of a photograph.
+                StaffImage.UrlFor(member.Id, member.ImageUpdatedAtUtc)))
             .ToListAsync(cancellationToken);
     }
 
@@ -473,7 +643,8 @@ public sealed class StaffService : IStaffService
             member.StaffRole ?? Domain.Identity.StaffRole.Waiter,
             member.IsActive,
             restaurantName,
-            member.CreatedAtUtc);
+            member.CreatedAtUtc,
+            StaffImage.UrlFor(member.Id, member.ImageUpdatedAtUtc));
 
     private static string Describe(IdentityResult result) =>
         string.Join(" ", result.Errors.Select(error => error.Description));

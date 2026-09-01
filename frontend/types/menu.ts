@@ -11,6 +11,13 @@ export interface MenuCategory {
   activeItemCount: number;
   createdAtUtc: string;
   updatedAtUtc: string;
+  /**
+   * The photograph heading this section, or null.
+   *
+   * Shown to guests above the section when they scan a table. Carries a version
+   * stamp so the browser can cache it hard and still see a replacement at once.
+   */
+  imageUrl: string | null;
 }
 
 /** A menu item, as seen by its restaurant manager. */
@@ -31,7 +38,21 @@ export interface MenuItem {
   isAvailable: boolean;
   createdAtUtc: string;
   updatedAtUtc: string;
+  /**
+   * The dish photograph, or null.
+   *
+   * The one image in this product a paying guest sees: it is drawn on the page they
+   * reach by scanning their table. Carries a version stamp so the browser can cache
+   * it hard and still see a replacement immediately.
+   */
+  imageUrl: string | null;
 }
+
+/** What a menu photograph upload has to stay inside. Mirrors the API. */
+export const MENU_IMAGE = {
+  maxBytes: 2 * 1024 * 1024,
+  accept: "image/jpeg,image/png,image/webp,image/avif",
+} as const;
 
 /** Payload for adding a category. The restaurant is decided by the backend. */
 export interface CreateMenuCategoryPayload {
