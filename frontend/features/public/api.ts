@@ -65,6 +65,27 @@ export function placeWebsiteOrder(
   );
 }
 
+/**
+ * Call off an order the customer placed from the website.
+ *
+ * The key is the whole authority, which is why it never goes in the URL: a path is
+ * what ends up in a server log, a browser history and a shared link, and this is the
+ * one string that lets somebody cancel an order.
+ */
+export function cancelWebsiteOrder(
+  slug: string,
+  cancelKey: string,
+): Promise<PublicOrder> {
+  return apiFetch<PublicOrder>(
+    `/api/public/restaurants/${encodeURIComponent(slug)}/orders/cancel`,
+    {
+      method: "POST",
+      body: JSON.stringify({ cancelKey }),
+      auth: false,
+    },
+  );
+}
+
 /** What the scanned page needs: where they are, the menu, and their order so far. */
 export function getPublicTable(token: string): Promise<PublicTable> {
   return apiFetch<PublicTable>(

@@ -65,6 +65,24 @@ public interface IPublicOrderingService
         PlaceWebsiteOrderRequest request,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Calls off an order the customer placed themselves, on the strength of the key
+    /// they were given when they placed it.
+    /// </summary>
+    /// <remarks>
+    /// Allowed only while the order is still waiting for somebody at the restaurant to
+    /// look at it. Once any line has gone to the kitchen the answer is no, permanently:
+    /// food is being cooked, and the person who can stop it is standing in the room.
+    ///
+    /// This is the customer half of a two-sided rule. The other half - a member of staff
+    /// confirming an order explicitly rather than by sending it through - does not exist
+    /// yet, and reaching the kitchen stands in for it.
+    /// </remarks>
+    Task<Result<PublicOrderResponse>> CancelWebsiteOrderAsync(
+        string slug,
+        CancelWebsiteOrderRequest request,
+        CancellationToken cancellationToken);
+
     Task<Result<PublicOrderResponse>> PlaceOrderAsync(
         Guid staffUserId,
         string token,

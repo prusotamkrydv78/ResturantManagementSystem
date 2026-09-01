@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RestaurantManagement.Application.Orders.Dtos;
@@ -259,6 +260,135 @@ public sealed class PublicOrderingService : IPublicOrderingService
             cancellationToken);
     }
 
+    /// <inheritdoc />
+    public async Task<Result<PublicOrderResponse>> CancelWebsiteOrderAsync(
+        string slug,
+        CancelWebsiteOrderRequest request,
+        CancellationToken cancellationToken)
+    {
+        var restaurant = await ResolveRestaurantAsync(slug, cancellationToken);
+
+        if (restaurant is null)
+        {
+            return Result.Failure<PublicOrderResponse>(PublicOrderingErrors.NotFound);
+        }
+
+        var key = Normalise(request.CancelKey);
+
+        if (key is null)
+        {
+            return Result.Failure<PublicOrderResponse>(PublicOrderingErrors.NotFound);
+        }
+
+        // Scoped to the restaurant in the URL as well as to the key. The key alone would
+        // be enough - it is unique across the table and unguessable - but scoping costs
+        // one clause and means a key can never act outside the restaurant it came from.
+        //
+        // The payment and the kitchen line of every item are loaded deliberately: both
+        // feed the decision below, and a navigation that was never loaded reads as
+        // "nothing here", which would turn every refusal into an approval.
+        var order = await _dbContext.Orders
+            .Include(candidate => candidate.Items)
+                .ThenInclude(item => item.KitchenTicketItem)
+            .Include(candidate => candidate.Payment)
+            .SingleOrDefaultAsync(
+                candidate =>
+                    candidate.PublicCancelKey == key &&
+                    candidate.RestaurantId == restaurant.Value.Id,
+                cancellationToken);
+
+        if (order is null)
+        {
+            return Result.Failure<PublicOrderResponse>(PublicOrderingErrors.NotFound);
+        }
+
+        // Already cancelled reads as done rather than as a failure. A customer who taps
+        // the button twice, or whose first request succeeded on a connection that dropped
+        // before the answer arrived, has got what they asked for.
+        if (order.Status == OrderStatus.Cancelled)
+        {
+            return Result.Success(ToResponse(order));
+        }
+
+        if (!order.CanGuestCancel)
+        {
+            return Result.Failure<PublicOrderResponse>(PublicOrderingErrors.CannotCancel);
+        }
+
+        var now = DateTimeOffset.UtcNow;
+
+        // No user id, because there is no account behind this and naming a member of
+        // staff would put a lie in the record. The reason carries who it was instead,
+        // which is what anybody reading the order back actually wants to know.
+        if (!order.TryCancel(null, "Cancelled by the customer before it reached the kitchen.", now))
+        {
+            return Result.Failure<PublicOrderResponse>(PublicOrderingErrors.CannotCancel);
+        }
+
+        // Spent. Nothing else can be done with this order, and leaving a live key on a
+        // dead order is a capability with no purpose.
+        order.PublicCancelKey = null;
+
+        await ReleaseTableAsync(order, now, cancellationToken);
+
+        try
+        {
+            await _dbContext.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            // Somebody at the restaurant touched the order between the read and the
+            // write, which is very likely them sending it to the kitchen. Refusing is
+            // the right answer to that race, and it is the same answer they would get
+            // from the check above a second later.
+            return Result.Failure<PublicOrderResponse>(PublicOrderingErrors.CannotCancel);
+        }
+
+        _logger.LogInformation(
+            "Customer cancelled website order {OrderNumber} worth {Subtotal} on table {TableId}.",
+            order.OrderNumber,
+            order.Subtotal,
+            order.TableId);
+
+        return Result.Success(ToResponse(order));
+    }
+
+    /// <summary>
+    /// Puts the table back into service when the order leaving is the last one on it.
+    ///
+    /// Availability only. Whether the table is in service at all is the manager decision
+    /// and is left exactly as it was.
+    /// </summary>
+    private async Task ReleaseTableAsync(
+        Order order,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        var stillBusy = await _dbContext.Orders.AnyAsync(
+            candidate =>
+                candidate.TableId == order.TableId &&
+                candidate.Id != order.Id &&
+                candidate.Status == OrderStatus.Open,
+            cancellationToken);
+
+        if (stillBusy)
+        {
+            return;
+        }
+
+        var table = await _dbContext.RestaurantTables.SingleOrDefaultAsync(
+            candidate => candidate.Id == order.TableId,
+            cancellationToken);
+
+        if (table is null || table.Status == TableStatus.Available)
+        {
+            return;
+        }
+
+        table.Status = TableStatus.Available;
+        table.UpdatedAtUtc = now;
+    }
+
     /// <summary>
     /// Takes an order for a table that has already been resolved and authorised.
     ///
@@ -353,6 +483,10 @@ public sealed class PublicOrderingService : IPublicOrderingService
             // then somebody genuinely did.
             CreatedByStaffId = placedByStaffId,
             Source = source,
+            // Only a website order gets one. A member of staff cancels through billing,
+            // as themselves, and minting a key nobody is ever given would be a live
+            // capability sitting in a column for no reason.
+            PublicCancelKey = source == OrderSource.Website ? NewCancelKey() : null,
             CreatedAtUtc = now,
             UpdatedAtUtc = now,
         };
@@ -448,7 +582,11 @@ public sealed class PublicOrderingService : IPublicOrderingService
         // missing the line somebody just ordered is the one thing this page cannot do.
         var saved = await OpenOrderOfAsync(table, tracked: false, cancellationToken);
 
-        return Result.Success(ToResponse(saved ?? order));
+        // The one moment the key is ever handed out. Read off the order this call
+        // created rather than off what came back, so appending to an order that was
+        // already there cannot hand out the key belonging to it.
+        return Result.Success(
+            ToResponse(saved ?? order, isNew ? order.PublicCancelKey : null));
     }
 
     /* ------------------------------------------------------------------- Helpers */
@@ -652,7 +790,15 @@ public sealed class PublicOrderingService : IPublicOrderingService
         return false;
     }
 
-    private static PublicOrderResponse ToResponse(Order order)
+    /// <summary>
+    /// An order as its customer sees it.
+    /// </summary>
+    /// <param name="order">The order to describe.</param>
+    /// <param name="cancelKey">
+    /// The key to hand back, or null on every read. Passed in rather than read off the
+    /// order, so a route has to decide to give it away and cannot do so by forgetting.
+    /// </param>
+    private static PublicOrderResponse ToResponse(Order order, string? cancelKey = null)
     {
         var lines = order.Items
             .OrderBy(item => item.CreatedAtUtc)
@@ -673,8 +819,20 @@ public sealed class PublicOrderingService : IPublicOrderingService
             order.Items
                 .Where(item => !item.IsSubmittedToKitchen)
                 .Sum(item => item.Quantity),
-            order.CreatedAtUtc);
+            order.CreatedAtUtc,
+            order.CanGuestCancel,
+            cancelKey);
     }
+
+    /// <summary>
+    /// A fresh key for a customer to hold.
+    ///
+    /// Hex of 16 cryptographic bytes: 32 characters, which is what the column allows, and
+    /// 128 bits of entropy, which is not going to be guessed. Hex rather than base64 so
+    /// it survives a URL, a copy and paste and a phone keyboard unchanged.
+    /// </summary>
+    private static string NewCancelKey() =>
+        Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(16));
 
     private static string? Normalise(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();

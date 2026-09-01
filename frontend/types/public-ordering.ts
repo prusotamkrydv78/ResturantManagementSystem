@@ -45,6 +45,21 @@ export interface PublicOrder {
   subtotal: number;
   awaitingKitchenCount: number;
   placedAtUtc: string;
+  /**
+   * Whether the customer may still call this off themselves.
+   *
+   * True until a member of staff sends any part of it to the kitchen. After that the
+   * food is being cooked and the only person who can stop it is in the room.
+   */
+  canCancel: boolean;
+  /**
+   * What to send back to cancel, or null.
+   *
+   * Given exactly once, in the response to placing an order from the website, and
+   * never on a read - a page that could read it back for any order would be able to
+   * cancel other people's.
+   */
+  cancelKey: string | null;
 }
 
 /** Everything the scanned page needs, in one response. */

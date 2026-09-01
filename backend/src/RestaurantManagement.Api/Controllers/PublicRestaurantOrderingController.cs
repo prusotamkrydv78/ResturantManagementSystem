@@ -81,6 +81,41 @@ public sealed class PublicRestaurantOrderingController : ControllerBase
     }
 
     /// <summary>
+    /// Calls off an order the customer placed themselves.
+    ///
+    /// A POST rather than a DELETE, and deliberately: nothing is deleted. The order
+    /// stays exactly where it was with a cancelled status, a time and a reason on it,
+    /// because a restaurant looking at its evening wants to see the table that ordered
+    /// and changed its mind, not a gap.
+    ///
+    /// The key in the body is the whole authority. It was handed out once, when the
+    /// order was placed, so holding it is the same as having placed the order - which
+    /// is the only claim an anonymous caller can make here, and the only one needed.
+    /// </summary>
+    /// <param name="slug">The restaurant's public slug.</param>
+    /// <param name="request">The key they were given when they ordered.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    [HttpPost("{slug}/orders/cancel")]
+    [ProducesResponseType(typeof(PublicOrderResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<PublicOrderResponse>> CancelOrder(
+        string slug,
+        CancelWebsiteOrderRequest request,
+        CancellationToken cancellationToken)
+    {
+        var result = await _publicOrdering.CancelWebsiteOrderAsync(
+            slug,
+            request,
+            cancellationToken);
+
+        return result.IsFailure
+            ? ProblemFrom(result.Error!, StatusFor(result.Error!))
+            : Ok(result.Value);
+    }
+
+    /// <summary>
     /// Which code a failure gets.
     ///
     /// A slug or a table that does not resolve is 404 for every reason it might not,
@@ -96,8 +131,12 @@ public sealed class PublicRestaurantOrderingController : ControllerBase
             return StatusCodes.Status404NotFound;
         }
 
+        // A cancellation that came too late is a conflict for the same reason a busy
+        // table is: the request was well formed, and it would have worked a minute ago.
+        // It is the one failure here whose answer never changes back.
         return error == PublicOrderingErrors.TableInUse ||
-            error == PublicOrderingErrors.StaffServing
+            error == PublicOrderingErrors.StaffServing ||
+            error == PublicOrderingErrors.CannotCancel
             ? StatusCodes.Status409Conflict
             : StatusCodes.Status400BadRequest;
     }

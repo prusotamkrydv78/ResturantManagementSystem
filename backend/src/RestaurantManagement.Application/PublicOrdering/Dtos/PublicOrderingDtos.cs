@@ -85,13 +85,42 @@ public sealed record PublicOrderLineResponse(
 /// staff still has to send their order through.
 /// </param>
 /// <param name="PlacedAtUtc">When the first line went on.</param>
+/// <param name="CanCancel">
+/// Whether the customer may still call this off themselves. True until a member of staff
+/// sends any part of it to the kitchen, and false the moment they do.
+/// </param>
+/// <param name="CancelKey">
+/// What to send back to cancel this order, or null.
+///
+/// Present exactly once, in the response to placing an order from the website, and never
+/// on a read. It is the whole authority to cancel, so it is given to the person who
+/// placed the order and to nobody else - a page that lists orders would be handing out
+/// the ability to cancel other people's.
+/// </param>
 public sealed record PublicOrderResponse(
     int OrderNumber,
     IReadOnlyList<PublicOrderLineResponse> Lines,
     int ItemCount,
     decimal Subtotal,
     int AwaitingKitchenCount,
-    DateTimeOffset PlacedAtUtc);
+    DateTimeOffset PlacedAtUtc,
+    bool CanCancel,
+    string? CancelKey);
+
+/// <summary>
+/// Payload for a customer calling off their own order.
+///
+/// The key is the entire request. It names the order, and holding it is the permission -
+/// there is no account behind a website order, so there is nothing else it could be. No
+/// order number, because a number is printed on a receipt and sequential enough to guess
+/// at a neighbour's.
+/// </summary>
+public sealed class CancelWebsiteOrderRequest
+{
+    /// <summary>The key handed back when the order was placed.</summary>
+    [Required(ErrorMessage = "This order cannot be cancelled from here.")]
+    public string CancelKey { get; set; } = string.Empty;
+}
 
 /// <summary>
 /// What a guest gets from scanning the code on their table.

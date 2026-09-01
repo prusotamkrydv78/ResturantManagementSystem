@@ -54,6 +54,15 @@ public sealed class OrderConfiguration : IEntityTypeConfiguration<Order>
         // Answering "what did this guest eat" without walking every order.
         builder.HasIndex(order => order.CustomerId);
 
+        // The key a customer holds for their own order. Filtered, because only the
+        // handful of orders placed from a website carry one and an index over a
+        // column that is null for everything else is mostly empty pages.
+        builder.Property(order => order.PublicCancelKey).HasMaxLength(32);
+
+        builder.HasIndex(order => order.PublicCancelKey)
+            .IsUnique()
+            .HasFilter("[PublicCancelKey] IS NOT NULL");
+
         // Bound to the restaurant on both sides, so an order cannot be attributed to a
         // customer of a different restaurant.
         builder.HasOne<Domain.Customers.Customer>()
@@ -109,15 +118,19 @@ public sealed class OrderConfiguration : IEntityTypeConfiguration<Order>
 
         // The status and the record of how the order ended cannot drift apart.
         //
-        // A cancelled order must carry when, who and why; anything else must carry
-        // none of the three. Expressed in the schema as well as on the entity,
-        // because the entity only guards the transition: this also holds against a
-        // hand written UPDATE or a later code path that forgets one of the columns.
+        // A cancelled order must carry when and why; anything else must carry neither,
+        // nor a canceller. Expressed in the schema as well as on the entity, because
+        // the entity only guards the transition: this also holds against a hand
+        // written UPDATE or a later code path that forgets one of the columns.
+        //
+        // Who is no longer required on the cancelled branch. A customer can now call
+        // off their own order from their phone, and there is no account behind that -
+        // naming a member of staff would be a lie, and naming nobody is the truth.
+        // The reason still carries what happened.
         builder.ToTable(table => table.HasCheckConstraint(
             "CK_Orders_Cancellation",
             "([Status] = 'Cancelled' " +
             "AND [CancelledAtUtc] IS NOT NULL " +
-            "AND [CancelledByUserId] IS NOT NULL " +
             "AND [CancellationReason] IS NOT NULL) " +
             "OR ([Status] <> 'Cancelled' " +
             "AND [CancelledAtUtc] IS NULL " +

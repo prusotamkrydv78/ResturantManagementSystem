@@ -3,11 +3,15 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Check, UtensilsCrossed } from "lucide-react";
+import { ArrowLeft, Check, Info, UtensilsCrossed, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Surface } from "@/components/ui/surface";
 import { EmptyState, Spinner } from "@/components/ui/states";
-import { getPublicRestaurant, placeWebsiteOrder } from "@/features/public/api";
+import {
+  cancelWebsiteOrder,
+  getPublicRestaurant,
+  placeWebsiteOrder,
+} from "@/features/public/api";
 import { OrderComposer, type OrderDraftLine } from "@/features/public/order-composer";
 import { OrderSentOverlay } from "@/features/public/order-sent";
 import { ApiError } from "@/lib/api/client";
@@ -42,6 +46,12 @@ export default function WebsiteOrderPage() {
   // sitting there ready by the time the overlay clears, not assembling afterwards.
   const [celebrating, setCelebrating] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
+  // Cancelling, and how it went. Kept apart from the order because the response to a
+  // cancellation says nothing about status - what changed is what the customer is
+  // allowed to do next, and that is a fact about this page.
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelled, setCancelled] = useState(false);
+  const [cancelError, setCancelError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -73,12 +83,39 @@ export default function WebsiteOrderPage() {
     };
   }, [slug, reloadKey]);
 
+  const cancel = useCallback(async () => {
+    if (placed?.cancelKey === null || placed?.cancelKey === undefined) {
+      return;
+    }
+
+    setCancelError(null);
+    setCancelling(true);
+
+    try {
+      await cancelWebsiteOrder(slug, placed.cancelKey);
+      setCancelled(true);
+    } catch (caught) {
+      // The likely failure is that a member of staff sent the order through while the
+      // customer was deciding, and the server says so in words meant for them. Shown
+      // rather than retried: the answer will not change back.
+      setCancelError(
+        caught instanceof ApiError
+          ? caught.message
+          : "We could not cancel your order. Please speak to a member of staff.",
+      );
+    } finally {
+      setCancelling(false);
+    }
+  }, [slug, placed]);
+
   const place = useCallback(
     async (items: OrderDraftLine[]) => {
       setPlaceError(null);
       setPlacing(true);
 
       try {
+        setCancelled(false);
+        setCancelError(null);
         setPlaced(await placeWebsiteOrder(slug, { tableId, items }));
         setCelebrating(true);
       } catch (caught) {
@@ -149,15 +186,31 @@ export default function WebsiteOrderPage() {
         )}
 
         <Surface className="flex flex-col gap-4 p-5">
-          <p
-            role="status"
-            className="flex items-start gap-2 text-sm font-medium text-success"
-          >
-            <Check className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-            Your order is with {restaurant.restaurantName}.
-          </p>
+          {cancelled ? (
+            <p
+              role="status"
+              className="flex items-start gap-2 text-sm font-medium text-muted"
+            >
+              <X className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+              Your order has been cancelled. Nothing is being prepared, and there is
+              nothing to pay.
+            </p>
+          ) : (
+            <p
+              role="status"
+              className="flex items-start gap-2 text-sm font-medium text-success"
+            >
+              <Check className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+              Your order is with {restaurant.restaurantName}.
+            </p>
+          )}
 
-          <p className="text-3xl font-semibold text-text">
+          <p
+            className={cn(
+              "text-3xl font-semibold",
+              cancelled ? "text-subtle line-through" : "text-text",
+            )}
+          >
             Order #{placed.orderNumber}
           </p>
 
@@ -185,19 +238,57 @@ export default function WebsiteOrderPage() {
             </span>
           </div>
 
-          <p className="text-sm text-muted">
-            A member of staff will send it to the kitchen. Pay with them when you are
-            finished, and quote order #{placed.orderNumber}.
-          </p>
+          {!cancelled && (
+            <p className="text-sm text-muted">
+              A member of staff will send it to the kitchen. Pay with them when you are
+              finished, and quote order #{placed.orderNumber}.
+            </p>
+          )}
+
+          {/* Offered while the order is still waiting for somebody at the restaurant
+              to pick it up, which is the whole window. Once a member of staff sends it
+              through, food is being cooked and stopping it is a conversation rather
+              than a button - so the attempt is refused and the refusal explains why.
+
+              The page does not poll, so this button can still be showing after that
+              moment has passed. That is fine and is why the server decides: the worst
+              case is a tap that comes back with the honest answer. */}
+          {!cancelled && placed.canCancel && placed.cancelKey !== null && (
+            <div className="flex flex-col gap-2 border-t border-border pt-3">
+              {cancelError !== null && (
+                <p
+                  role="alert"
+                  className="flex items-start gap-2 text-sm text-warning"
+                >
+                  <Info className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+                  {cancelError}
+                </p>
+              )}
+
+              <Button
+                variant="secondary"
+                onClick={cancel}
+                disabled={cancelling || cancelError !== null}
+              >
+                {cancelling ? "Cancelling…" : "Cancel this order"}
+              </Button>
+
+              <p className="text-2xs text-subtle">
+                You can cancel until a member of staff sends your order to the kitchen.
+              </p>
+            </div>
+          )}
 
           <Button
             variant="secondary"
             onClick={() => {
               setPlaced(null);
+              setCancelled(false);
+              setCancelError(null);
               setReloadKey((key) => key + 1);
             }}
           >
-            Order something else
+            {cancelled ? "Start a new order" : "Order something else"}
           </Button>
         </Surface>
       </Centre>

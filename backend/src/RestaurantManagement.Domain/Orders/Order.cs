@@ -108,6 +108,23 @@ public class Order
     public string? CancellationReason { get; set; }
 
     /// <summary>
+    /// The key the customer who placed this order holds, or null.
+    ///
+    /// Set only on an order somebody placed from the restaurant website, and handed
+    /// back exactly once - in the response to placing it. It is what lets them call
+    /// their own order off without an account: they hold it, nobody else has been
+    /// given it, and it names exactly one order.
+    ///
+    /// Random rather than derived from the identifier. Order numbers are sequential
+    /// and printed on receipts, so anybody who has eaten here could guess a
+    /// neighbour's; this is unguessable by construction.
+    ///
+    /// Null for anything a member of staff placed. They cancel through billing, as
+    /// themselves, and a capability nobody needs is a capability worth not having.
+    /// </summary>
+    public string? PublicCancelKey { get; set; }
+
+    /// <summary>
     /// Row version maintained by the database, used for optimistic concurrency.
     ///
     /// Two waiters editing the same order is a realistic situation in a restaurant,
@@ -215,8 +232,32 @@ public class Order
     /// food nobody is going to pay for would strand the order permanently open, since
     /// there is no refund path to undo a payment and no way to un-cook a plate; a
     /// guest who walks out has to be recordable at any point.
+    ///
+    /// This is the rule for somebody who works here. A customer calling off their own
+    /// order answers to <see cref="CanGuestCancel"/>, which is stricter.
     /// </summary>
     public bool CanCancel => Status == OrderStatus.Open && !IsPaid;
+
+    /// <summary>
+    /// Whether the customer who placed this may still call it off themselves.
+    ///
+    /// Stricter than <see cref="CanCancel"/> by one condition: nothing on the order
+    /// has reached the kitchen. A member of staff cancelling knows what is on the
+    /// pass and can go and stop it; a customer on their phone cannot, and letting
+    /// them call off food that is already in a pan is how a kitchen ends up cooking
+    /// for nobody.
+    ///
+    /// The whole order rather than a line, and the moment any line goes through the
+    /// door the answer becomes no. Cancelling half of something is a conversation to
+    /// have with a waiter, not a button.
+    ///
+    /// Reaching the kitchen is what stands in for a waiter confirming the order,
+    /// because it is the point at which somebody who works here has looked at it and
+    /// acted. When an explicit confirmation step exists, this is the one line that
+    /// changes.
+    /// </summary>
+    public bool CanGuestCancel =>
+        CanCancel && !Items.Any(item => item.IsSubmittedToKitchen);
 
     /// <summary>
     /// Closes the order.
@@ -253,7 +294,7 @@ public class Order
     /// keep their own status, because both are records of what really happened and
     /// the order ending badly does not make them untrue.
     /// </summary>
-    public bool TryCancel(Guid cancelledByUserId, string reason, DateTimeOffset now)
+    public bool TryCancel(Guid? cancelledByUserId, string reason, DateTimeOffset now)
     {
         if (!CanCancel)
         {
