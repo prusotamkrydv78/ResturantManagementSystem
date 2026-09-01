@@ -94,6 +94,40 @@ public interface IInventoryService
         RecordStockMovementRequest request,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Puts a photograph on an item, replacing any it already had.
+    ///
+    /// Entirely optional: nothing in the product reads it except the screens that
+    /// show it back. It exists because a shelf of identical white tubs is easier to
+    /// match against a list with pictures on it.
+    /// </summary>
+    Task<Result<InventoryItemResponse>> SetItemImageAsync(
+        Guid managerUserId,
+        Guid itemId,
+        string fileName,
+        string contentType,
+        Stream content,
+        long length,
+        CancellationToken cancellationToken);
+
+    /// <summary>Takes the photograph off an item.</summary>
+    Task<Result<InventoryItemResponse>> RemoveItemImageAsync(
+        Guid managerUserId,
+        Guid itemId,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// The bytes of an item's photograph.
+    ///
+    /// Takes no caller, because an image tag cannot send an access token and the
+    /// endpoint serving this is therefore open. What it protects is the identifier:
+    /// a random key names the picture, and nothing about a photograph of an onion is
+    /// worth more protection than that.
+    /// </summary>
+    Task<Result<(byte[] Content, string ContentType)>> GetItemImageBytesAsync(
+        Guid itemId,
+        CancellationToken cancellationToken);
+
     /* ------------------------------------------------------------------- Recipes */
 
     /// <summary>

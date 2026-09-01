@@ -2,17 +2,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import {
-  Archive,
-  ArchiveRestore,
-  Boxes,
-  ChevronRight,
-  Plus,
-  Trash2,
-  TriangleAlert,
-} from "lucide-react";
+import { Boxes, ChevronRight, Plus, Search, SlidersHorizontal, TriangleAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, LinkButton } from "@/components/ui/button";
 import {
   Dialog,
   DialogClose,
@@ -34,21 +26,53 @@ import { Table, TableWrap, Td, Th, Tr } from "@/components/ui/table";
 import { PageBody, PageHeader } from "@/components/layout/page-header";
 import { RequireAuth } from "@/features/auth/require-auth";
 import { NoRestaurantAssigned } from "@/features/restaurants/no-restaurant";
-import {
-  createInventoryItem,
-  deleteInventoryItem,
-  listInventory,
-  setInventoryItemActive,
-  updateInventoryItem,
-} from "@/features/inventory/api";
+import { createInventoryItem, listInventory } from "@/features/inventory/api";
 import { ApiError, isMissingRestaurant } from "@/lib/api/client";
 import { cn } from "@/lib/utils/cn";
+import { apiAssetSrc } from "@/lib/api/asset-url";
 import { INVENTORY_LIMITS, UNITS, UNIT_SHORT } from "@/types/inventory";
 import type {
   InventoryItem,
   InventoryOverview,
   UnitOfMeasure,
 } from "@/types/inventory";
+
+/**
+ * How the list is narrowed.
+ *
+ * Attention is the one that earns its place. The header has always counted what is
+ * low, out and below zero, but the counts were only ever a number to read: finding
+ * the eleven things they referred to meant scrolling a list of two hundred looking
+ * for coloured badges. Pressing the count now shows exactly those rows, which is
+ * what somebody reading the count wanted to do next.
+ */
+type StockFilter = "all" | "attention" | "low" | "out" | "negative";
+
+const FILTER_LABELS: Record<StockFilter, string> = {
+  all: "Everything",
+  attention: "Needs attention",
+  low: "Running low",
+  out: "Out of stock",
+  negative: "Below zero",
+};
+
+function matchesFilter(item: InventoryItem, filter: StockFilter): boolean {
+  switch (filter) {
+    case "attention":
+      // The one question a manager actually asks the shelves. Archived rows are
+      // left out even when they are showing: something out of use is not a problem
+      // to solve.
+      return item.isActive && (item.isLowStock || item.isOutOfStock || item.isNegative);
+    case "low":
+      return item.isLowStock;
+    case "out":
+      return item.isOutOfStock;
+    case "negative":
+      return item.isNegative;
+    default:
+      return true;
+  }
+}
 
 /**
  * What the kitchen keeps on its shelves.
@@ -73,6 +97,8 @@ function InventoryList() {
   const [error, setError] = useState<string | null>(null);
   const [noRestaurant, setNoRestaurant] = useState(false);
   const [includeArchived, setIncludeArchived] = useState(false);
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState<StockFilter>("all");
   const [reloadKey, setReloadKey] = useState(0);
 
   const refresh = useCallback(() => setReloadKey((key) => key + 1), []);
@@ -110,6 +136,16 @@ function InventoryList() {
     };
   }, [includeArchived, reloadKey]);
 
+  // Narrowed here rather than in the query, so the header counts keep covering the
+  // whole shelf: a warning that could be hidden by typing in the search box would
+  // be worse than no warning.
+  const term = search.trim().toLowerCase();
+  const shown = (overview?.items ?? []).filter(
+    (item) =>
+      matchesFilter(item, filter) &&
+      (term === "" || item.name.toLowerCase().includes(term)),
+  );
+
   return (
     <>
       <PageHeader
@@ -122,17 +158,31 @@ function InventoryList() {
         ]}
         actions={
           <div className="flex items-center gap-2">
+            {/* Pressable, because a count nobody can act on is decoration. Each one
+                narrows the list to the rows it is counting. */}
             {overview !== null && overview.outOfStockCount > 0 && (
-              <Badge tone="danger" dot>
-                {overview.outOfStockCount} out
-              </Badge>
+              <button
+                type="button"
+                onClick={() => setFilter("out")}
+                className="rounded-full"
+              >
+                <Badge tone="danger" dot>
+                  {overview.outOfStockCount} out
+                </Badge>
+              </button>
             )}
             {overview !== null && overview.lowStockCount > 0 && (
-              <Badge tone="warning" dot>
-                {overview.lowStockCount} low
-              </Badge>
+              <button
+                type="button"
+                onClick={() => setFilter("low")}
+                className="rounded-full"
+              >
+                <Badge tone="warning" dot>
+                  {overview.lowStockCount} low
+                </Badge>
+              </button>
             )}
-            <ItemDialog onSaved={refresh} />
+            <AddItemDialog onSaved={refresh} />
           </div>
         }
       />
@@ -177,24 +227,69 @@ function InventoryList() {
             )}
 
             <Surface>
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
-                <p className="text-sm text-muted">
-                  {overview === null
-                    ? "Loading…"
-                    : `${overview.activeCount} ${overview.activeCount === 1 ? "item" : "items"} in use`}
-                </p>
-                <label className="flex items-center gap-2 text-sm text-muted">
-                  <input
-                    type="checkbox"
-                    checked={includeArchived}
-                    onChange={(event) => {
-                      setIncludeArchived(event.target.checked);
-                      setOverview(null);
-                    }}
-                    className="size-4 accent-primary"
-                  />
-                  Show archived
-                </label>
+              {/* Searched and filtered in the browser rather than at the server.
+                  The endpoint already returns the whole shelf in one response so
+                  that its counts can cover everything rather than the filtered
+                  set, which means the rows to narrow are here already and a round
+                  trip per keystroke would buy nothing. */}
+              <div className="flex flex-col gap-3 border-b border-border px-4 py-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="relative sm:max-w-xs sm:flex-1">
+                    <Search
+                      className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-subtle"
+                      aria-hidden="true"
+                    />
+                    <Input
+                      id="inventory-search"
+                      type="search"
+                      placeholder="Search ingredients"
+                      className="pl-8"
+                      value={search}
+                      onChange={(event) => setSearch(event.target.value)}
+                      aria-label="Search ingredients"
+                    />
+                  </div>
+
+                  <label className="flex items-center gap-2 text-sm text-muted">
+                    <input
+                      type="checkbox"
+                      checked={includeArchived}
+                      onChange={(event) => {
+                        setIncludeArchived(event.target.checked);
+                        setOverview(null);
+                      }}
+                      className="size-4 accent-primary"
+                    />
+                    Show archived
+                  </label>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-1">
+                  {(Object.keys(FILTER_LABELS) as StockFilter[]).map((option) => (
+                    <button
+                      key={option}
+                      type="button"
+                      onClick={() => setFilter(option)}
+                      aria-pressed={filter === option}
+                      className={cn(
+                        "rounded-md px-2.5 py-1 text-sm transition-colors",
+                        filter === option
+                          ? "bg-primary-soft font-medium text-primary"
+                          : "text-muted hover:bg-surface-3 hover:text-text",
+                      )}
+                    >
+                      {FILTER_LABELS[option]}
+                    </button>
+                  ))}
+
+                  <span className="ml-auto text-sm text-muted">
+                    {overview === null
+                      ? "Loading…"
+                      : shown.length === overview.items.length
+                        ? `${overview.activeCount} ${overview.activeCount === 1 ? "item" : "items"} in use`
+                        : `${shown.length} of ${overview.items.length} shown`}
+                  </span>
+                </div>
               </div>
 
               {error !== null && (
@@ -208,30 +303,47 @@ function InventoryList() {
                   icon={<Boxes />}
                   title="Nothing on the shelves yet"
                   description="Add what the kitchen keeps in stock, then link it to menu items so cooking deducts it."
-                  action={<ItemDialog onSaved={refresh} />}
+                  action={<AddItemDialog onSaved={refresh} />}
+                />
+              ) : shown.length === 0 ? (
+                <EmptyState
+                  icon={<Search />}
+                  title="Nothing matches"
+                  description="No ingredient on the shelves answers to both the search and the filter."
+                  action={
+                    <Button
+                      variant="secondary"
+                      onClick={() => {
+                        setSearch("");
+                        setFilter("all");
+                      }}
+                    >
+                      Clear
+                    </Button>
+                  }
                 />
               ) : (
-                overview !== null && (
-                  <TableWrap>
-                    <Table>
-                      <thead>
-                        <tr>
-                          <Th>Item</Th>
-                          <Th className="text-right">In stock</Th>
-                          <Th className="text-right">Reorder at</Th>
-                          <Th>State</Th>
-                          <Th className="text-right">Used in</Th>
-                          <Th className="text-right">Actions</Th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {overview.items.map((item) => (
-                          <ItemRow key={item.id} item={item} onChanged={refresh} />
-                        ))}
-                      </tbody>
-                    </Table>
-                  </TableWrap>
-                )
+                <TableWrap>
+                  <Table>
+                    <thead>
+                      <tr>
+                        <Th>Item</Th>
+                        <Th className="text-right">In stock</Th>
+                        <Th className="text-right">Reorder at</Th>
+                        <Th>State</Th>
+                        <Th className="text-right">Used in</Th>
+                        <Th>
+                          <span className="sr-only">Actions</span>
+                        </Th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {shown.map((item) => (
+                        <ItemRow key={item.id} item={item} />
+                      ))}
+                    </tbody>
+                  </Table>
+                </TableWrap>
               )}
             </Surface>
           </>
@@ -241,63 +353,48 @@ function InventoryList() {
   );
 }
 
-function ItemRow({
-  item,
-  onChanged,
-}: {
-  item: InventoryItem;
-  onChanged: () => void;
-}) {
-  const [busy, setBusy] = useState(false);
-  const [rowError, setRowError] = useState<string | null>(null);
-
-  async function toggleArchived() {
-    setBusy(true);
-    setRowError(null);
-
-    try {
-      await setInventoryItemActive(item.id, !item.isActive);
-      onChanged();
-    } catch (caught) {
-      setRowError(caught instanceof Error ? caught.message : "Could not change it.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function remove() {
-    setBusy(true);
-    setRowError(null);
-
-    try {
-      await deleteInventoryItem(item.id);
-      onChanged();
-    } catch (caught) {
-      // Usually because it has history or a recipe names it, and the message says
-      // which. Archiving is the answer in both cases.
-      setRowError(caught instanceof Error ? caught.message : "Could not delete it.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
+function ItemRow({ item }: { item: InventoryItem }) {
   return (
     <Tr className={item.isActive ? undefined : "opacity-60"}>
       <Td>
-        <Link
-          href={`/settings/inventory/${item.id}`}
-          className="inline-flex items-center gap-1 font-medium text-primary hover:underline"
-        >
-          {item.name}
-          <ChevronRight className="size-3.5" aria-hidden="true" />
-        </Link>
-        <span className="block text-2xs text-subtle">
-          measured in {item.unit.toLowerCase()}
-          {item.movementCount > 0 && ` · ${item.movementCount} movements`}
-        </span>
-        {rowError !== null && (
-          <span className="mt-1 block text-2xs text-danger">{rowError}</span>
-        )}
+        <div className="flex items-center gap-3">
+          {/* A fixed slot whether or not there is a picture, so rows without one do
+              not shunt the names of rows with one sideways. */}
+          <span
+            aria-hidden="true"
+            className="flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border bg-surface-2"
+          >
+            {item.imageUrl === null ? (
+              <Boxes className="size-4 text-subtle" />
+            ) : (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={apiAssetSrc(item.imageUrl)}
+                alt=""
+                loading="lazy"
+                decoding="async"
+                className="size-full object-cover"
+              />
+            )}
+          </span>
+
+          <div className="min-w-0">
+            <Link
+              href={`/settings/inventory/${item.id}`}
+              className="group inline-flex items-center gap-1 font-medium text-text"
+            >
+              <span className="group-hover:underline">{item.name}</span>
+              <ChevronRight
+                className="size-3.5 shrink-0 text-subtle transition-transform group-hover:translate-x-0.5"
+                aria-hidden="true"
+              />
+            </Link>
+            <span className="block text-2xs text-subtle">
+              measured in {item.unit.toLowerCase()}
+              {item.movementCount > 0 && ` · ${item.movementCount} movements`}
+            </span>
+          </div>
+        </div>
       </Td>
       <Td className="text-right">
         <span
@@ -354,71 +451,50 @@ function ItemRow({
           `${item.recipeUseCount} ${item.recipeUseCount === 1 ? "recipe" : "recipes"}`
         )}
       </Td>
+      {/* Renaming it, archiving it and deleting it all live on the item's own page
+          now, beside the history that explains why you would do any of them. Three
+          controls per row also meant three ways to change something by mis-clicking
+          while scanning a long list for what is low. */}
       <Td className="text-right">
-        <div className="flex items-center justify-end gap-1">
-          <ItemDialog item={item} onSaved={onChanged} />
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => void toggleArchived()}
-            disabled={busy}
-            icon={item.isActive ? <Archive /> : <ArchiveRestore />}
-          >
-            {item.isActive ? "Archive" : "Restore"}
-          </Button>
-          {/* Only offered when it could actually succeed. Anything with history or a
-              recipe naming it is archived instead, and the server refuses regardless. */}
-          {item.movementCount === 0 && item.recipeUseCount === 0 && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => void remove()}
-              disabled={busy}
-              icon={<Trash2 />}
-              className="text-danger"
-            >
-              Delete
-            </Button>
-          )}
-        </div>
+        <LinkButton
+          href={`/settings/inventory/${item.id}`}
+          variant="secondary"
+          size="sm"
+          icon={<SlidersHorizontal />}
+        >
+          Manage
+        </LinkButton>
       </Td>
     </Tr>
   );
 }
 
 /**
- * Adding or editing an item.
+ * Adding an item.
  *
- * The unit and the opening quantity are only offered when adding. Changing the unit
- * later would reinterpret every quantity already recorded, and the stock figure only
- * ever moves through a movement, so neither belongs on an edit.
+ * Only adding. Editing moved to the item's own page, where it sits beside the
+ * history that says whether the reorder level is set anywhere near right.
+ *
+ * The unit and the opening quantity are asked for once, here, and never again:
+ * changing the unit later would reinterpret every quantity already recorded, and
+ * after this the figure only ever moves through a movement that says why.
  */
-function ItemDialog({
-  item,
-  onSaved,
-}: {
-  item?: InventoryItem;
-  onSaved: () => void;
-}) {
-  const isEdit = item !== undefined;
-
+function AddItemDialog({ onSaved }: { onSaved: () => void }) {
   const [open, setOpen] = useState(false);
-  const [name, setName] = useState(item?.name ?? "");
-  const [unit, setUnit] = useState<UnitOfMeasure>(item?.unit ?? "Piece");
+  const [name, setName] = useState("");
+  const [unit, setUnit] = useState<UnitOfMeasure>("Piece");
   const [quantity, setQuantity] = useState("0");
-  const [minimum, setMinimum] = useState(
-    item === undefined ? "0" : String(item.minimumQuantity),
-  );
+  const [minimum, setMinimum] = useState("0");
 
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
 
   function reset() {
-    setName(item?.name ?? "");
-    setUnit(item?.unit ?? "Piece");
+    setName("");
+    setUnit("Piece");
     setQuantity("0");
-    setMinimum(item === undefined ? "0" : String(item.minimumQuantity));
+    setMinimum("0");
     setError(null);
     setFieldErrors({});
   }
@@ -429,19 +505,12 @@ function ItemDialog({
     setIsSaving(true);
 
     try {
-      if (isEdit) {
-        await updateInventoryItem(item.id, {
-          name: name.trim(),
-          minimumQuantity: Number(minimum) || 0,
-        });
-      } else {
-        await createInventoryItem({
-          name: name.trim(),
-          unit,
-          quantityInStock: Number(quantity) || 0,
-          minimumQuantity: Number(minimum) || 0,
-        });
-      }
+      await createInventoryItem({
+        name: name.trim(),
+        unit,
+        quantityInStock: Number(quantity) || 0,
+        minimumQuantity: Number(minimum) || 0,
+      });
 
       setOpen(false);
       reset();
@@ -450,7 +519,7 @@ function ItemDialog({
       if (caught instanceof ApiError) {
         setFieldErrors(caught.fieldErrors);
       }
-      setError(caught instanceof Error ? caught.message : "Could not save the item.");
+      setError(caught instanceof Error ? caught.message : "Could not add the item.");
     } finally {
       setIsSaving(false);
     }
@@ -467,22 +536,12 @@ function ItemDialog({
       }}
     >
       <DialogTrigger asChild>
-        {isEdit ? (
-          <Button variant="ghost" size="sm">
-            Edit
-          </Button>
-        ) : (
-          <Button icon={<Plus />}>Add item</Button>
-        )}
+        <Button icon={<Plus />}>Add item</Button>
       </DialogTrigger>
 
       <DialogContent
-        title={isEdit ? `Edit ${item.name}` : "Add an inventory item"}
-        description={
-          isEdit
-            ? "The unit and the stock figure cannot be changed here."
-            : "Any opening quantity is recorded as its own movement."
-        }
+        title="Add an inventory item"
+        description="Any opening quantity is recorded as its own movement."
       >
         <div className="flex flex-col gap-4 px-4 py-4">
           {error !== null && <FormError message={error} />}
@@ -506,47 +565,37 @@ function ItemDialog({
             />
           </Field>
 
-          {isEdit ? (
-            <p className="text-2xs text-subtle">
-              Measured in {item.unit.toLowerCase()}. Fixed once the item has any
-              history, because changing it would reinterpret every quantity already
-              recorded.
-            </p>
-          ) : (
-            <>
-              <Field
-                label="Measured in"
-                htmlFor="item-unit"
-                hint="Fixed once the item has history. Recipes may use any unit measuring the same kind of thing."
-                error={fieldErrors.unit?.[0]}
-              >
-                <Select
-                  id="item-unit"
-                  value={unit}
-                  onChange={(next) => setUnit(next as UnitOfMeasure)}
-                  aria-describedby={describedBy("item-unit", { hasHint: true })}
-                  options={UNITS.map((option) => ({ value: option, label: option }))}
-                />
-              </Field>
+          <Field
+            label="Measured in"
+            htmlFor="item-unit"
+            hint="Fixed once the item exists, because changing it would reinterpret every quantity already recorded. Recipes may use any unit measuring the same kind of thing."
+            error={fieldErrors.unit?.[0]}
+          >
+            <Select
+              id="item-unit"
+              value={unit}
+              onChange={(next) => setUnit(next as UnitOfMeasure)}
+              aria-describedby={describedBy("item-unit", { hasHint: true })}
+              options={UNITS.map((option) => ({ value: option, label: option }))}
+            />
+          </Field>
 
-              <Field
-                label="On the shelf now"
-                htmlFor="item-quantity"
-                hint="Recorded as an opening balance, so the history accounts for the whole figure."
-                error={fieldErrors.quantityInStock?.[0]}
-              >
-                <Input
-                  id="item-quantity"
-                  type="number"
-                  min={0}
-                  step="0.001"
-                  value={quantity}
-                  onChange={(event) => setQuantity(event.target.value)}
-                  aria-describedby={describedBy("item-quantity", { hasHint: true })}
-                />
-              </Field>
-            </>
-          )}
+          <Field
+            label="On the shelf now"
+            htmlFor="item-quantity"
+            hint="Recorded as an opening balance, so the history accounts for the whole figure."
+            error={fieldErrors.quantityInStock?.[0]}
+          >
+            <Input
+              id="item-quantity"
+              type="number"
+              min={0}
+              step="0.001"
+              value={quantity}
+              onChange={(event) => setQuantity(event.target.value)}
+              aria-describedby={describedBy("item-quantity", { hasHint: true })}
+            />
+          </Field>
 
           <Field
             label="Warn below"
@@ -574,7 +623,7 @@ function ItemDialog({
             onClick={() => void save()}
             disabled={isSaving || name.trim().length === 0}
           >
-            {isSaving ? "Saving…" : isEdit ? "Save changes" : "Add item"}
+            {isSaving ? "Saving…" : "Add item"}
           </Button>
         </DialogFooter>
       </DialogContent>

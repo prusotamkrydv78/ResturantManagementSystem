@@ -1,5 +1,5 @@
+import { apiAssetSrc } from "@/lib/api/asset-url";
 import { apiFetch } from "@/lib/api/client";
-import { env } from "@/lib/config/env";
 import type {
   PublicSite,
   SaveSitePayload,
@@ -83,11 +83,5 @@ export function getPublicSite(slug: string): Promise<PublicSite> {
  * somewhere absolute, and prefixing it would corrupt it.
  */
 export function siteImageSrc(url: string): string {
-  const trimmed = url.trim();
-
-  if (trimmed === "") {
-    return "";
-  }
-
-  return trimmed.startsWith("/api/") ? `${env.apiUrl}${trimmed}` : trimmed;
+  return apiAssetSrc(url);
 }

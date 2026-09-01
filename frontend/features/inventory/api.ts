@@ -74,6 +74,33 @@ export function deleteInventoryItem(id: string): Promise<void> {
   return apiFetch<void>(`/api/inventory/items/${id}`, { method: "DELETE" });
 }
 
+/**
+ * Put a photograph on an item, replacing any it already had.
+ *
+ * FormData rather than JSON: the bytes would be a third larger base64-encoded, and
+ * the API client leaves the content type alone for FormData so the browser can set
+ * the multipart boundary itself.
+ */
+export function setInventoryItemImage(
+  id: string,
+  file: File,
+): Promise<InventoryItem> {
+  const body = new FormData();
+  body.append("file", file);
+
+  return apiFetch<InventoryItem>(`/api/inventory/items/${id}/image`, {
+    method: "POST",
+    body,
+  });
+}
+
+/** Take the photograph off an item. */
+export function removeInventoryItemImage(id: string): Promise<InventoryItem> {
+  return apiFetch<InventoryItem>(`/api/inventory/items/${id}/image`, {
+    method: "DELETE",
+  });
+}
+
 /** Record a delivery, a correction after counting, or something thrown away. */
 export function recordStockMovement(
   id: string,

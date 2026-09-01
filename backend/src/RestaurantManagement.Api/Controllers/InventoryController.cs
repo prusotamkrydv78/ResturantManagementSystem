@@ -4,6 +4,7 @@ using RestaurantManagement.Api.Authentication;
 using RestaurantManagement.Application.Authentication;
 using RestaurantManagement.Application.Inventory;
 using RestaurantManagement.Application.Inventory.Dtos;
+using RestaurantManagement.Domain.Inventory;
 using RestaurantManagement.Shared.Results;
 
 namespace RestaurantManagement.Api.Controllers;
@@ -288,7 +289,15 @@ public sealed class InventoryController : ControllerBase
             return StatusCodes.Status404NotFound;
         }
 
-        if (error == InventoryErrors.ReasonRequired ||
+        if (error == InventoryErrors.ImageNotFound)
+        {
+            return StatusCodes.Status404NotFound;
+        }
+
+        if (error == InventoryErrors.ImageEmpty ||
+            error == InventoryErrors.ImageTypeNotAllowed ||
+            error.Code == "inventory.image_too_large" ||
+            error == InventoryErrors.ReasonRequired ||
             error == InventoryErrors.ConsumptionIsAutomatic ||
             error == InventoryErrors.OpeningIsAutomatic ||
             error == InventoryErrors.IngredientNotFound ||
@@ -302,6 +311,114 @@ public sealed class InventoryController : ControllerBase
         // the item, or somebody else moving it first: all conflicts with the current
         // state rather than malformed requests.
         return StatusCodes.Status409Conflict;
+    }
+
+    /* --------------------------------------------------------------------- Images */
+
+    /// <summary>
+    /// Puts a photograph on an item, replacing any it already had.
+    ///
+    /// The size limit is declared on the action as well as checked in the service, so
+    /// an oversized body is rejected by the framework before it is buffered rather
+    /// than after.
+    /// </summary>
+    [HttpPost("items/{id:guid}/image")]
+    [RequestSizeLimit(InventoryItem.MaxImageBytes + 8192)]
+    [ProducesResponseType(typeof(InventoryItemResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<InventoryItemResponse>> SetImage(
+        Guid id,
+        IFormFile file,
+        CancellationToken cancellationToken)
+    {
+        var managerId = User.GetUserId();
+
+        if (managerId is null)
+        {
+            return Unauthorized();
+        }
+
+        if (file is null || file.Length == 0)
+        {
+            return ProblemFrom(InventoryErrors.ImageEmpty, StatusCodes.Status400BadRequest);
+        }
+
+        await using var stream = file.OpenReadStream();
+
+        var result = await _inventoryService.SetItemImageAsync(
+            managerId.Value,
+            id,
+            file.FileName,
+            file.ContentType ?? string.Empty,
+            stream,
+            file.Length,
+            cancellationToken);
+
+        return result.IsFailure
+            ? ProblemFrom(result.Error!, StatusFor(result.Error!))
+            : Ok(result.Value);
+    }
+
+    /// <summary>Takes the photograph off an item.</summary>
+    [HttpDelete("items/{id:guid}/image")]
+    [ProducesResponseType(typeof(InventoryItemResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<InventoryItemResponse>> RemoveImage(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var managerId = User.GetUserId();
+
+        if (managerId is null)
+        {
+            return Unauthorized();
+        }
+
+        var result = await _inventoryService.RemoveItemImageAsync(
+            managerId.Value,
+            id,
+            cancellationToken);
+
+        return result.IsFailure
+            ? ProblemFrom(result.Error!, StatusFor(result.Error!))
+            : Ok(result.Value);
+    }
+
+    /// <summary>
+    /// The bytes of an item photograph.
+    ///
+    /// Open, unlike everything else on this controller, because an image tag cannot
+    /// send an access token and there is no other way for a browser to render one. It
+    /// is the identifier that protects the picture: a random key names it, the URL is
+    /// only ever handed to the manager who owns it, and a photograph of an onion does
+    /// not warrant more than that. Nothing about the item - its name, its stock, its
+    /// restaurant - is reachable through this route.
+    ///
+    /// Cached for a year because the URL carries a version stamp that changes whenever
+    /// the picture does, so a replacement is never hidden behind the cache of the one
+    /// it replaced.
+    /// </summary>
+    [HttpGet("items/{id:guid}/image")]
+    [AllowAnonymous]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetImage(Guid id, CancellationToken cancellationToken)
+    {
+        var result = await _inventoryService.GetItemImageBytesAsync(id, cancellationToken);
+
+        if (result.IsFailure)
+        {
+            return NotFound();
+        }
+
+        var (content, contentType) = result.Value;
+
+        Response.Headers.CacheControl = "public, max-age=31536000, immutable";
+
+        return File(content, contentType);
     }
 
     private ObjectResult ProblemFrom(Error error, int statusCode) =>

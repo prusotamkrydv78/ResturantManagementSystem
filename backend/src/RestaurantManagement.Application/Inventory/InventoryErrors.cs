@@ -5,6 +5,29 @@ namespace RestaurantManagement.Application.Inventory;
 /// <summary>Failures the inventory module can report.</summary>
 public static class InventoryErrors
 {
+    /// <summary>The upload had no bytes in it.</summary>
+    public static readonly Error ImageEmpty =
+        new("inventory.image_empty", "Choose a picture to upload.");
+
+    /// <summary>The upload is bigger than the limit.</summary>
+    public static Error ImageTooLarge(int maxBytes) =>
+        new(
+            "inventory.image_too_large",
+            $"A picture cannot be larger than {maxBytes / (1024 * 1024)} MB.");
+
+    /// <summary>
+    /// The file is not one of the accepted picture formats, or does not begin the
+    /// way the type it claims should.
+    /// </summary>
+    public static readonly Error ImageTypeNotAllowed =
+        new(
+            "inventory.image_type",
+            "Pictures must be JPEG, PNG, WebP or AVIF.");
+
+    /// <summary>There is no picture on this item to remove.</summary>
+    public static readonly Error ImageNotFound =
+        new("inventory.image_not_found", "This item has no picture.");
+
     /// <summary>The caller manages no restaurant, so there are no shelves to read.</summary>
     public static readonly Error NoRestaurantAssigned =
         new("inventory.no_restaurant", "No restaurant is assigned to this account yet.");

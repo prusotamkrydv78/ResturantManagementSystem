@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using RestaurantManagement.Application.Inventory;
 using RestaurantManagement.Application.Inventory.Dtos;
 using RestaurantManagement.Domain.Inventory;
+using RestaurantManagement.Domain.Media;
 using RestaurantManagement.Infrastructure.Persistence;
 using RestaurantManagement.Shared.Results;
 
@@ -691,7 +692,191 @@ public sealed class InventoryService : IInventoryService
         return ids.Count == 0 ? null : ids[0];
     }
 
+    /* --------------------------------------------------------------------- Images */
+
+    /// <inheritdoc />
+    public async Task<Result<InventoryItemResponse>> SetItemImageAsync(
+        Guid managerUserId,
+        Guid itemId,
+        string fileName,
+        string contentType,
+        Stream content,
+        long length,
+        CancellationToken cancellationToken)
+    {
+        var restaurantId = await ResolveRestaurantIdAsync(managerUserId, cancellationToken);
+
+        if (restaurantId is null)
+        {
+            return Result.Failure<InventoryItemResponse>(InventoryErrors.NoRestaurantAssigned);
+        }
+
+        if (length <= 0)
+        {
+            return Result.Failure<InventoryItemResponse>(InventoryErrors.ImageEmpty);
+        }
+
+        // Checked before reading, so an oversized upload is refused without being
+        // pulled into memory first.
+        if (length > InventoryItem.MaxImageBytes)
+        {
+            return Result.Failure<InventoryItemResponse>(
+                InventoryErrors.ImageTooLarge(InventoryItem.MaxImageBytes));
+        }
+
+        if (!ImageMedia.AllowedTypes.ContainsKey(contentType))
+        {
+            return Result.Failure<InventoryItemResponse>(InventoryErrors.ImageTypeNotAllowed);
+        }
+
+        var item = await ItemsOf(restaurantId.Value)
+            .SingleOrDefaultAsync(candidate => candidate.Id == itemId, cancellationToken);
+
+        if (item is null)
+        {
+            return Result.Failure<InventoryItemResponse>(InventoryErrors.ItemNotFound);
+        }
+
+        using var buffer = new MemoryStream();
+        await content.CopyToAsync(buffer, cancellationToken);
+        var bytes = buffer.ToArray();
+
+        // The declared length is what the client claimed. This is what actually
+        // arrived, and it is the one the limit has to hold against.
+        if (bytes.Length == 0)
+        {
+            return Result.Failure<InventoryItemResponse>(InventoryErrors.ImageEmpty);
+        }
+
+        if (bytes.Length > InventoryItem.MaxImageBytes)
+        {
+            return Result.Failure<InventoryItemResponse>(
+                InventoryErrors.ImageTooLarge(InventoryItem.MaxImageBytes));
+        }
+
+        // The browser's content type is a claim, not a fact. This checks the bytes
+        // begin the way that type should, so nothing can be stored as a picture and
+        // served back as something the browser would run.
+        if (!ImageMedia.LooksLikeImage(bytes, contentType))
+        {
+            return Result.Failure<InventoryItemResponse>(InventoryErrors.ImageTypeNotAllowed);
+        }
+
+        var now = DateTimeOffset.UtcNow;
+
+        var existing = await _dbContext.InventoryItemImages
+            .SingleOrDefaultAsync(image => image.InventoryItemId == itemId, cancellationToken);
+
+        if (existing is null)
+        {
+            _dbContext.InventoryItemImages.Add(new InventoryItemImage
+            {
+                InventoryItemId = item.Id,
+                RestaurantId = restaurantId.Value,
+                ContentType = contentType.ToLowerInvariant(),
+                ByteCount = bytes.Length,
+                Content = bytes,
+                UpdatedAtUtc = now,
+            });
+        }
+        else
+        {
+            existing.ContentType = contentType.ToLowerInvariant();
+            existing.ByteCount = bytes.Length;
+            existing.Content = bytes;
+            existing.UpdatedAtUtc = now;
+        }
+
+        // Written in the same transaction as the row above. The stamp is what every
+        // listing reads to know a picture exists, and it is the cache version in the
+        // URL, so the two must never be saved apart.
+        item.ImageUpdatedAtUtc = now;
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation(
+            "Manager {ManagerId} set a {ByteCount} byte picture on inventory item {ItemId}.",
+            managerUserId,
+            bytes.Length,
+            itemId);
+
+        return Result.Success(await ToResponseWithStatsAsync(item, cancellationToken));
+    }
+
+    /// <inheritdoc />
+    public async Task<Result<InventoryItemResponse>> RemoveItemImageAsync(
+        Guid managerUserId,
+        Guid itemId,
+        CancellationToken cancellationToken)
+    {
+        var restaurantId = await ResolveRestaurantIdAsync(managerUserId, cancellationToken);
+
+        if (restaurantId is null)
+        {
+            return Result.Failure<InventoryItemResponse>(InventoryErrors.NoRestaurantAssigned);
+        }
+
+        var item = await ItemsOf(restaurantId.Value)
+            .SingleOrDefaultAsync(candidate => candidate.Id == itemId, cancellationToken);
+
+        if (item is null)
+        {
+            return Result.Failure<InventoryItemResponse>(InventoryErrors.ItemNotFound);
+        }
+
+        if (item.ImageUpdatedAtUtc is null)
+        {
+            return Result.Failure<InventoryItemResponse>(InventoryErrors.ImageNotFound);
+        }
+
+        // Deleted by key rather than loaded and removed, so the bytes never travel
+        // back from the database only to be thrown away.
+        await _dbContext.InventoryItemImages
+            .Where(image => image.InventoryItemId == itemId)
+            .ExecuteDeleteAsync(cancellationToken);
+
+        item.ImageUpdatedAtUtc = null;
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation(
+            "Manager {ManagerId} removed the picture from inventory item {ItemId}.",
+            managerUserId,
+            itemId);
+
+        return Result.Success(await ToResponseWithStatsAsync(item, cancellationToken));
+    }
+
+    /// <inheritdoc />
+    public async Task<Result<(byte[] Content, string ContentType)>> GetItemImageBytesAsync(
+        Guid itemId,
+        CancellationToken cancellationToken)
+    {
+        var image = await _dbContext.InventoryItemImages
+            .AsNoTracking()
+            .Where(candidate => candidate.InventoryItemId == itemId)
+            .Select(candidate => new { candidate.Content, candidate.ContentType })
+            .SingleOrDefaultAsync(cancellationToken);
+
+        return image is null
+            ? Result.Failure<(byte[], string)>(InventoryErrors.ImageNotFound)
+            : Result.Success((image.Content, image.ContentType));
+    }
+
     /* ------------------------------------------------------------------- Mapping */
+
+    /// <summary>
+    /// Where an item's picture is served from, or null when it has none.
+    ///
+    /// The stamp in the query string is the whole reason a replacement is ever seen.
+    /// The bytes at this path do change, so the response is cached for a year against
+    /// a URL that changes with them, rather than being revalidated on every render of
+    /// a list that might hold two hundred of these.
+    /// </summary>
+    private static string? ImageUrlFor(InventoryItem item) =>
+        item.ImageUpdatedAtUtc is null
+            ? null
+            : $"/api/inventory/items/{item.Id}/image?v={item.ImageUpdatedAtUtc.Value.UtcTicks}";
+
 
     private static InventoryItemResponse ToResponse(
         InventoryItem item,
@@ -716,7 +901,8 @@ public sealed class InventoryService : IInventoryService
             stats.Count,
             stats.Count == 0 ? null : stats.Last,
             item.CreatedAtUtc,
-            item.UpdatedAtUtc);
+            item.UpdatedAtUtc,
+            ImageUrlFor(item));
     }
 
     private async Task<InventoryItemResponse> ToResponseWithStatsAsync(

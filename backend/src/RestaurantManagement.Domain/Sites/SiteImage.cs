@@ -1,3 +1,5 @@
+using RestaurantManagement.Domain.Media;
+
 namespace RestaurantManagement.Domain.Sites;
 
 /// <summary>
@@ -75,17 +77,9 @@ public static class SiteImageLimits
     /// <summary>
     /// The media types accepted, and the extension each is stored under.
     ///
-    /// A whitelist, so anything not named here is refused rather than being trusted
-    /// because it looked plausible. SVG is deliberately absent: it is a document
-    /// that can carry script, and it would be served from the same origin as the
-    /// page.
+    /// The product-wide list, not a second copy of it. An inventory photograph goes
+    /// through the same door.
     /// </summary>
-    public static readonly IReadOnlyDictionary<string, string> AllowedTypes =
-        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["image/jpeg"] = ".jpg",
-            ["image/png"] = ".png",
-            ["image/webp"] = ".webp",
-            ["image/avif"] = ".avif",
-        };
+    public static IReadOnlyDictionary<string, string> AllowedTypes =>
+        ImageMedia.AllowedTypes;
 }

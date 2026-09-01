@@ -42,6 +42,11 @@ public static class InventoryLimits
 /// <param name="LastMovementAtUtc">When it last moved, if it ever has.</param>
 /// <param name="CreatedAtUtc">When it was added.</param>
 /// <param name="UpdatedAtUtc">When it last changed.</param>
+/// <param name="ImageUrl">
+/// Where the optional photograph is served from, or null when there is none. Carries
+/// a version stamp so a replacement is not hidden behind the cache of the picture it
+/// replaced.
+/// </param>
 public sealed record InventoryItemResponse(
     Guid Id,
     string Name,
@@ -56,7 +61,8 @@ public sealed record InventoryItemResponse(
     int MovementCount,
     DateTimeOffset? LastMovementAtUtc,
     DateTimeOffset CreatedAtUtc,
-    DateTimeOffset UpdatedAtUtc);
+    DateTimeOffset UpdatedAtUtc,
+    string? ImageUrl);
 
 /// <summary>
 /// What the shelves look like as a whole.

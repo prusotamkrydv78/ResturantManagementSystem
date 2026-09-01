@@ -91,7 +91,20 @@ export interface InventoryItem {
   lastMovementAtUtc: string | null;
   createdAtUtc: string;
   updatedAtUtc: string;
+  /**
+   * Where the optional photograph is served from, or null when there is none.
+   *
+   * Carries a version stamp, so the browser may cache it hard and a replacement is
+   * still seen immediately rather than hiding behind the cache of the old one.
+   */
+  imageUrl: string | null;
 }
+
+/** What a photograph upload has to stay inside. Mirrors the API. */
+export const INVENTORY_IMAGE = {
+  maxBytes: 2 * 1024 * 1024,
+  accept: "image/jpeg,image/png,image/webp,image/avif",
+} as const;
 
 /** The shelves as a whole. The counts cover every item, not the filtered list. */
 export interface InventoryOverview {

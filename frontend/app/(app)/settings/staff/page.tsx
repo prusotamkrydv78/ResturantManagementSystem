@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { Field, describedBy } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Select } from "@/components/ui/select";
+import { Choice } from "@/components/ui/choice";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Surface } from "@/components/ui/surface";
 import {
@@ -368,10 +368,11 @@ function CreateStaffDialog({ onCreated }: { onCreated: () => Promise<void> }) {
             </Field>
 
             <Field htmlFor="staff-role" label="Role" required>
-              <Select
+              <Choice
                 id="staff-role"
+                label="Role"
                 value={role}
-                onChange={(next) => setRole(next as StaffRole)}
+                onChange={setRole}
                 options={STAFF_ROLES.map((option) => ({
                   value: option,
                   label: option,

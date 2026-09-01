@@ -61,6 +61,9 @@ public class ApplicationDbContext : IdentityUserContext<ApplicationUser, Guid>
     /// <summary>What the kitchen keeps on its shelves.</summary>
     public DbSet<InventoryItem> InventoryItems => Set<InventoryItem>();
 
+    /// <summary>Photographs of inventory items, kept apart from the item rows.</summary>
+    public DbSet<InventoryItemImage> InventoryItemImages => Set<InventoryItemImage>();
+
     /// <summary>Every change to a stock figure, and why. Append only.</summary>
     public DbSet<StockMovement> StockMovements => Set<StockMovement>();
 

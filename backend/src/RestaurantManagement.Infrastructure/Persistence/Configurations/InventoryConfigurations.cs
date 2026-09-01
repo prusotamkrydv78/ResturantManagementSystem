@@ -43,6 +43,12 @@ public sealed class InventoryItemConfiguration : IEntityTypeConfiguration<Invent
             .IsRequired()
             .HasPrecision(QuantityPrecision, QuantityScale);
 
+        // One photograph at most, in its own table, and it goes when the item does.
+        builder.HasOne(item => item.Image)
+            .WithOne(image => image.InventoryItem)
+            .HasForeignKey<InventoryItemImage>(image => image.InventoryItemId)
+            .OnDelete(DeleteBehavior.Cascade);
+
         // Several people move stock at once: a waiter sending food to the kitchen and a
         // manager recording a delivery both change it. Without this one write silently
         // overwrites the other and the balance stops matching its own ledger.
@@ -81,6 +87,32 @@ public sealed class InventoryItemConfiguration : IEntityTypeConfiguration<Invent
 }
 
 /// <summary>Maps stock movements.</summary>
+/// <summary>Maps the photograph belonging to an inventory item.</summary>
+public sealed class InventoryItemImageConfiguration
+    : IEntityTypeConfiguration<InventoryItemImage>
+{
+    /// <inheritdoc />
+    public void Configure(EntityTypeBuilder<InventoryItemImage> builder)
+    {
+        builder.ToTable("InventoryItemImages");
+
+        // The item identifier is the key, so one picture per item is a fact about
+        // the schema rather than a rule somebody has to remember to enforce.
+        builder.HasKey(image => image.InventoryItemId);
+
+        builder.Property(image => image.ContentType)
+            .IsRequired()
+            .HasMaxLength(100);
+
+        builder.Property(image => image.Content).IsRequired();
+
+        // Not a foreign key to Restaurants: it is denormalised from the item so a
+        // request can be authorised without a join, and the item already carries the
+        // real relationship.
+        builder.HasIndex(image => image.RestaurantId);
+    }
+}
+
 public sealed class StockMovementConfiguration : IEntityTypeConfiguration<StockMovement>
 {
     /// <inheritdoc />

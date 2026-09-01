@@ -46,6 +46,58 @@ export class Caller {
   }
 
   /**
+   * Uploads a file as multipart, the way a browser does.
+   *
+   * Deliberately does not set a content type. The boundary is part of that header
+   * and only the runtime knows it, so naming the type by hand produces a body the
+   * server cannot parse - which is the exact mistake this route has to be proved
+   * against.
+   */
+  async upload(
+    path: string,
+    file: Blob,
+    fileName: string,
+    field = "file",
+  ): Promise<{ status: number; body: unknown }> {
+    const form = new FormData();
+    form.append(field, file, fileName);
+
+    const headers: Record<string, string> = { Accept: "application/json" };
+
+    if (this.token !== null) {
+      headers["Authorization"] = `Bearer ${this.token}`;
+    }
+
+    const response = await fetch(`${apiUrl}${path}`, {
+      method: "POST",
+      headers,
+      body: form,
+    });
+
+    return { status: response.status, body: await readBody(response) };
+  }
+
+  /** Fetches a URL as bytes, for the routes that answer with an image. */
+  async bytes(path: string): Promise<{
+    status: number;
+    contentType: string | null;
+    cacheControl: string | null;
+    length: number;
+  }> {
+    const response = await fetch(`${apiUrl}${path}`, {
+      headers:
+        this.token === null ? {} : { Authorization: `Bearer ${this.token}` },
+    });
+
+    return {
+      status: response.status,
+      contentType: response.headers.get("content-type"),
+      cacheControl: response.headers.get("cache-control"),
+      length: (await response.arrayBuffer()).byteLength,
+    };
+  }
+
+  /**
    * Sends a request and returns the raw status and body without throwing, for the
    * many tests whose subject is the refusal rather than the success.
    */

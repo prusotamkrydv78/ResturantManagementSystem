@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RestaurantManagement.Application.Sites;
 using RestaurantManagement.Application.Sites.Dtos;
+using RestaurantManagement.Domain.Media;
 using RestaurantManagement.Domain.Sites;
 using RestaurantManagement.Infrastructure.Persistence;
 using RestaurantManagement.Shared.Results;
@@ -566,56 +567,15 @@ public sealed partial class SiteService : ISiteService
     /// <summary>
     /// Whether the bytes begin the way the declared type says they should.
     ///
-    /// Not a full decode, which would mean an imaging library for a check this
-    /// cheap. It is enough to stop a file being stored under a picture's media type
-    /// while containing something else.
+    /// Shared with the inventory photograph, so one judgement about what is safe to
+    /// store covers both.
     /// </summary>
-    private static bool LooksLikeImage(byte[] bytes, string contentType)
-    {
-        if (bytes.Length < 12)
-        {
-            return false;
-        }
+    private static bool LooksLikeImage(byte[] bytes, string contentType) =>
+        ImageMedia.LooksLikeImage(bytes, contentType);
 
-        return contentType.ToLowerInvariant() switch
-        {
-            // SOI marker.
-            "image/jpeg" => bytes[0] == 0xFF && bytes[1] == 0xD8,
-            // The eight byte PNG signature.
-            "image/png" =>
-                bytes[0] == 0x89 && bytes[1] == 0x50 &&
-                bytes[2] == 0x4E && bytes[3] == 0x47,
-            // Both sit in a RIFF or ISO base media container; the brand is at byte 8.
-            "image/webp" =>
-                bytes[0] == 0x52 && bytes[1] == 0x49 &&
-                bytes[2] == 0x46 && bytes[3] == 0x46 &&
-                bytes[8] == 0x57 && bytes[9] == 0x45 &&
-                bytes[10] == 0x42 && bytes[11] == 0x50,
-            "image/avif" =>
-                bytes[4] == 0x66 && bytes[5] == 0x74 &&
-                bytes[6] == 0x79 && bytes[7] == 0x70,
-            _ => false,
-        };
-    }
-
-    /// <summary>
-    /// A display name for the picker, stripped of anything that is not a name.
-    ///
-    /// Never used to open a file - the bytes are in a column - but it is rendered
-    /// back to the manager, so a path is reduced to its last segment and the length
-    /// is bounded.
-    /// </summary>
-    private static string SafeFileName(string fileName, string contentType)
-    {
-        var name = Path.GetFileName(fileName ?? string.Empty).Trim();
-
-        if (name.Length == 0)
-        {
-            return $"image{SiteImageLimits.AllowedTypes[contentType]}";
-        }
-
-        return name.Length > 128 ? name[^128..] : name;
-    }
+    /// <summary>A display name for the picker, stripped of anything that is not a name.</summary>
+    private static string SafeFileName(string fileName, string contentType) =>
+        ImageMedia.SafeFileName(fileName, contentType);
 
     [GeneratedRegex(@"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$")]
     private static partial Regex AccentPattern();

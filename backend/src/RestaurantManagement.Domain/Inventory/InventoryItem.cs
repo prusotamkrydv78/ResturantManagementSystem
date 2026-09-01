@@ -9,6 +9,11 @@ namespace RestaurantManagement.Domain.Inventory;
 /// batch and no location: none of those exist in this product, and a column for each
 /// would imply they were tracked when nothing writes to them.
 ///
+/// It may carry one photograph, which is optional in the strongest sense: nothing in
+/// the product reads it except the screens that show it to a manager. It is there
+/// because a shelf of forty white tubs is easier to match against a list with
+/// pictures than without, and for no other reason.
+///
 /// The stock figure here is a running balance, and the movements are the record of how
 /// it got that way. Both are written together in one transaction, and every movement
 /// stores the balance it produced, so the two can always be checked against each other
@@ -18,6 +23,9 @@ public class InventoryItem
 {
     /// <summary>Longest name accepted.</summary>
     public const int MaxNameLength = 120;
+
+    /// <summary>Largest photograph accepted, in bytes.</summary>
+    public const int MaxImageBytes = 2 * 1024 * 1024;
 
     /// <summary>Primary key.</summary>
     public Guid Id { get; set; }
@@ -53,6 +61,33 @@ public class InventoryItem
     /// The level at which this needs reordering. Zero means nobody has set one.
     /// </summary>
     public decimal MinimumQuantity { get; set; }
+
+    /// <summary>
+    /// When this item's photograph was last set, or null when it has none.
+    ///
+    /// Two jobs, and the reason the bytes are not here beside it. It says whether a
+    /// picture exists, so a listing can build the URL without touching the image
+    /// table at all; and it is the cache version, because the bytes behind an item's
+    /// image URL do change when a manager replaces the picture. The URL carries this
+    /// stamp and the response is then cached hard against it, so a replacement is
+    /// visible immediately instead of hiding behind a year-long cache.
+    ///
+    /// Denormalised from <see cref="Image"/>, and written in the same transaction as
+    /// it. The pair is the one thing here that could fall out of step, which is why
+    /// nothing else is allowed to write either half.
+    /// </summary>
+    public DateTimeOffset? ImageUpdatedAtUtc { get; set; }
+
+    /// <summary>
+    /// The photograph itself, in a table of its own.
+    ///
+    /// Not a column on this row, and that is not tidiness. Sending an order to the
+    /// kitchen loads the inventory item behind every ingredient of every dish on it,
+    /// and a blob column here would have dragged all of those photographs across the
+    /// wire in the middle of service. A separate table cannot be loaded by accident:
+    /// it arrives only when something asks for it by name.
+    /// </summary>
+    public InventoryItemImage? Image { get; set; }
 
     /// <summary>
     /// Whether it is still in use.

@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button, LinkButton } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Select } from "@/components/ui/select";
+import { Choice } from "@/components/ui/choice";
 import { PasswordInput } from "@/components/ui/password-input";
 import {
   Notice,
@@ -246,11 +246,12 @@ function DetailsPanel({
           required
           hint="A waiter takes orders; a chef works the kitchen rail. Changing this takes effect the next time they sign in."
         >
-          <Select
+          <Choice
             id="staff-role"
+            label="Role"
             className="sm:max-w-64"
             value={role}
-            onChange={(next) => setRole(next as StaffRole)}
+            onChange={setRole}
             options={STAFF_ROLES.map((option) => ({
               value: option,
               label: option,
