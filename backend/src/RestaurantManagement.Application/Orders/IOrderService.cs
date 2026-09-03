@@ -84,7 +84,32 @@ public interface IOrderService
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Records that a waiter has checked a customer's order with the table.
+    /// </summary>
+    /// <remarks>
+    /// The step between a customer ordering and the kitchen hearing about it. An order
+    /// placed from a phone reaches the floor rather than the pass, and stays there until
+    /// somebody goes to the table, reads it back, adjusts whatever was misunderstood -
+    /// through the ordinary update, which is why there is no separate editing here - and
+    /// then confirms.
+    ///
+    /// Confirming does two things and no more: it opens the kitchen, and it closes the
+    /// customer's own window to cancel. It does not send anything; the waiter still
+    /// decides when the order goes through, because the drinks may want to go now and
+    /// the food when the rest of the party arrives.
+    ///
+    /// A waiter's own order needs none of this. It was confirmed by being taken.
+    /// </remarks>
+    Task<Result<OrderResponse>> ConfirmAsync(
+        Guid staffUserId,
+        Guid orderId,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Sends every line that has not yet gone to the kitchen out as one ticket.
+    ///
+    /// Refused outright while the order still needs confirming: a customer's order has
+    /// to be agreed with the table before the kitchen starts on it.
     ///
     /// One submission produces one ticket holding those lines, not a ticket per item.
     /// From that point the lines are kitchen history and can no longer be changed or

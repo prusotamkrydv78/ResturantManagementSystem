@@ -246,9 +246,10 @@ export default function WebsiteOrderPage() {
           )}
 
           {/* Offered while the order is still waiting for somebody at the restaurant
-              to pick it up, which is the whole window. Once a member of staff sends it
-              through, food is being cooked and stopping it is a conversation rather
-              than a button - so the attempt is refused and the refusal explains why.
+              to come over and confirm it, which is the whole window. Once a member of
+              staff has agreed the order with the table in person, a phone quietly
+              withdrawing what was just agreed is not something this should allow - so
+              the attempt is refused and the refusal explains why.
 
               The page does not poll, so this button can still be showing after that
               moment has passed. That is fine and is why the server decides: the worst
@@ -274,7 +275,8 @@ export default function WebsiteOrderPage() {
               </Button>
 
               <p className="text-2xs text-subtle">
-                You can cancel until a member of staff sends your order to the kitchen.
+                You can cancel until a member of staff has been over to confirm it with
+                you.
               </p>
             </div>
           )}

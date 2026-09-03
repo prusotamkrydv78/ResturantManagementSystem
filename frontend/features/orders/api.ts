@@ -72,6 +72,21 @@ export function updateOrder(
 }
 
 /**
+ * Confirm a customer's order after checking it with the table.
+ *
+ * Takes no body: there is nothing to say beyond who confirmed it, and the server
+ * reads that from the token. Adjusting the order first is an ordinary update, so a
+ * waiter standing at the table fixes the quantities and then confirms.
+ *
+ * Until this is done the kitchen refuses the order, which is the point of it.
+ */
+export function confirmOrder(id: string): Promise<Order> {
+  return apiFetch<Order>(`/api/waiter/orders/${id}/confirmation`, {
+    method: "POST",
+  });
+}
+
+/**
  * Send every line not yet on a ticket to the kitchen as one submission.
  *
  * Takes no body: the server decides what is still waiting. Refused when there is

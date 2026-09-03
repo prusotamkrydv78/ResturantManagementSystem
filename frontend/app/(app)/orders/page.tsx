@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ChevronRight, ClipboardList, Plus } from "lucide-react";
+import { ChevronRight, ClipboardList, Plus, UserRoundCheck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { LinkButton } from "@/components/ui/button";
 import { Surface } from "@/components/ui/surface";
@@ -10,6 +10,7 @@ import { EmptyState, ErrorState, Skeleton } from "@/components/ui/states";
 import { PageBody, PageHeader } from "@/components/layout/page-header";
 import { RequireAuth } from "@/features/auth/require-auth";
 import { listOpenOrders } from "@/features/orders/api";
+import { cn } from "@/lib/utils/cn";
 import type { OrderSummary } from "@/types/order";
 
 /**
@@ -18,6 +19,11 @@ import type { OrderSummary } from "@/types/order";
  * Built for picking work up quickly rather than for administration: each order is
  * one large tap target showing the table, the number, what it is worth and how long
  * it has been open. Restaurant-wide, because cover is shared on a floor.
+ *
+ * Orders a customer placed themselves come first and are marked, because they are the
+ * only ones on this screen where somebody is sitting at a table waiting to be spoken
+ * to. Nothing on such an order can reach the kitchen until a waiter has been over and
+ * confirmed it, so an unnoticed one is a table that never gets fed.
  */
 export default function OrdersPage() {
   return (
@@ -59,6 +65,8 @@ function Orders() {
   const total = orders?.reduce((sum, order) => sum + order.subtotal, 0) ?? 0;
   const waiting =
     orders?.filter((order) => order.unsubmittedItemCount > 0).length ?? 0;
+  const toConfirm =
+    orders?.filter((order) => order.needsConfirmation).length ?? 0;
 
   return (
     <>
@@ -108,6 +116,16 @@ function Orders() {
             <div className="flex flex-wrap items-baseline justify-between gap-2">
               <p className="text-sm text-muted">
                 {orders.length} {orders.length === 1 ? "order" : "orders"} open
+                {/* First, and in the loudest colour on this page. A customer is
+                    sitting at that table and their food cannot be started. */}
+                {toConfirm > 0 && (
+                  <>
+                    {" · "}
+                    <span className="font-semibold text-danger">
+                      {toConfirm} to confirm
+                    </span>
+                  </>
+                )}
                 {waiting > 0 && (
                   <>
                     {" · "}
@@ -132,7 +150,12 @@ function Orders() {
                 <li key={order.id}>
                   <Link
                     href={`/orders/${order.id}`}
-                    className="flex h-full flex-col gap-3 rounded-lg border border-border bg-surface p-4 transition-colors hover:border-primary-border hover:bg-primary-soft"
+                    className={cn(
+                      "flex h-full flex-col gap-3 rounded-lg border bg-surface p-4 transition-colors",
+                      order.needsConfirmation
+                        ? "border-danger-border hover:bg-danger-soft"
+                        : "border-border hover:border-primary-border hover:bg-primary-soft",
+                    )}
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex min-w-0 flex-col">
@@ -148,14 +171,24 @@ function Orders() {
                           Open, so the state badge stays and the kitchen gets
                           its own. */}
                       <div className="flex shrink-0 flex-col items-end gap-1">
-                        <Badge tone="primary" dot>
-                          {order.status}
-                        </Badge>
-                        {order.unsubmittedItemCount > 0 && (
-                          <Badge tone="warning" dot>
-                            {order.unsubmittedItemCount} to send
+                        {order.needsConfirmation ? (
+                          <Badge tone="danger" dot>
+                            Confirm with table
+                          </Badge>
+                        ) : (
+                          <Badge tone="primary" dot>
+                            {order.status}
                           </Badge>
                         )}
+                        {/* Not shown while the order needs confirming. Nothing can be
+                            sent yet, so a count of what would go would be telling a
+                            waiter to do the wrong thing next. */}
+                        {order.unsubmittedItemCount > 0 &&
+                          !order.needsConfirmation && (
+                            <Badge tone="warning" dot>
+                              {order.unsubmittedItemCount} to send
+                            </Badge>
+                          )}
                       </div>
                     </div>
 
@@ -175,6 +208,17 @@ function Orders() {
                         aria-hidden="true"
                       />
                     </div>
+
+                    {order.needsConfirmation && (
+                      <p className="flex items-start gap-1.5 rounded-md bg-danger-soft px-2 py-1.5 text-2xs font-medium text-danger">
+                        <UserRoundCheck
+                          className="mt-px size-3.5 shrink-0"
+                          aria-hidden="true"
+                        />
+                        Ordered from the phone. Check it with the table before the
+                        kitchen can start.
+                      </p>
+                    )}
 
                     <span className="truncate border-t border-border pt-2 text-2xs text-subtle">
                       Taken by {order.createdByName}

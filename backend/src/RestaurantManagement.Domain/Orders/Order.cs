@@ -108,6 +108,29 @@ public class Order
     public string? CancellationReason { get; set; }
 
     /// <summary>
+    /// When somebody at the restaurant confirmed this order with the customer, or null.
+    ///
+    /// Only a customer-placed order has anything to confirm. An order a waiter typed was
+    /// confirmed by the act of typing it: they were standing at the table, talking to the
+    /// person ordering. Somebody who ordered from their phone has spoken to nobody, and
+    /// this column is the record of that conversation finally happening.
+    ///
+    /// It is the gate in front of the kitchen. Until it is set, nothing on the order can
+    /// be sent, because nobody has yet checked that the order is what the table actually
+    /// wants - and it is also what closes the customer's own window to cancel.
+    /// </summary>
+    public DateTimeOffset? ConfirmedAtUtc { get; set; }
+
+    /// <summary>
+    /// Who confirmed it, or null.
+    ///
+    /// Recorded because confirming is a judgement, not a formality: somebody read the
+    /// order back to a table and took responsibility for it being right. When the food
+    /// turns out to be wrong, this is the person who knows what was agreed.
+    /// </summary>
+    public Guid? ConfirmedByStaffId { get; set; }
+
+    /// <summary>
     /// The key the customer who placed this order holds, or null.
     ///
     /// Set only on an order somebody placed from the restaurant website, and handed
@@ -160,6 +183,35 @@ public class Order
 
     /// <summary>Whether a guest placed this themselves rather than a waiter.</summary>
     public bool IsSelfService => Source == OrderSource.QrCode;
+
+    /// <summary>
+    /// Whether a customer put this order in themselves.
+    ///
+    /// Both unattended ways in: the code printed on a table, and the restaurant's own
+    /// website. What they share is the thing that matters here - no member of staff was
+    /// present, so nothing has been agreed out loud yet.
+    ///
+    /// Read from the source rather than from the absence of a staff member. They happen
+    /// to agree today, but "nobody is recorded" is a fact about the record and "a
+    /// customer did this" is a fact about what happened, and only the second one is the
+    /// question being asked.
+    /// </summary>
+    public bool IsCustomerPlaced =>
+        Source is OrderSource.Website or OrderSource.QrCode;
+
+    /// <summary>
+    /// Whether this order is still waiting for somebody at the restaurant to check it
+    /// with the table.
+    ///
+    /// True for a customer-placed order nobody has confirmed yet, and the reason such an
+    /// order reaches the waiter rather than the kitchen. A waiter's own order is never
+    /// waiting: they were standing there.
+    ///
+    /// This is the one condition standing between a customer's order and a pan, and it
+    /// closes only when a person says so.
+    /// </summary>
+    public bool NeedsConfirmation =>
+        Status == OrderStatus.Open && IsCustomerPlaced && ConfirmedAtUtc is null;
 
     /// <summary>Whether a payment has been recorded against this order.</summary>
     public bool IsPaid => Payment is not null;
@@ -241,23 +293,26 @@ public class Order
     /// <summary>
     /// Whether the customer who placed this may still call it off themselves.
     ///
-    /// Stricter than <see cref="CanCancel"/> by one condition: nothing on the order
-    /// has reached the kitchen. A member of staff cancelling knows what is on the
-    /// pass and can go and stop it; a customer on their phone cannot, and letting
-    /// them call off food that is already in a pan is how a kitchen ends up cooking
-    /// for nobody.
+    /// Stricter than <see cref="CanCancel"/>: the order must also be unconfirmed, and
+    /// nothing on it may have reached the kitchen.
     ///
-    /// The whole order rather than a line, and the moment any line goes through the
-    /// door the answer becomes no. Cancelling half of something is a conversation to
-    /// have with a waiter, not a button.
+    /// Confirmation is the real line. Up to that point nobody at the restaurant has
+    /// looked at the order, so calling it off costs nothing and inconveniences nobody.
+    /// After it, a member of staff has read the order back to the table and agreed it,
+    /// and a phone quietly withdrawing what was just agreed in person is exactly the
+    /// disagreement this product should not create.
     ///
-    /// Reaching the kitchen is what stands in for a waiter confirming the order,
-    /// because it is the point at which somebody who works here has looked at it and
-    /// acted. When an explicit confirmation step exists, this is the one line that
-    /// changes.
+    /// The kitchen condition is kept as well, though a confirmation now stands in front
+    /// of every submission and so it should be unreachable. It costs one clause, and it
+    /// is the condition that actually protects the food.
+    ///
+    /// The whole order rather than a line. Cancelling half of something is a
+    /// conversation to have with a waiter, not a button.
     /// </summary>
     public bool CanGuestCancel =>
-        CanCancel && !Items.Any(item => item.IsSubmittedToKitchen);
+        CanCancel
+        && ConfirmedAtUtc is null
+        && !Items.Any(item => item.IsSubmittedToKitchen);
 
     /// <summary>
     /// Closes the order.
@@ -294,6 +349,32 @@ public class Order
     /// keep their own status, because both are records of what really happened and
     /// the order ending badly does not make them untrue.
     /// </summary>
+    /// <summary>
+    /// Records that somebody at the restaurant has checked this order with the table.
+    ///
+    /// Returns false when there was nothing to confirm - the order is not
+    /// customer-placed, is no longer open, or somebody confirmed it already. False
+    /// rather than an exception, because two waiters reaching the same new order at the
+    /// same time is an ordinary evening, not a bug.
+    ///
+    /// Changes nothing about the order's contents. Confirming says "this is what the
+    /// table wants"; adjusting it to be what the table wants is an ordinary edit, and
+    /// the waiter does that first.
+    /// </summary>
+    public bool TryConfirm(Guid confirmedByStaffId, DateTimeOffset now)
+    {
+        if (!NeedsConfirmation)
+        {
+            return false;
+        }
+
+        ConfirmedAtUtc = now;
+        ConfirmedByStaffId = confirmedByStaffId;
+        UpdatedAtUtc = now;
+
+        return true;
+    }
+
     public bool TryCancel(Guid? cancelledByUserId, string reason, DateTimeOffset now)
     {
         if (!CanCancel)

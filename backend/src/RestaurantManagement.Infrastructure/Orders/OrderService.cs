@@ -354,11 +354,13 @@ public sealed class OrderService : IOrderService
         }
 
         var placedBy = await NameOfStaffAsync(order.CreatedByStaffId, cancellationToken);
+        var confirmedBy = await NameOfStaffAsync(order.ConfirmedByStaffId, cancellationToken);
 
         return Result.Success(ToResponse(
             order,
             order.Table.Name,
-            OrderAttribution.PlacedBy(order, placedBy)));
+            OrderAttribution.PlacedBy(order, placedBy),
+            confirmedBy));
     }
 
     /// <inheritdoc />
@@ -382,7 +384,16 @@ public sealed class OrderService : IOrderService
             .Where(order =>
                 order.RestaurantId == waiter.Value.RestaurantId &&
                 order.Status == OrderStatus.Open)
-            .OrderByDescending(order => order.CreatedAtUtc)
+            // Orders waiting to be checked with a table come first, however long they
+            // have been sitting there. Everything else in this list is work already in
+            // hand; these are the ones where somebody is sitting at a table wondering
+            // whether the restaurant heard them.
+            .OrderBy(order =>
+                order.ConfirmedAtUtc == null &&
+                (order.Source == OrderSource.Website || order.Source == OrderSource.QrCode)
+                    ? 0
+                    : 1)
+            .ThenByDescending(order => order.CreatedAtUtc)
             .Take(Math.Clamp(limit, 1, 100))
             .Select(order => new OrderSummaryResponse(
                 order.Id,
@@ -405,7 +416,13 @@ public sealed class OrderService : IOrderService
                     .Where(item => item.KitchenTicketItem == null)
                     .Sum(item => item.Quantity),
                 order.KitchenTickets.Count,
-                order.CreatedAtUtc))
+                order.CreatedAtUtc,
+                // Written out rather than reading the entity properties, because this
+                // projection runs in SQL. The conditions are the ones on the entity.
+                order.Source == OrderSource.Website || order.Source == OrderSource.QrCode,
+                order.ConfirmedAtUtc == null &&
+                    (order.Source == OrderSource.Website ||
+                        order.Source == OrderSource.QrCode)))
             .ToListAsync(cancellationToken);
 
         return Result.Success<IReadOnlyList<OrderSummaryResponse>>(orders);
@@ -656,11 +673,88 @@ public sealed class OrderService : IOrderService
             order.Subtotal);
 
         var placedBy = await NameOfStaffAsync(order.CreatedByStaffId, cancellationToken);
+        var confirmedBy = await NameOfStaffAsync(order.ConfirmedByStaffId, cancellationToken);
 
         return Result.Success(ToResponse(
             order,
             order.Table.Name,
-            OrderAttribution.PlacedBy(order, placedBy)));
+            OrderAttribution.PlacedBy(order, placedBy),
+            confirmedBy));
+    }
+
+    /// <inheritdoc />
+    public async Task<Result<OrderResponse>> ConfirmAsync(
+        Guid staffUserId,
+        Guid orderId,
+        CancellationToken cancellationToken)
+    {
+        var waiter = await ResolveWaiterAsync(staffUserId, cancellationToken);
+
+        if (waiter is null)
+        {
+            return Result.Failure<OrderResponse>(OrderErrors.NotAnActiveWaiter);
+        }
+
+        // Tracked, and loaded the same way the detail read loads it: confirming returns
+        // the whole order, because the screen that confirmed it is about to show what
+        // may now be sent.
+        var order = await _dbContext.Orders
+            .Include(candidate => candidate.Items)
+                .ThenInclude(item => item.KitchenTicketItem)
+                    .ThenInclude(ticketItem => ticketItem!.KitchenTicket)
+            .Include(candidate => candidate.Table)
+            .Include(candidate => candidate.KitchenTickets)
+                .ThenInclude(ticket => ticket.Items)
+            .SingleOrDefaultAsync(
+                candidate =>
+                    candidate.Id == orderId &&
+                    candidate.RestaurantId == waiter.Value.RestaurantId,
+                cancellationToken);
+
+        if (order is null)
+        {
+            return Result.Failure<OrderResponse>(OrderErrors.NotFound);
+        }
+
+        var now = DateTimeOffset.UtcNow;
+
+        // False covers all of it: not a customer's order, no longer open, or somebody
+        // confirmed it while this waiter was walking to the table. The last is the
+        // realistic one, and it is not a failure worth a distinct message - the order is
+        // confirmed either way, which is what the waiter wanted.
+        if (!order.TryConfirm(staffUserId, now))
+        {
+            return Result.Failure<OrderResponse>(OrderErrors.NothingToConfirm);
+        }
+
+        try
+        {
+            await _dbContext.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            // Somebody else changed the order between the read and the write. Refused
+            // rather than overwritten: their change may well have been the confirmation.
+            return Result.Failure<OrderResponse>(OrderErrors.Conflict);
+        }
+
+        _logger.LogInformation(
+            "Waiter {StaffId} confirmed customer order {OrderNumber} on table {TableName} " +
+            "with {ItemCount} item(s) worth {Subtotal}.",
+            staffUserId,
+            order.OrderNumber,
+            order.Table.Name,
+            order.Items.Sum(item => item.Quantity),
+            order.Subtotal);
+
+        var placedBy = await NameOfStaffAsync(order.CreatedByStaffId, cancellationToken);
+
+        return Result.Success(ToResponse(
+            order,
+            order.Table.Name,
+            OrderAttribution.PlacedBy(order, placedBy),
+            // Known without a lookup: this caller is the one who just confirmed it.
+            waiter.Value.FullName));
     }
 
     /// <inheritdoc />
@@ -696,6 +790,15 @@ public sealed class OrderService : IOrderService
         if (!order.IsEditable)
         {
             return Result.Failure<SubmitToKitchenResponse>(OrderErrors.NotEditable);
+        }
+
+        // The gate. A customer's order goes to the floor, not the pass, and stays there
+        // until a member of staff has read it back to the table. Enforced here rather
+        // than only in the interface, because this is the moment stock leaves the shelf
+        // and food starts being cooked.
+        if (order.NeedsConfirmation)
+        {
+            return Result.Failure<SubmitToKitchenResponse>(OrderErrors.NeedsConfirmation);
         }
 
         // Everything not already on a ticket goes out together as one submission.
@@ -781,10 +884,15 @@ public sealed class OrderService : IOrderService
             ticket.TicketNumber);
 
         var placedBy = await NameOfStaffAsync(order.CreatedByStaffId, cancellationToken);
+        var confirmedBy = await NameOfStaffAsync(order.ConfirmedByStaffId, cancellationToken);
 
         return Result.Success(new SubmitToKitchenResponse(
             ToTicketResponse(ticket),
-            ToResponse(order, order.Table.Name, OrderAttribution.PlacedBy(order, placedBy))));
+            ToResponse(
+                order,
+                order.Table.Name,
+                OrderAttribution.PlacedBy(order, placedBy),
+                confirmedBy)));
     }
 
     /// <summary>How a ticket save ended.</summary>
@@ -985,7 +1093,11 @@ public sealed class OrderService : IOrderService
     /// to. Each line reports whether it went to the kitchen, on which ticket, and
     /// whether it may still be changed.
     /// </summary>
-    private static OrderResponse ToResponse(Order order, string tableName, string createdBy)
+    private static OrderResponse ToResponse(
+        Order order,
+        string tableName,
+        string createdBy,
+        string? confirmedBy = null)
     {
         var unsubmitted = order.Items
             .Where(item => !item.IsSubmittedToKitchen)
@@ -1005,9 +1117,14 @@ public sealed class OrderService : IOrderService
             order.IsEditable,
             Convert.ToBase64String(order.RowVersion),
             unsubmitted,
-            // Submitting is only meaningful when the order is still open and
-            // something is actually waiting.
-            order.IsEditable && unsubmitted > 0,
+            // Submitting is only meaningful when the order is still open, something is
+            // actually waiting, and - for a customer's order - somebody has agreed it
+            // with the table.
+            order.IsEditable && unsubmitted > 0 && !order.NeedsConfirmation,
+            order.IsCustomerPlaced,
+            order.NeedsConfirmation,
+            order.ConfirmedAtUtc,
+            confirmedBy,
             order.Items
                 // Waiting items first: those are the ones the waiter is working on.
                 .OrderBy(item => item.IsSubmittedToKitchen)

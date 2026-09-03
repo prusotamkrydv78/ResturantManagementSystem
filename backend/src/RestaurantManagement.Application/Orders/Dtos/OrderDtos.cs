@@ -261,6 +261,22 @@ public sealed class UpdateOrderRequest
 /// Whether a submission would do anything right now. Server-decided, so the
 /// interface does not have to combine rules itself.
 /// </param>
+/// <param name="IsCustomerPlaced">
+/// Whether a customer put this order in themselves, from the website or a scanned
+/// code. What it changes for the waiter is that nobody has agreed it out loud yet.
+/// </param>
+/// <param name="NeedsConfirmation">
+/// Whether this order is still waiting to be checked with the table. True only for a
+/// customer-placed order nobody has confirmed, and while it is true the kitchen
+/// cannot be told anything.
+/// </param>
+/// <param name="ConfirmedAtUtc">
+/// When somebody at the restaurant confirmed it with the customer, or null.
+/// </param>
+/// <param name="ConfirmedByName">
+/// Who confirmed it, or null. Named rather than given as an identifier, because the
+/// question a screen asks is who to go and talk to.
+/// </param>
 /// <param name="Items">The lines.</param>
 /// <param name="KitchenTickets">
 /// Submissions this order has produced, newest first. Read-only history from the
@@ -281,6 +297,10 @@ public sealed record OrderResponse(
     string RowVersion,
     int UnsubmittedItemCount,
     bool CanSubmitToKitchen,
+    bool IsCustomerPlaced,
+    bool NeedsConfirmation,
+    DateTimeOffset? ConfirmedAtUtc,
+    string? ConfirmedByName,
     IReadOnlyList<OrderItemResponse> Items,
     IReadOnlyList<KitchenTicketResponse> KitchenTickets);
 
@@ -308,6 +328,14 @@ public sealed record SubmitToKitchenResponse(
 /// </param>
 /// <param name="KitchenTicketCount">How many submissions it has produced.</param>
 /// <param name="CreatedAtUtc">When it was placed.</param>
+/// <param name="IsCustomerPlaced">
+/// Whether a customer placed it themselves. Kept in the list because it changes what
+/// the order is asking of whoever is reading the list.
+/// </param>
+/// <param name="NeedsConfirmation">
+/// Whether somebody still has to check it with the table. This is the flag the list
+/// sorts and colours by: an unconfirmed order is a customer sitting there waiting.
+/// </param>
 public sealed record OrderSummaryResponse(
     Guid Id,
     int OrderNumber,
@@ -318,4 +346,6 @@ public sealed record OrderSummaryResponse(
     string CreatedByName,
     int UnsubmittedItemCount,
     int KitchenTicketCount,
-    DateTimeOffset CreatedAtUtc);
+    DateTimeOffset CreatedAtUtc,
+    bool IsCustomerPlaced,
+    bool NeedsConfirmation);

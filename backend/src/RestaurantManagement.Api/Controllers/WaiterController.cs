@@ -246,11 +246,57 @@ public sealed class WaiterController : ControllerBase
     }
 
     /// <summary>
+    /// Confirms a customer's order after checking it with the table.
+    /// </summary>
+    /// <remarks>
+    /// The step that lets an order placed from a phone reach the kitchen. Until it is
+    /// taken, a submission is refused: somebody has to go to the table and agree what
+    /// was ordered, because a phone order is often almost - but not quite - what the
+    /// table meant.
+    ///
+    /// Adjusting the order is the ordinary update, not part of this. A waiter standing
+    /// at the table fixes the quantities first and confirms once it is right.
+    ///
+    /// Takes no body. There is nothing to say beyond who confirmed it, and that comes
+    /// from the token.
+    /// </remarks>
+    /// <param name="id">The order.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    [HttpPost("orders/{id:guid}/confirmation")]
+    [ProducesResponseType(typeof(OrderResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<OrderResponse>> ConfirmOrder(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var staffId = User.GetUserId();
+
+        if (staffId is null)
+        {
+            return Unauthorized();
+        }
+
+        var result = await _orderService.ConfirmAsync(
+            staffId.Value,
+            id,
+            cancellationToken);
+
+        return result.IsFailure
+            ? ProblemFrom(result.Error!, StatusFor(result.Error!))
+            : Ok(result.Value);
+    }
+
+    /// <summary>
     /// Sends every line not yet on a ticket to the kitchen as one submission.
     ///
     /// Returns the ticket that was created together with the refreshed order, so the
     /// interface can show the ticket number and lock the submitted lines without a
     /// second call.
+    ///
+    /// Refused while a customer's order still needs confirming, which is the one thing
+    /// standing between a phone order and a pan.
     /// </summary>
     [HttpPost("orders/{id:guid}/kitchen-tickets")]
     [ProducesResponseType(typeof(SubmitToKitchenResponse), StatusCodes.Status201Created)]

@@ -12,6 +12,7 @@ import {
   StickyNote,
   Trash2,
   TriangleAlert,
+  UserRoundCheck,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button, LinkButton } from "@/components/ui/button";
@@ -27,6 +28,7 @@ import {
 import { PageBody, PageHeader } from "@/components/layout/page-header";
 import { RequireAuth } from "@/features/auth/require-auth";
 import {
+  confirmOrder,
   getOrder,
   listWaiterMenu,
   submitToKitchen,
@@ -45,6 +47,13 @@ import type { EditableLine, Order, WaiterMenuCategory } from "@/types/order";
  * the server keeps their recorded price when the quantity changes. And lines already
  * sent to the kitchen are shown but not editable: the kitchen has been told to cook
  * them, so the record of what was asked for cannot move afterwards.
+ *
+ * An order a customer placed themselves arrives here needing confirmation, and takes
+ * over the top of the screen until it gets it. The kitchen will refuse it until then,
+ * which is the whole point: a waiter goes to the table, reads the order back, fixes
+ * whatever was misunderstood with the ordinary controls below, and confirms once.
+ * Confirming and saving are one tap, because a waiter mid-conversation with a table
+ * should not have to remember an order of operations.
  */
 export default function OrderDetailPage() {
   return (
@@ -71,6 +80,9 @@ function OrderDetail() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);
+
+  const [confirmError, setConfirmError] = useState<string | null>(null);
+  const [isConfirming, setIsConfirming] = useState(false);
 
   const [sendError, setSendError] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
@@ -267,9 +279,15 @@ function OrderDetail() {
     [lines],
   );
 
-  async function save() {
+  /**
+   * Saves the working copy, and hands back what the server stored.
+   *
+   * The return value is what lets confirming save first in the same tap: the caller
+   * needs to know the save actually happened, and null says it did not.
+   */
+  async function save(): Promise<Order | null> {
     if (order === null || lines.length === 0) {
-      return;
+      return null;
     }
 
     setSaveError(null);
@@ -301,14 +319,58 @@ function OrderDetail() {
       adopt(updated);
       setSavedAt(Date.now());
       setSentTicketNumber(null);
+
+      return updated;
     } catch (caught) {
       setSaveError(
         caught instanceof ApiError || caught instanceof Error
           ? caught.message
           : "Could not save the order.",
       );
+
+      return null;
     } finally {
       setIsSaving(false);
+    }
+  }
+
+  /**
+   * Records that this order has been checked with the table.
+   *
+   * Saves any adjustments first, because confirming an order while the screen holds
+   * unsaved changes would agree to something the restaurant does not have. One tap
+   * rather than two: the waiter is standing at the table talking to somebody, and
+   * "save, then confirm" is an order of operations to get wrong.
+   *
+   * A save that fails stops the confirmation. Nothing is half-done - the order simply
+   * stays unconfirmed, with the changes still on screen and the reason shown.
+   */
+  async function confirm() {
+    if (order === null) {
+      return;
+    }
+
+    setConfirmError(null);
+    setIsConfirming(true);
+
+    try {
+      if (isDirty) {
+        const saved = await save();
+
+        if (saved === null) {
+          return;
+        }
+      }
+
+      adopt(await confirmOrder(order.id));
+    } catch (caught) {
+      setConfirmError(
+        caught instanceof ApiError || caught instanceof Error
+          ? caught.message
+          : "Could not confirm this order.",
+      );
+    } finally {
+      setIsConfirming(false);
     }
   }
 
@@ -405,7 +467,12 @@ function OrderDetail() {
 
   // Save first, then send. Submitting the working copy would be a lie: only what
   // the server has already stored can go onto a ticket.
-  const canSend = pendingUnits > 0 && !isDirty && !isSaving && !isSending;
+  const canSend =
+    pendingUnits > 0 &&
+    !isDirty &&
+    !isSaving &&
+    !isSending &&
+    !order.needsConfirmation;
 
   return (
     <>
@@ -419,9 +486,15 @@ function OrderDetail() {
         ]}
         actions={
           <div className="flex items-center gap-2">
-            <Badge tone="primary" dot>
-              {order.status}
-            </Badge>
+            {order.needsConfirmation ? (
+              <Badge tone="danger" dot>
+                Needs confirming
+              </Badge>
+            ) : (
+              <Badge tone="primary" dot>
+                {order.status}
+              </Badge>
+            )}
             <Button
               variant="secondary"
               onClick={() => router.push("/orders")}
@@ -434,6 +507,58 @@ function OrderDetail() {
       />
 
       <PageBody>
+        {/* Above the menu and the order, because until this is done nothing else on
+            this screen can go anywhere. A customer is sitting at the table. */}
+        {order.needsConfirmation && (
+          <Surface className="border-danger-border">
+            <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-start sm:gap-5">
+              <span
+                aria-hidden="true"
+                className="flex size-10 shrink-0 items-center justify-center rounded-full bg-danger-soft text-danger"
+              >
+                <UserRoundCheck className="size-5" />
+              </span>
+
+              <div className="flex min-w-0 flex-col gap-1">
+                <h2 className="text-base font-semibold text-text">
+                  {order.tableName} ordered this themselves
+                </h2>
+                <p className="text-sm text-muted">
+                  Nothing has been sent to the kitchen and nothing will be until you
+                  confirm it. Go to the table, read the order back, change whatever
+                  they did not mean below, then confirm — that sends your changes too.
+                </p>
+                <p className="text-2xs text-subtle">
+                  They can still cancel it themselves until you confirm.
+                </p>
+              </div>
+
+              <div className="flex shrink-0 flex-col gap-2 sm:w-52">
+                {confirmError !== null && <FormError message={confirmError} />}
+
+                <Button
+                  onClick={() => void confirm()}
+                  disabled={isConfirming || isSaving || isEmpty}
+                  className="w-full"
+                  icon={<UserRoundCheck />}
+                >
+                  {isConfirming
+                    ? "Confirming…"
+                    : isDirty
+                      ? "Save & confirm"
+                      : "Confirm order"}
+                </Button>
+
+                <p className="text-2xs text-subtle">
+                  {isDirty
+                    ? "Your changes are saved as part of confirming."
+                    : "Confirming opens the kitchen. It does not send anything yet."}
+                </p>
+              </div>
+            </div>
+          </Surface>
+        )}
+
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start">
           {/* Menu, to add more */}
           <Surface>
@@ -708,6 +833,17 @@ function OrderDetail() {
             </Surface>
 
             <Surface>
+              {order.confirmedAtUtc !== null && order.isCustomerPlaced && (
+                <p className="flex items-start gap-1.5 px-4 pt-4 text-2xs text-muted">
+                  <UserRoundCheck
+                    className="mt-px size-3.5 shrink-0 text-success"
+                    aria-hidden="true"
+                  />
+                  Confirmed with the table at {formatTime(order.confirmedAtUtc)}
+                  {order.confirmedByName !== null && ` by ${order.confirmedByName}`}.
+                </p>
+              )}
+
               <SurfaceHeader
                 title="Kitchen"
                 description={
@@ -726,13 +862,15 @@ function OrderDetail() {
                 )}
 
                 <p className="text-2xs text-subtle">
-                  {pendingUnits === 0
-                    ? "Nothing is waiting. Add items to send another ticket."
-                    : isDirty
-                      ? "Save your changes first, so the kitchen receives what is actually on the order."
-                      : `${pendingUnits} ${
-                          pendingUnits === 1 ? "item" : "items"
-                        } will be sent as one ticket. Once sent they cannot be changed.`}
+                  {order.needsConfirmation
+                    ? "Confirm this order with the table first. The kitchen will refuse it until you do."
+                    : pendingUnits === 0
+                      ? "Nothing is waiting. Add items to send another ticket."
+                      : isDirty
+                        ? "Save your changes first, so the kitchen receives what is actually on the order."
+                        : `${pendingUnits} ${
+                            pendingUnits === 1 ? "item" : "items"
+                          } will be sent as one ticket. Once sent they cannot be changed.`}
                 </p>
 
                 <Button
@@ -743,9 +881,11 @@ function OrderDetail() {
                 >
                   {isSending
                     ? "Sending…"
-                    : pendingUnits === 0
-                      ? "Nothing to send"
-                      : `Send ${pendingUnits} to kitchen`}
+                    : order.needsConfirmation
+                      ? "Confirm it first"
+                      : pendingUnits === 0
+                        ? "Nothing to send"
+                        : `Send ${pendingUnits} to kitchen`}
                 </Button>
               </div>
 

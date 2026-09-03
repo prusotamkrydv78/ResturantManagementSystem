@@ -91,6 +91,32 @@ public static class OrderErrors
             "order.submitted_item_locked",
             "Items already sent to the kitchen cannot be changed or removed.");
 
+    /// <summary>
+    /// The order came from a customer and nobody has confirmed it with them yet.
+    ///
+    /// Not a validation failure but the workflow working. A customer ordering from
+    /// their phone has spoken to nobody, so somebody has to read the order back to the
+    /// table before the kitchen starts on it - the number of times a phone order is
+    /// almost but not quite what the table meant is the whole reason this step exists.
+    /// </summary>
+    public static readonly Error NeedsConfirmation =
+        new(
+            "order.needs_confirmation",
+            "Check this order with the table and confirm it before sending it to the "
+            + "kitchen.");
+
+    /// <summary>
+    /// There was nothing to confirm: the order was not placed by a customer, is no
+    /// longer open, or somebody has already confirmed it.
+    ///
+    /// One message for all three, because a waiter looking at a stale screen wants to
+    /// know their tap did nothing, not which of three reasons applied.
+    /// </summary>
+    public static readonly Error NothingToConfirm =
+        new(
+            "order.nothing_to_confirm",
+            "This order does not need confirming. Reload it to see where it stands.");
+
     /// <summary>There is nothing waiting to be sent to the kitchen.</summary>
     public static readonly Error NothingToSubmit =
         new(

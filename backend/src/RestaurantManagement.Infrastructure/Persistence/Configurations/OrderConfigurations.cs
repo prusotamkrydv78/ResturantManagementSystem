@@ -44,6 +44,9 @@ public sealed class OrderConfiguration : IEntityTypeConfiguration<Order>
         builder.Ignore(order => order.CanComplete);
         builder.Ignore(order => order.CanCancel);
         builder.Ignore(order => order.IsSelfService);
+        builder.Ignore(order => order.IsCustomerPlaced);
+        builder.Ignore(order => order.NeedsConfirmation);
+        builder.Ignore(order => order.CanGuestCancel);
 
         builder.Property(order => order.Source)
             .IsRequired()
@@ -71,12 +74,30 @@ public sealed class OrderConfiguration : IEntityTypeConfiguration<Order>
             .HasPrincipalKey(customer => new { customer.Id, customer.RestaurantId })
             .OnDelete(DeleteBehavior.NoAction);
 
-        // A guest order has no staff member behind it, and a staff order must have one.
-        // Holds the pairing against a hand-written UPDATE as well as against the code.
+        // A customer-placed order has no staff member behind it, and a staff order must
+        // have one. Holds the pairing against a hand-written UPDATE as well as the code.
+        //
+        // Both customer routes are named. This was written when a scanned code was the
+        // only way a customer could order, and a website order - which also has nobody
+        // behind it - was refused by the database on every single insert.
         builder.ToTable(table => table.HasCheckConstraint(
             "CK_Orders_Source",
-            "([Source] = 'QrCode' AND [CreatedByStaffId] IS NULL) " +
-            "OR ([Source] <> 'QrCode' AND [CreatedByStaffId] IS NOT NULL)"));
+            "([Source] IN ('QrCode', 'Website') AND [CreatedByStaffId] IS NULL) " +
+            "OR ([Source] NOT IN ('QrCode', 'Website') AND [CreatedByStaffId] IS NOT NULL)"));
+
+        // Confirmation is one fact recorded in two columns, so they move together or
+        // not at all. Anything else means an order confirmed by nobody, or a member of
+        // staff credited with a confirmation that never happened.
+        builder.ToTable(table => table.HasCheckConstraint(
+            "CK_Orders_Confirmation",
+            "([ConfirmedAtUtc] IS NULL AND [ConfirmedByStaffId] IS NULL) " +
+            "OR ([ConfirmedAtUtc] IS NOT NULL AND [ConfirmedByStaffId] IS NOT NULL)"));
+
+        // What the waiter list sorts on: the orders a customer placed and nobody has
+        // picked up yet. Filtered, because that is a handful of rows out of a service
+        // and the query only ever wants those.
+        builder.HasIndex(order => new { order.RestaurantId, order.ConfirmedAtUtc })
+            .HasFilter("[ConfirmedAtUtc] IS NULL");
 
         // Long enough for a real sentence, short enough that it stays a reason
         // rather than becoming a notes field.

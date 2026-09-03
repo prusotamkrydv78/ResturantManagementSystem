@@ -116,6 +116,22 @@ export interface Order {
   unsubmittedItemCount: number;
   /** Whether there is anything to send right now. Decided by the server. */
   canSubmitToKitchen: boolean;
+  /**
+   * Whether a customer put this order in themselves, from the website or a scanned
+   * code. What it changes for the waiter is that nobody has agreed it out loud yet.
+   */
+  isCustomerPlaced: boolean;
+  /**
+   * Whether somebody still has to check this order with the table.
+   *
+   * True only for a customer's order nobody has confirmed. While it is true the
+   * kitchen cannot be told anything, and the customer can still call it off.
+   */
+  needsConfirmation: boolean;
+  /** When it was confirmed with the customer, or null. */
+  confirmedAtUtc: string | null;
+  /** Who confirmed it, or null. The person who knows what was agreed. */
+  confirmedByName: string | null;
   items: OrderItem[];
   /** Every submission this order has produced, newest first. */
   kitchenTickets: KitchenTicket[];
@@ -136,6 +152,13 @@ export interface OrderSummary {
   /** How many submissions it has produced. */
   kitchenTicketCount: number;
   createdAtUtc: string;
+  /** Whether a customer placed it themselves rather than a waiter taking it. */
+  isCustomerPlaced: boolean;
+  /**
+   * Whether somebody still has to check it with the table. The server puts these
+   * first in the list: an unconfirmed order is a customer sitting there waiting.
+   */
+  needsConfirmation: boolean;
 }
 
 /**
