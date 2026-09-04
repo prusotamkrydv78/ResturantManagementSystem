@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { ChevronRight, ClipboardList, Plus, UserRoundCheck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -10,6 +10,7 @@ import { EmptyState, ErrorState, Skeleton } from "@/components/ui/states";
 import { PageBody, PageHeader } from "@/components/layout/page-header";
 import { RequireAuth } from "@/features/auth/require-auth";
 import { listOpenOrders } from "@/features/orders/api";
+import { useRealtimeEvent } from "@/lib/realtime/realtime-context";
 import { cn } from "@/lib/utils/cn";
 import type { OrderSummary } from "@/types/order";
 
@@ -37,6 +38,18 @@ function Orders() {
   const [orders, setOrders] = useState<OrderSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+
+  const reload = useCallback(() => setReloadKey((key) => key + 1), []);
+
+  // This list used to load once and never move, so a customer's order could sit on it
+  // unnoticed until somebody navigated away and back. It now follows the service.
+  //
+  // Every event that changes what is on the list, including the ones a different
+  // waiter caused - which is the case that matters, because the waiter who did it is
+  // looking at their own screen already.
+  useRealtimeEvent("orderPlaced", reload);
+  useRealtimeEvent("orderConfirmed", reload);
+  useRealtimeEvent("ticketQueued", reload);
 
   useEffect(() => {
     let cancelled = false;
@@ -84,10 +97,7 @@ function Orders() {
       <PageBody>
         {error !== null ? (
           <Surface>
-            <ErrorState
-              message={error}
-              onRetry={() => setReloadKey((key) => key + 1)}
-            />
+            <ErrorState message={error} onRetry={reload} />
           </Surface>
         ) : orders === null ? (
           <div className="flex flex-col gap-3">

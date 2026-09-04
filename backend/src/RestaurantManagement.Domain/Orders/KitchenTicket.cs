@@ -52,6 +52,27 @@ public class KitchenTicket
     /// <summary>When the food reached the pass. Null until then.</summary>
     public DateTimeOffset? ReadyAtUtc { get; set; }
 
+    /// <summary>
+    /// When a waiter took the food to the table, or null while it is still at the pass.
+    ///
+    /// Deliberately a timestamp on the ticket rather than a fourth
+    /// <see cref="KitchenTicketStatus"/>. Serving is floor work: the kitchen has
+    /// finished, and folding it into the kitchen's own status would make the rail
+    /// responsible for something nobody in the kitchen can see. The status stays the
+    /// kitchen's, and this is the floor's.
+    ///
+    /// It is what gives "the food is ready" an ending. Without it a ticket sits at the
+    /// pass reading Ready for the rest of the evening, and the next waiter to look
+    /// cannot tell whether it has already gone to the table.
+    /// </summary>
+    public DateTimeOffset? ServedAtUtc { get; set; }
+
+    /// <summary>
+    /// Who took it over, or null. Recorded for the same reason the confirmation is:
+    /// when a table says the food never arrived, this is the person who knows.
+    /// </summary>
+    public Guid? ServedByStaffId { get; set; }
+
     /// <summary>When the ticket was last changed.</summary>
     public DateTimeOffset UpdatedAtUtc { get; set; }
 
@@ -81,6 +102,26 @@ public class KitchenTicket
 
     /// <summary>Whether the ticket may be sent to the pass.</summary>
     public bool CanMarkReady => Status == KitchenTicketStatus.Preparing;
+
+    /// <summary>Whether the food has been taken to the table.</summary>
+    public bool IsServed => ServedAtUtc is not null;
+
+    /// <summary>
+    /// Whether a waiter may mark this as delivered.
+    ///
+    /// Only from the pass, and only once. Food that has not been cooked cannot be
+    /// carried anywhere, and a second waiter arriving at an empty pass should be told
+    /// somebody beat them to it rather than silently restamping the ticket.
+    /// </summary>
+    public bool CanServe => Status == KitchenTicketStatus.Ready && !IsServed;
+
+    /// <summary>
+    /// Whether this ticket is waiting at the pass for somebody to carry it.
+    ///
+    /// The waiter's half of the kitchen rail: what the floor still has to do. Cooked,
+    /// and not yet taken to the table.
+    /// </summary>
+    public bool IsWaitingAtPass => Status == KitchenTicketStatus.Ready && !IsServed;
 
     /// <summary>
     /// Starts cooking: Pending becomes Preparing and the start time is recorded.
@@ -120,6 +161,30 @@ public class KitchenTicket
 
         Status = KitchenTicketStatus.Ready;
         ReadyAtUtc = now;
+        UpdatedAtUtc = now;
+
+        return true;
+    }
+
+    /// <summary>
+    /// Records that a waiter carried this ticket to the table.
+    ///
+    /// Returns false when there was nothing to carry - the food is not at the pass, or
+    /// another waiter already took it. False rather than an exception, because two
+    /// waiters reaching the same pass at the same moment is an ordinary service.
+    ///
+    /// Does not touch <see cref="Status"/>. The kitchen said Ready and that stays true;
+    /// what changed is whose hands the plate is in.
+    /// </summary>
+    public bool TryServe(Guid servedByStaffId, DateTimeOffset now)
+    {
+        if (!CanServe)
+        {
+            return false;
+        }
+
+        ServedAtUtc = now;
+        ServedByStaffId = servedByStaffId;
         UpdatedAtUtc = now;
 
         return true;

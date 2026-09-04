@@ -15,6 +15,7 @@ import { NavSection, useClosedSections } from "@/components/layout/nav-section";
 import type { NavItem } from "@/components/layout/nav-config";
 import { RailLabel, Tooltip } from "@/components/ui/tooltip";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
+import { ToastSoundToggle } from "@/components/ui/toast";
 import { useStoredPreference } from "@/lib/hooks/use-stored-preference";
 import { cn } from "@/lib/utils/cn";
 
@@ -261,6 +262,12 @@ export function UserPanel({ isCollapsed = false }: { isCollapsed?: boolean }) {
       <div className="flex flex-col items-center gap-1 border-t border-border px-2 py-3">
         <ThemeToggle isCollapsed />
 
+        {/* The moment somebody wants this is the moment a chime went off next to a
+            guest, which is not a moment for finding a settings page. */}
+        <Tooltip content="Notification sound">
+          <ToastSoundToggle />
+        </Tooltip>
+
         <Tooltip
           content={
             <span className="flex flex-col">
@@ -292,7 +299,15 @@ export function UserPanel({ isCollapsed = false }: { isCollapsed?: boolean }) {
     <div className="flex flex-col gap-3 border-t border-border px-3 py-3">
       {/* Above the account rather than beside it: the row below is already three
           things wide, and a theme is set once and then left alone. */}
-      <ThemeToggle />
+      <div className="flex items-center gap-1">
+        <div className="min-w-0 flex-1">
+          <ThemeToggle />
+        </div>
+
+        {/* Unlike the theme, this one gets reached for mid-service - so it stays in
+            arm's reach rather than going into settings. */}
+        <ToastSoundToggle className="shrink-0" />
+      </div>
 
       <div className="flex items-center gap-2.5">
         <span

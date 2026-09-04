@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RestaurantManagement.Application.Kitchen;
+using RestaurantManagement.Application.Realtime;
 using RestaurantManagement.Application.Kitchen.Dtos;
 using RestaurantManagement.Domain.Identity;
 using RestaurantManagement.Domain.Orders;
@@ -24,12 +25,17 @@ namespace RestaurantManagement.Infrastructure.Kitchen;
 public sealed class KitchenService : IKitchenService
 {
     private readonly ApplicationDbContext _dbContext;
+    private readonly IRealtimeNotifier _realtime;
     private readonly ILogger<KitchenService> _logger;
 
     /// <summary>Creates the service.</summary>
-    public KitchenService(ApplicationDbContext dbContext, ILogger<KitchenService> logger)
+    public KitchenService(
+        ApplicationDbContext dbContext,
+        IRealtimeNotifier realtime,
+        ILogger<KitchenService> logger)
     {
         _dbContext = dbContext;
+        _realtime = realtime;
         _logger = logger;
     }
 
@@ -115,6 +121,10 @@ public sealed class KitchenService : IKitchenService
             (ticket, now) => ticket.TryStart(now),
             KitchenErrors.NotPending,
             "started",
+            // Told to the rest of the kitchen, so a second chef does not reach for a
+            // ticket somebody is already cooking.
+            (realtime, restaurantId, payload, token) =>
+                realtime.TicketStartedAsync(restaurantId, payload, token),
             cancellationToken);
 
     /// <inheritdoc />
@@ -128,6 +138,11 @@ public sealed class KitchenService : IKitchenService
             (ticket, now) => ticket.TryMarkReady(now),
             KitchenErrors.NotPreparing,
             "marked ready",
+            // Told to the floor, not the kitchen. This is the one kitchen event
+            // somebody else has to act on: there is a plate at the pass going cold
+            // until a waiter carries it.
+            (realtime, restaurantId, payload, token) =>
+                realtime.TicketReadyAsync(restaurantId, payload, token),
             cancellationToken);
 
     /* ------------------------------------------------------------------- Helpers */
@@ -147,6 +162,7 @@ public sealed class KitchenService : IKitchenService
         Func<KitchenTicket, DateTimeOffset, bool> transition,
         Error refusal,
         string action,
+        Func<IRealtimeNotifier, Guid, TicketEvent, CancellationToken, Task> announce,
         CancellationToken cancellationToken)
     {
         var restaurantId = await ResolveChefRestaurantAsync(staffUserId, cancellationToken);
@@ -192,6 +208,20 @@ public sealed class KitchenService : IKitchenService
             staffUserId,
             action,
             ticket.TicketNumber);
+
+        // After the save, never before. An announcement about work that then failed to
+        // commit would put food on a screen that does not exist.
+        await announce(
+            _realtime,
+            restaurantId.Value,
+            new TicketEvent(
+                ticket.Id,
+                ticket.TicketNumber,
+                ticket.OrderId,
+                ticket.Order.OrderNumber,
+                ticket.Order.Table.Name,
+                ticket.Items.Sum(item => item.Quantity)),
+            cancellationToken);
 
         return Result.Success(ToResponse(ticket));
     }
@@ -259,6 +289,7 @@ public sealed class KitchenService : IKitchenService
             ticket.CreatedAtUtc,
             ticket.StartedAtUtc,
             ticket.ReadyAtUtc,
+            ticket.ServedAtUtc,
             ticket.Items
                 .OrderBy(item => item.ItemName)
                 .Select(item => new KitchenTicketItemResponse(

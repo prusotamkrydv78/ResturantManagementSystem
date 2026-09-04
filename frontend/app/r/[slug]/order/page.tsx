@@ -14,6 +14,10 @@ import {
 } from "@/features/public/api";
 import { OrderComposer, type OrderDraftLine } from "@/features/public/order-composer";
 import { OrderSentOverlay } from "@/features/public/order-sent";
+import { OrderTimeline } from "@/features/public/order-timeline";
+import { isAtLeast, STAGE_COPY } from "@/features/public/order-progress";
+import { useOrderUpdates } from "@/features/public/use-order-updates";
+import { ToastProvider, useToast } from "@/components/ui/toast";
 import {
   clearReceipt,
   readReceipt,
@@ -44,6 +48,16 @@ import type { PublicOrder, PublicRestaurant } from "@/types/public-ordering";
  * improves both.
  */
 export default function WebsiteOrderPage() {
+  // The staff shell supplies this for every signed-in screen; a customer's phone is
+  // outside it, so the page brings its own. Same toasts, same chime, same mute.
+  return (
+    <ToastProvider>
+      <WebsiteOrder />
+    </ToastProvider>
+  );
+}
+
+function WebsiteOrder() {
   const params = useParams<{ slug: string }>();
   const slug = params.slug;
 
@@ -144,6 +158,34 @@ export default function WebsiteOrderPage() {
       setCancelling(false);
     }
   }, [slug, placed]);
+
+  const { notify } = useToast();
+
+  // Followed for as long as the page is open, on the strength of the key they were
+  // handed when they placed it. Null before they have ordered, and after cancelling -
+  // there is nothing left to follow in either case.
+  const { stage, live } = useOrderUpdates({
+    slug,
+    cancelKey: cancelled ? null : (placed?.cancelKey ?? null),
+    onUpdate: useCallback(
+      (update: { stage: keyof typeof STAGE_COPY }) => {
+        const copy = STAGE_COPY[update.stage];
+
+        notify({
+          // The last step is the happy ending; everything before it is progress the
+          // guest is waiting on.
+          tone: update.stage === "Served" ? "success" : "alert",
+          title: copy.title,
+          description: copy.detail,
+          duration: 9000,
+          // One order, so one toast that keeps replacing itself. A guest should not
+          // end up with a stack of four telling them the story so far.
+          dedupeKey: "order-progress",
+        });
+      },
+      [notify],
+    ),
+  });
 
   // Written whenever the receipt changes, rather than at each of the three places that
   // change it. One rule in one place: what is on screen is what the phone remembers.
@@ -289,10 +331,12 @@ export default function WebsiteOrderPage() {
 
           {!cancelled && (
             <p className="text-sm text-muted">
-              A member of staff will send it to the kitchen. Pay with them when you are
-              finished, and quote order #{placed.orderNumber}.
+              Pay with a member of staff when you are finished, and quote order #
+              {placed.orderNumber}.
             </p>
           )}
+
+          {!cancelled && <OrderTimeline stage={stage} live={live} />}
 
           {/* Offered while the order is still waiting for somebody at the restaurant
               to come over and confirm it, which is the whole window. Once a member of
@@ -303,7 +347,13 @@ export default function WebsiteOrderPage() {
               The page does not poll, so this button can still be showing after that
               moment has passed. That is fine and is why the server decides: the worst
               case is a tap that comes back with the honest answer. */}
-          {!cancelled && placed.canCancel && placed.cancelKey !== null && (
+          {/* Closed live. `canCancel` was true when the order was placed and this page
+              does not reload, so without the stage a guest would keep seeing a button
+              that the server now refuses - and only find out by pressing it. */}
+          {!cancelled &&
+            placed.canCancel &&
+            placed.cancelKey !== null &&
+            !isAtLeast(stage, "Confirmed") && (
             <div className="flex flex-col gap-2 border-t border-border pt-3">
               {cancelError !== null && (
                 <p

@@ -10,6 +10,7 @@ using RestaurantManagement.Application.Floor;
 using RestaurantManagement.Application.Inventory;
 using RestaurantManagement.Application.Kitchen;
 using RestaurantManagement.Application.Managers;
+using RestaurantManagement.Application.Realtime;
 using RestaurantManagement.Application.Menu;
 using RestaurantManagement.Application.Orders;
 using RestaurantManagement.Application.Platform;
@@ -22,6 +23,7 @@ using RestaurantManagement.Application.Staff;
 using RestaurantManagement.Application.Tables;
 using RestaurantManagement.Domain.Identity;
 using RestaurantManagement.Infrastructure.Authentication;
+using RestaurantManagement.Infrastructure.Realtime;
 using RestaurantManagement.Infrastructure.Billing;
 using RestaurantManagement.Infrastructure.Customers;
 using RestaurantManagement.Infrastructure.Dashboard;
@@ -102,6 +104,14 @@ public static class DependencyInjection
         // Shares the request context with the ordering service, so a deduction and the
         // kitchen ticket that caused it commit together.
         services.AddScoped<IStockConsumption, StockConsumption>();
+
+        // Which restaurant a realtime connection belongs to. Here rather than in the
+        // API because answering it means reading the database.
+        services.AddScoped<IConnectionScopeLookup, ConnectionScopeLookup>();
+
+        // Whether somebody holding a key may follow an order. The customer half of
+        // realtime, which has no account behind it.
+        services.AddScoped<ICustomerOrderWatch, CustomerOrderWatch>();
 
         return services;
     }

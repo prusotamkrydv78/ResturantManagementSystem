@@ -3,6 +3,7 @@ import type {
   CreateOrderPayload,
   Order,
   OrderSummary,
+  PassTicket,
   SubmitToKitchenResult,
   UpdateOrderPayload,
   WaiterContext,
@@ -68,6 +69,30 @@ export function updateOrder(
   return apiFetch<Order>(`/api/waiter/orders/${id}`, {
     method: "PUT",
     body: JSON.stringify(payload),
+  });
+}
+
+/**
+ * Food cooked and waiting for somebody to carry it to a table.
+ *
+ * Restaurant-wide, like the open orders list: whoever is on the floor takes what is at
+ * the pass. This is also what makes the "food is ready" alert survive a locked phone -
+ * the notification is a courtesy, this is the record.
+ */
+export function listPass(): Promise<PassTicket[]> {
+  return apiFetch<PassTicket[]>("/api/waiter/pass");
+}
+
+/**
+ * Record that this waiter took a cooked ticket to the table.
+ *
+ * A ticket somebody else already carried answers as success rather than as an error:
+ * two waiters reaching the same pass is an ordinary service, and the second one wanted
+ * the plate delivered - which it is.
+ */
+export function markTicketServed(ticketId: string): Promise<PassTicket> {
+  return apiFetch<PassTicket>(`/api/waiter/pass/${ticketId}/served`, {
+    method: "POST",
   });
 }
 

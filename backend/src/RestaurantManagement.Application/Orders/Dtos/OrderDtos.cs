@@ -304,6 +304,38 @@ public sealed record OrderResponse(
     IReadOnlyList<OrderItemResponse> Items,
     IReadOnlyList<KitchenTicketResponse> KitchenTickets);
 
+/// <summary>
+/// Food cooked and waiting for somebody to carry it.
+///
+/// The floor's half of the kitchen rail. A ticket appears here the moment the kitchen
+/// marks it ready and leaves the moment a waiter says they took it, which is what turns
+/// "your food is ready" from an announcement into a task with an end.
+///
+/// Deliberately not the kitchen's ticket type. A waiter needs the table and what is on
+/// the plate; the kitchen's own view carries its cooking timestamps and its workflow,
+/// and sharing one shape would mean one screen's needs dictating the other's.
+/// </summary>
+/// <param name="TicketId">The ticket, for marking it delivered.</param>
+/// <param name="TicketNumber">What the kitchen calls out.</param>
+/// <param name="OrderId">The order behind it, so a waiter can open it.</param>
+/// <param name="OrderNumber">Readable order number.</param>
+/// <param name="TableName">Where it is going. The only thing a waiter navigates by.</param>
+/// <param name="ItemCount">How many units are on it.</param>
+/// <param name="ReadyAtUtc">
+/// When it reached the pass, so the screen can say how long it has been sitting there.
+/// Food going cold is the thing this queue exists to prevent.
+/// </param>
+/// <param name="Items">What is on the plate, so it can be checked before carrying it.</param>
+public sealed record PassTicketResponse(
+    Guid TicketId,
+    int TicketNumber,
+    Guid OrderId,
+    int OrderNumber,
+    string TableName,
+    int ItemCount,
+    DateTimeOffset ReadyAtUtc,
+    IReadOnlyList<KitchenTicketItemResponse> Items);
+
 /// <summary>The result of sending items to the kitchen.</summary>
 /// <param name="Ticket">The ticket that was created.</param>
 /// <param name="Order">

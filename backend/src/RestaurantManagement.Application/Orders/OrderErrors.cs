@@ -117,6 +117,19 @@ public static class OrderErrors
             "order.nothing_to_confirm",
             "This order does not need confirming. Reload it to see where it stands.");
 
+    /// <summary>
+    /// The ticket cannot be marked as delivered.
+    ///
+    /// Either the kitchen has not finished it, or another waiter already carried it.
+    /// One message for both, because a waiter arriving at an empty pass wants to know
+    /// their tap did nothing rather than which of two reasons applied.
+    /// </summary>
+    public static readonly Error NotAtPass =
+        new(
+            "order.not_at_pass",
+            "That food is not waiting at the pass. Someone may have taken it already - "
+            + "reload to see what is still there.");
+
     /// <summary>There is nothing waiting to be sent to the kitchen.</summary>
     public static readonly Error NothingToSubmit =
         new(

@@ -34,6 +34,13 @@ public sealed record KitchenTicketItemResponse(
 /// <param name="CreatedAtUtc">When the waiter sent it.</param>
 /// <param name="StartedAtUtc">When cooking began. Null while it is waiting.</param>
 /// <param name="ReadyAtUtc">When it reached the pass. Null until then.</param>
+/// <param name="ServedAtUtc">
+/// When a waiter carried it to the table, or null while it is still sitting at the pass.
+///
+/// The kitchen's business after all, even though serving is floor work: a plate that has
+/// been taken away has left the pass, and a rail that cannot tell the difference shows a
+/// kitchen food it has already got rid of.
+/// </param>
 /// <param name="Items">What to cook.</param>
 public sealed record KitchenTicketResponse(
     Guid Id,
@@ -45,4 +52,5 @@ public sealed record KitchenTicketResponse(
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset? StartedAtUtc,
     DateTimeOffset? ReadyAtUtc,
+    DateTimeOffset? ServedAtUtc,
     IReadOnlyList<KitchenTicketItemResponse> Items);

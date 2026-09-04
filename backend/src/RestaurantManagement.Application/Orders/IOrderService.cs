@@ -84,6 +84,42 @@ public interface IOrderService
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Food that is cooked and waiting for somebody to carry it to a table.
+    /// </summary>
+    /// <remarks>
+    /// Restaurant-wide, like the open order list and for the same reason: whoever is on
+    /// the floor takes what is at the pass, and food going cold while its waiter is
+    /// busy elsewhere is the problem, not the solution.
+    ///
+    /// This is what makes the "your food is ready" alert survive a locked phone. The
+    /// notification is a courtesy; this is the record, and a waiter who missed the
+    /// alert finds the same work here.
+    /// </remarks>
+    Task<Result<IReadOnlyList<PassTicketResponse>>> GetPassAsync(
+        Guid staffUserId,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Records that a waiter took a cooked ticket to the table.
+    /// </summary>
+    /// <remarks>
+    /// The ending the kitchen workflow did not have. A ticket used to reach Ready and
+    /// stay there for the rest of the evening, so the next person to look could not tell
+    /// whether the plate was still sitting at the pass or had been eaten an hour ago.
+    ///
+    /// Does not move the ticket's status, which belongs to the kitchen and correctly
+    /// still says Ready. What changed is whose hands the plate is in.
+    ///
+    /// Deliberately does not gate settling the bill. A waiter who forgets to tap this
+    /// must not be able to strand a table that wants to pay; the record is worth having
+    /// and not worth blocking a sale for.
+    /// </remarks>
+    Task<Result<PassTicketResponse>> MarkTicketServedAsync(
+        Guid staffUserId,
+        Guid ticketId,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Records that a waiter has checked a customer's order with the table.
     /// </summary>
     /// <remarks>

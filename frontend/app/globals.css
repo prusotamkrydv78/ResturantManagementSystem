@@ -414,6 +414,30 @@ h4 {
   }
 }
 
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.75rem) scale(0.97);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.toast-in {
+  animation: toast-in 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Somebody who has asked for less movement still gets the toast, just without the
+   travel. The notification is the point; the slide is decoration. */
+@media (prefers-reduced-motion: reduce) {
+  .toast-in {
+    animation: none;
+  }
+}
+
 .sent-ring {
   animation: sent-ring 0.9s ease-out both;
 }

@@ -60,6 +60,30 @@ public static class AuthenticationSetup
                     // the token generator emits.
                     RoleClaimType = JwtClaimNames.Role
                 };
+
+                // A websocket cannot carry an Authorization header. The browser API
+                // gives no way to set one on the handshake, so SignalR puts the token
+                // in the query string instead and this is where it is picked up.
+                //
+                // Narrowed to the hub path on purpose. A token in a query string ends
+                // up in server logs and browser history, which is an acceptable trade
+                // for the one endpoint that has no alternative and a bad idea
+                // everywhere else - so no ordinary API route will accept one this way.
+                options.Events = new JwtBearerEvents
+                {
+                    OnMessageReceived = context =>
+                    {
+                        var token = context.Request.Query["access_token"];
+
+                        if (!string.IsNullOrEmpty(token) &&
+                            context.HttpContext.Request.Path.StartsWithSegments("/hubs"))
+                        {
+                            context.Token = token;
+                        }
+
+                        return Task.CompletedTask;
+                    },
+                };
             });
 
         services.AddAuthorization(options =>

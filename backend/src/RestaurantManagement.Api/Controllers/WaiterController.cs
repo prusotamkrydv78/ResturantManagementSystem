@@ -246,6 +246,77 @@ public sealed class WaiterController : ControllerBase
     }
 
     /// <summary>
+    /// Food cooked and waiting for somebody to carry it to a table.
+    /// </summary>
+    /// <remarks>
+    /// The floor's half of the kitchen rail, and what makes the "your food is ready"
+    /// alert survive a locked phone: the notification is a courtesy, this is the record.
+    /// Restaurant-wide, because a plate going cold while its waiter is busy elsewhere is
+    /// the problem rather than the solution.
+    /// </remarks>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    [HttpGet("pass")]
+    [ProducesResponseType(typeof(IReadOnlyList<PassTicketResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<ActionResult<IReadOnlyList<PassTicketResponse>>> GetPass(
+        CancellationToken cancellationToken)
+    {
+        var staffId = User.GetUserId();
+
+        if (staffId is null)
+        {
+            return Unauthorized();
+        }
+
+        var result = await _orderService.GetPassAsync(staffId.Value, cancellationToken);
+
+        return result.IsFailure
+            ? ProblemFrom(result.Error!, StatusFor(result.Error!))
+            : Ok(result.Value);
+    }
+
+    /// <summary>
+    /// Records that this waiter took a cooked ticket to the table.
+    /// </summary>
+    /// <remarks>
+    /// The ending the kitchen workflow did not have. A ticket used to reach Ready and
+    /// stay there all evening, so nobody could tell whether the plate was still at the
+    /// pass or had been eaten an hour ago.
+    ///
+    /// Does not move the ticket's status - that belongs to the kitchen, and Ready is
+    /// still true. A ticket somebody else already carried answers as success rather
+    /// than as an error: two waiters reaching the same pass is an ordinary service, and
+    /// the second one wanted the plate delivered, which it is.
+    /// </remarks>
+    /// <param name="id">The kitchen ticket.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    [HttpPost("pass/{id:guid}/served")]
+    [ProducesResponseType(typeof(PassTicketResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<PassTicketResponse>> MarkServed(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var staffId = User.GetUserId();
+
+        if (staffId is null)
+        {
+            return Unauthorized();
+        }
+
+        var result = await _orderService.MarkTicketServedAsync(
+            staffId.Value,
+            id,
+            cancellationToken);
+
+        return result.IsFailure
+            ? ProblemFrom(result.Error!, StatusFor(result.Error!))
+            : Ok(result.Value);
+    }
+
+    /// <summary>
     /// Confirms a customer's order after checking it with the table.
     /// </summary>
     /// <remarks>

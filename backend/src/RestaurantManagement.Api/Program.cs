@@ -4,6 +4,7 @@ using RestaurantManagement.Api.Middleware;
 using RestaurantManagement.Api.OpenApi;
 using RestaurantManagement.Api.RateLimiting;
 using RestaurantManagement.Application;
+using RestaurantManagement.Application.Realtime;
 using RestaurantManagement.Infrastructure;
 using RestaurantManagement.Infrastructure.Identity;
 using System.Text.Json.Serialization;
@@ -28,7 +29,15 @@ builder.Services
     .AddControllers()
     .AddJsonOptions(options =>
         options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
-builder.Services.AddSignalR();
+// Enums as strings on the wire, matching every other response this API sends.
+//
+// SignalR carries its own serialiser options and inherits nothing from the MVC ones, so
+// without this a stage that reads "Confirmed" everywhere else arrives at a phone as 0 -
+// and the client, quite reasonably, looks up nothing under that key.
+builder.Services
+    .AddSignalR()
+    .AddJsonProtocol(options =>
+        options.PayloadSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 
 builder.Services.AddOpenApi(options =>
     options.AddDocumentTransformer<BearerSecuritySchemeTransformer>());
@@ -58,6 +67,10 @@ builder.Services.AddJwtAuthentication(builder.Configuration);
 // Bounds on the anonymous ordering routes, which are the only ones in this product a
 // script can reach without an account behind it.
 builder.Services.AddPublicRateLimiting();
+
+// Telling the floor and the kitchen what just happened. The transport lives here; the
+// services that raise the events depend only on the interface.
+builder.Services.AddScoped<IRealtimeNotifier, SignalRRealtimeNotifier>();
 
 // Layer registrations.
 builder.Services.AddApplication();
@@ -101,7 +114,13 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
-app.MapHub<SystemHub>("/hubs/system");
+app.MapHub<OperationsHub>("/hubs/operations");
+
+// The customer's own order, followed anonymously by presenting the key they were given
+// when they placed it. A separate hub so the staff one keeps its guarantee that every
+// connection on it is authenticated.
+app.MapHub<CustomerHub>("/hubs/customer")
+    .RequireRateLimiting(PublicRateLimiting.PublicRead);
 
 app.Logger.LogInformation(
     "Restaurant Management API started in {Environment} environment.",

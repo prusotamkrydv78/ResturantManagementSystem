@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using RestaurantManagement.Application.Inventory;
 using RestaurantManagement.Application.Orders;
 using RestaurantManagement.Application.Orders.Dtos;
+using RestaurantManagement.Application.Realtime;
 using RestaurantManagement.Domain.Identity;
 using RestaurantManagement.Domain.Orders;
 using RestaurantManagement.Infrastructure.Persistence;
@@ -27,6 +28,7 @@ public sealed class OrderService : IOrderService
     private const int OrderNumberAttempts = 5;
 
     private readonly ApplicationDbContext _dbContext;
+    private readonly IRealtimeNotifier _realtime;
     private readonly ILogger<OrderService> _logger;
     private readonly IStockConsumption _stock;
 
@@ -34,11 +36,13 @@ public sealed class OrderService : IOrderService
     public OrderService(
         ApplicationDbContext dbContext,
         ILogger<OrderService> logger,
-        IStockConsumption stock)
+        IStockConsumption stock,
+        IRealtimeNotifier realtime)
     {
         _dbContext = dbContext;
         _logger = logger;
         _stock = stock;
+        _realtime = realtime;
     }
 
     /// <inheritdoc />
@@ -686,6 +690,131 @@ public sealed class OrderService : IOrderService
     }
 
     /// <inheritdoc />
+    public async Task<Result<IReadOnlyList<PassTicketResponse>>> GetPassAsync(
+        Guid staffUserId,
+        CancellationToken cancellationToken)
+    {
+        var waiter = await ResolveWaiterAsync(staffUserId, cancellationToken);
+
+        if (waiter is null)
+        {
+            return Result.Failure<IReadOnlyList<PassTicketResponse>>(
+                OrderErrors.NotAnActiveWaiter);
+        }
+
+        // Oldest first, which is the opposite of every other list in this product and
+        // deliberate: everywhere else newest is most relevant, and here the oldest
+        // plate is the one going cold.
+        var tickets = await _dbContext.KitchenTickets
+            .AsNoTracking()
+            .Where(ticket =>
+                ticket.RestaurantId == waiter.Value.RestaurantId &&
+                ticket.Status == KitchenTicketStatus.Ready &&
+                ticket.ServedAtUtc == null)
+            .OrderBy(ticket => ticket.ReadyAtUtc)
+            .Select(ticket => new PassTicketResponse(
+                ticket.Id,
+                ticket.TicketNumber,
+                ticket.OrderId,
+                ticket.Order.OrderNumber,
+                ticket.Order.Table.Name,
+                ticket.Items.Sum(item => item.Quantity),
+                // Never null for a Ready ticket - the entity writes it as part of the
+                // transition - but the column is nullable, so the projection needs a
+                // value. Falling back to when it was sent keeps the age sensible rather
+                // than showing an epoch date if that invariant ever broke.
+                ticket.ReadyAtUtc ?? ticket.CreatedAtUtc,
+                ticket.Items
+                    .OrderBy(item => item.ItemName)
+                    .Select(item => new KitchenTicketItemResponse(
+                        item.ItemName,
+                        item.Quantity,
+                        item.Note))
+                    .ToList()))
+            .ToListAsync(cancellationToken);
+
+        return Result.Success<IReadOnlyList<PassTicketResponse>>(tickets);
+    }
+
+    /// <inheritdoc />
+    public async Task<Result<PassTicketResponse>> MarkTicketServedAsync(
+        Guid staffUserId,
+        Guid ticketId,
+        CancellationToken cancellationToken)
+    {
+        var waiter = await ResolveWaiterAsync(staffUserId, cancellationToken);
+
+        if (waiter is null)
+        {
+            return Result.Failure<PassTicketResponse>(OrderErrors.NotAnActiveWaiter);
+        }
+
+        var ticket = await _dbContext.KitchenTickets
+            .Include(candidate => candidate.Items)
+            .Include(candidate => candidate.Order)
+                .ThenInclude(order => order.Table)
+            .SingleOrDefaultAsync(
+                candidate =>
+                    candidate.Id == ticketId &&
+                    candidate.RestaurantId == waiter.Value.RestaurantId,
+                cancellationToken);
+
+        if (ticket is null)
+        {
+            return Result.Failure<PassTicketResponse>(OrderErrors.NotFound);
+        }
+
+        // Already carried reads as done rather than as a failure. Two waiters reaching
+        // the same pass is an ordinary service, and the second one wanted the plate
+        // delivered - which it is.
+        if (ticket.IsServed)
+        {
+            return Result.Success(ToPassResponse(ticket));
+        }
+
+        var now = DateTimeOffset.UtcNow;
+
+        if (!ticket.TryServe(staffUserId, now))
+        {
+            return Result.Failure<PassTicketResponse>(OrderErrors.NotAtPass);
+        }
+
+        try
+        {
+            await _dbContext.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            // Somebody moved the ticket between the read and the write. Very likely the
+            // other waiter who was also standing at the pass.
+            return Result.Failure<PassTicketResponse>(OrderErrors.Conflict);
+        }
+
+        _logger.LogInformation(
+            "Waiter {StaffId} took ticket {TicketNumber} to table {TableName}.",
+            staffUserId,
+            ticket.TicketNumber,
+            ticket.Order.Table.Name);
+
+        var response = ToPassResponse(ticket);
+
+        // Both sides. The floor so another waiter's queue drops it, and the kitchen so
+        // its pass clears without anybody reloading.
+        await _realtime.TicketServedAsync(
+            waiter.Value.RestaurantId,
+            new TicketEvent(
+                ticket.Id,
+                ticket.TicketNumber,
+                ticket.OrderId,
+                ticket.Order.OrderNumber,
+                ticket.Order.Table.Name,
+                response.ItemCount),
+            cancellationToken);
+
+        return Result.Success(response);
+    }
+
+    /// <inheritdoc />
     public async Task<Result<OrderResponse>> ConfirmAsync(
         Guid staffUserId,
         Guid orderId,
@@ -749,6 +878,18 @@ public sealed class OrderService : IOrderService
             order.Table.Name,
             order.Items.Sum(item => item.Quantity),
             order.Subtotal);
+
+        // The floor, not the kitchen. Confirming opens the door but sends nothing, so
+        // there is no work for a chef to hear about - what the other waiters need to
+        // know is that this table has been dealt with, so nobody walks over twice.
+        await _realtime.OrderConfirmedAsync(
+            waiter.Value.RestaurantId,
+            new OrderConfirmedEvent(
+                order.Id,
+                order.OrderNumber,
+                order.Table.Name,
+                waiter.Value.FullName),
+            cancellationToken);
 
         var placedBy = await NameOfStaffAsync(order.CreatedByStaffId, cancellationToken);
 
@@ -885,6 +1026,19 @@ public sealed class OrderService : IOrderService
             pending.Count,
             order.OrderNumber,
             ticket.TicketNumber);
+
+        // The rail is told. This is the moment the kitchen genuinely acquires work -
+        // not when the order arrived, and not when a waiter agreed it.
+        await _realtime.TicketQueuedAsync(
+            restaurantId,
+            new TicketEvent(
+                ticket.Id,
+                ticket.TicketNumber,
+                order.Id,
+                order.OrderNumber,
+                order.Table.Name,
+                pending.Sum(item => item.Quantity)),
+            cancellationToken);
 
         var placedBy = await NameOfStaffAsync(order.CreatedByStaffId, cancellationToken);
         var confirmedBy = await NameOfStaffAsync(order.ConfirmedByStaffId, cancellationToken);
@@ -1151,6 +1305,24 @@ public sealed class OrderService : IOrderService
                 .Select(ToTicketResponse)
                 .ToList());
     }
+
+    /// <summary>A cooked ticket as the floor sees it.</summary>
+    private static PassTicketResponse ToPassResponse(KitchenTicket ticket) =>
+        new(
+            ticket.Id,
+            ticket.TicketNumber,
+            ticket.OrderId,
+            ticket.Order.OrderNumber,
+            ticket.Order.Table.Name,
+            ticket.Items.Sum(item => item.Quantity),
+            ticket.ReadyAtUtc ?? ticket.CreatedAtUtc,
+            ticket.Items
+                .OrderBy(item => item.ItemName)
+                .Select(item => new KitchenTicketItemResponse(
+                    item.ItemName,
+                    item.Quantity,
+                    item.Note))
+                .ToList());
 
     private static KitchenTicketResponse ToTicketResponse(KitchenTicket ticket) =>
         new(

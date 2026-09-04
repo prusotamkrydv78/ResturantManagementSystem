@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChefHat, CircleCheck, Flame, RefreshCw, Timer } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,7 @@ import {
   startKitchenTicket,
 } from "@/features/kitchen/api";
 import { ApiError } from "@/lib/api/client";
+import { useRealtimeEvent } from "@/lib/realtime/realtime-context";
 import { cn } from "@/lib/utils/cn";
 import type { KitchenItem, KitchenTicket } from "@/types/kitchen";
 
@@ -43,6 +44,8 @@ function Kitchen() {
   const [tickets, setTickets] = useState<KitchenTicket[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+
+  const reload = useCallback(() => setReloadKey((key) => key + 1), []);
 
   const [actionError, setActionError] = useState<string | null>(null);
   const [busyIds, setBusyIds] = useState<ReadonlySet<string>>(() => new Set());
@@ -76,11 +79,21 @@ function Kitchen() {
   // One timer for the whole screen. Refetching also re-renders every elapsed
   // label, so there is no second clock to keep in step and nothing stored in the
   // database counting anything.
+  //
+  // Kept even though the rail is now live, and not as a belt-and-braces habit: the
+  // ages on these cards are the point of this screen, and they have to keep counting
+  // during the stretches when nothing happens and no event arrives.
   useEffect(() => {
     const timer = setInterval(() => setReloadKey((key) => key + 1), REFRESH_MS);
 
     return () => clearInterval(timer);
   }, []);
+
+  // A new ticket should appear the moment a waiter sends it, not up to twenty seconds
+  // later. Started too, so two chefs do not both reach for the same one.
+  useRealtimeEvent("ticketQueued", reload);
+  useRealtimeEvent("ticketStarted", reload);
+  useRealtimeEvent("ticketServed", reload);
 
   const preparing = useMemo(
     () => tickets?.filter((ticket) => ticket.status === "Preparing") ?? [],

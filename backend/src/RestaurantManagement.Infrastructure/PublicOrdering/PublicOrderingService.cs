@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using RestaurantManagement.Application.Orders.Dtos;
 using RestaurantManagement.Application.PublicOrdering;
 using RestaurantManagement.Application.PublicOrdering.Dtos;
+using RestaurantManagement.Application.Realtime;
 using RestaurantManagement.Domain.Identity;
 using RestaurantManagement.Domain.Menu;
 using RestaurantManagement.Domain.Orders;
@@ -36,14 +37,17 @@ public sealed class PublicOrderingService : IPublicOrderingService
     private const int OrderNumberAttempts = 5;
 
     private readonly ApplicationDbContext _dbContext;
+    private readonly IRealtimeNotifier _realtime;
     private readonly ILogger<PublicOrderingService> _logger;
 
     /// <summary>Creates the service.</summary>
     public PublicOrderingService(
         ApplicationDbContext dbContext,
+        IRealtimeNotifier realtime,
         ILogger<PublicOrderingService> logger)
     {
         _dbContext = dbContext;
+        _realtime = realtime;
         _logger = logger;
     }
 
@@ -583,6 +587,23 @@ public sealed class PublicOrderingService : IPublicOrderingService
         // its new lines in the change tracker rather than on the navigation, and a response
         // missing the line somebody just ordered is the one thing this page cannot do.
         var saved = await OpenOrderOfAsync(table, tracked: false, cancellationToken);
+
+        // The floor is told, but only about an order a customer placed. A waiter's own
+        // order needs no announcement: they are holding the device that made it, and
+        // interrupting them to report their own action is how a product teaches people
+        // to ignore its notifications.
+        if (order.IsCustomerPlaced)
+        {
+            await _realtime.OrderPlacedAsync(
+                table.RestaurantId,
+                new OrderPlacedEvent(
+                    order.Id,
+                    order.OrderNumber,
+                    table.Name,
+                    (saved ?? order).Items.Sum(item => item.Quantity),
+                    (saved ?? order).Subtotal),
+                cancellationToken);
+        }
 
         // The one moment the key is ever handed out. Read off the order this call
         // created rather than off what came back, so appending to an order that was

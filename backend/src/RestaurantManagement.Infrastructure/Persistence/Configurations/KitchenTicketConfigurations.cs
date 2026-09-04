@@ -31,6 +31,9 @@ public sealed class KitchenTicketConfiguration : IEntityTypeConfiguration<Kitche
         builder.Ignore(ticket => ticket.IsActiveWork);
         builder.Ignore(ticket => ticket.CanStart);
         builder.Ignore(ticket => ticket.CanMarkReady);
+        builder.Ignore(ticket => ticket.IsServed);
+        builder.Ignore(ticket => ticket.CanServe);
+        builder.Ignore(ticket => ticket.IsWaitingAtPass);
 
         // What makes the callable number safe: a colliding insert fails rather than
         // producing two "KOT 12" on the same rail.
@@ -40,6 +43,20 @@ public sealed class KitchenTicketConfiguration : IEntityTypeConfiguration<Kitche
         // Looking a ticket up by its order is covered by the composite foreign key
         // below, whose index leads with OrderId, so no separate index is declared.
         builder.HasIndex(ticket => new { ticket.RestaurantId, ticket.Status });
+
+        // Serving is one fact in two columns, so they move together or not at all.
+        // Anything else means a delivery by nobody, or a waiter credited with carrying
+        // food that is still sitting at the pass.
+        builder.ToTable(table => table.HasCheckConstraint(
+            "CK_KitchenTickets_Served",
+            "([ServedAtUtc] IS NULL AND [ServedByStaffId] IS NULL) " +
+            "OR ([ServedAtUtc] IS NOT NULL AND [ServedByStaffId] IS NOT NULL)"));
+
+        // What the waiter's pass queue asks for: cooked, and nobody has carried it yet.
+        // Filtered, because at any moment that is a handful of rows out of a service and
+        // the query never wants the rest.
+        builder.HasIndex(ticket => new { ticket.RestaurantId, ticket.ServedAtUtc })
+            .HasFilter("[ServedAtUtc] IS NULL");
 
         // The restaurant travels with the order reference and is bound to it, so a
         // ticket cannot claim one restaurant while pointing at another restaurant

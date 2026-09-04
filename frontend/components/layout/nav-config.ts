@@ -5,6 +5,7 @@ import {
   ClipboardList,
   Cog,
   Gauge,
+  HandPlatter,
   LayoutGrid,
   Plus,
   ReceiptText,
@@ -178,6 +179,12 @@ const WAITER_NAV: NavGroup[] = [
         label: "Orders",
         href: "/orders",
         icon: ClipboardList,
+        status: "available",
+      },
+      {
+        label: "Pass",
+        href: "/pass",
+        icon: HandPlatter,
         status: "available",
       },
       {
