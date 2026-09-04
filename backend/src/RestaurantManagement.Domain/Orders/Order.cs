@@ -208,10 +208,24 @@ public class Order
     /// waiting: they were standing there.
     ///
     /// This is the one condition standing between a customer's order and a pan, and it
-    /// closes only when a person says so.
+    /// closes when a person says so - or when somebody already sent the order to the
+    /// kitchen, which says the same thing more loudly. An order being cooked cannot
+    /// still need agreeing: sending it was the agreement, and asking a waiter to confirm
+    /// food that is already on a stove is a question with no useful answer.
+    ///
+    /// That last condition is also what carries orders taken before this step existed.
+    /// Anything already at the pass is treated as agreed, so introducing the rule does
+    /// not strand a live service.
+    ///
+    /// Requires <see cref="Items"/> to be loaded. A caller that has not loaded them
+    /// reads this as true, which errs towards asking for a confirmation rather than
+    /// towards letting one be skipped.
     /// </summary>
     public bool NeedsConfirmation =>
-        Status == OrderStatus.Open && IsCustomerPlaced && ConfirmedAtUtc is null;
+        Status == OrderStatus.Open
+        && IsCustomerPlaced
+        && ConfirmedAtUtc is null
+        && !Items.Any(item => item.IsSubmittedToKitchen);
 
     /// <summary>Whether a payment has been recorded against this order.</summary>
     public bool IsPaid => Payment is not null;

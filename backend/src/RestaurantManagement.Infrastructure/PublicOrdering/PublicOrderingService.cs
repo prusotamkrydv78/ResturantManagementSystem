@@ -157,7 +157,9 @@ public sealed class PublicOrderingService : IPublicOrderingService
                 table.Restaurant.IsActive)
             .Select(table => new ScannedTableRestaurantResponse(
                 table.Restaurant.Slug,
-                table.Restaurant.Name))
+                table.Restaurant.Name,
+                table.Id,
+                table.Name))
             .SingleOrDefaultAsync(cancellationToken);
 
         return found is null

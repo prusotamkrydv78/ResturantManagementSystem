@@ -93,7 +93,13 @@ export default function PublicOrderingPage() {
           // Replaced rather than pushed, so the back button returns to whatever they
           // were doing before scanning rather than to a page that only bounces them
           // here again.
-          router.replace(`/r/${where.slug}/order`);
+          // The table travels with them. Somebody who just scanned the code screwed
+          // to table seven should not then be asked which table they are at - that
+          // was the one thing the scan knew, and dropping it made the code no better
+          // than the web address printed underneath it.
+          router.replace(
+            `/r/${where.slug}/order?table=${encodeURIComponent(where.tableId)}`,
+          );
         }
       } catch {
         if (!cancelled) {

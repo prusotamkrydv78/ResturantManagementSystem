@@ -1,4 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
+using RestaurantManagement.Api.RateLimiting;
 using RestaurantManagement.Application.Sites;
 using RestaurantManagement.Application.Sites.Dtos;
 
@@ -30,6 +32,7 @@ public sealed class PublicSiteController : ControllerBase
     /// same 404, so nothing here reveals which of the three it was.
     /// </summary>
     [HttpGet("sites/{slug}")]
+    [EnableRateLimiting(PublicRateLimiting.PublicRead)]
     [ProducesResponseType(typeof(PublicSiteResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<PublicSiteResponse>> GetSite(

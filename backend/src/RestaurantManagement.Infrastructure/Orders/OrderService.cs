@@ -390,7 +390,9 @@ public sealed class OrderService : IOrderService
             // whether the restaurant heard them.
             .OrderBy(order =>
                 order.ConfirmedAtUtc == null &&
-                (order.Source == OrderSource.Website || order.Source == OrderSource.QrCode)
+                (order.Source == OrderSource.Website ||
+                    order.Source == OrderSource.QrCode) &&
+                !order.Items.Any(item => item.KitchenTicketItem != null)
                     ? 0
                     : 1)
             .ThenByDescending(order => order.CreatedAtUtc)
@@ -422,7 +424,8 @@ public sealed class OrderService : IOrderService
                 order.Source == OrderSource.Website || order.Source == OrderSource.QrCode,
                 order.ConfirmedAtUtc == null &&
                     (order.Source == OrderSource.Website ||
-                        order.Source == OrderSource.QrCode)))
+                        order.Source == OrderSource.QrCode) &&
+                    !order.Items.Any(item => item.KitchenTicketItem != null)))
             .ToListAsync(cancellationToken);
 
         return Result.Success<IReadOnlyList<OrderSummaryResponse>>(orders);

@@ -2,6 +2,7 @@ using RestaurantManagement.Api.Authentication;
 using RestaurantManagement.Api.Hubs;
 using RestaurantManagement.Api.Middleware;
 using RestaurantManagement.Api.OpenApi;
+using RestaurantManagement.Api.RateLimiting;
 using RestaurantManagement.Application;
 using RestaurantManagement.Infrastructure;
 using RestaurantManagement.Infrastructure.Identity;
@@ -54,6 +55,10 @@ builder.Services.AddCors(options =>
 
 builder.Services.AddJwtAuthentication(builder.Configuration);
 
+// Bounds on the anonymous ordering routes, which are the only ones in this product a
+// script can reach without an account behind it.
+builder.Services.AddPublicRateLimiting();
+
 // Layer registrations.
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
@@ -87,6 +92,10 @@ else
 }
 
 app.UseCors(CorsPolicyName);
+
+// Before authentication, so a flood of anonymous requests is turned away without the
+// cost of validating anything. Only routes that opt in with a policy are limited.
+app.UseRateLimiter();
 
 app.UseAuthentication();
 app.UseAuthorization();

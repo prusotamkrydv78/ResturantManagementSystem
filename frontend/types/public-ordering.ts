@@ -85,6 +85,15 @@ export interface PublicTable {
 export interface ScannedTableRestaurant {
   slug: string;
   restaurantName: string;
+  /**
+   * The table the printed code belongs to.
+   *
+   * The whole point of scanning rather than typing an address: the code already says
+   * where the customer is sitting, so the ordering page should not ask them again.
+   */
+  tableId: string;
+  /** What that table is called in the room. */
+  tableName: string;
 }
 
 /** A table a customer may say they are sitting at. */

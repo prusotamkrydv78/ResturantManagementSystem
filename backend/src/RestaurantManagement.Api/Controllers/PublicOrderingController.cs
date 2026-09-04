@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
+using RestaurantManagement.Api.RateLimiting;
 using RestaurantManagement.Api.Authentication;
 using RestaurantManagement.Application.Authentication;
 using RestaurantManagement.Application.PublicOrdering;
@@ -114,6 +116,7 @@ public sealed class PublicOrderingController : ControllerBase
     /// <param name="cancellationToken">Cancellation token.</param>
     [HttpGet("{token}/restaurant")]
     [AllowAnonymous]
+    [EnableRateLimiting(PublicRateLimiting.PublicRead)]
     [ProducesResponseType(typeof(ScannedTableRestaurantResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<ScannedTableRestaurantResponse>> ResolveRestaurant(

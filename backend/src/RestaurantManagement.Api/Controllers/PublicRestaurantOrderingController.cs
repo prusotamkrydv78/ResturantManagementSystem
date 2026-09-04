@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
+using RestaurantManagement.Api.RateLimiting;
 using RestaurantManagement.Application.PublicOrdering;
 using RestaurantManagement.Application.PublicOrdering.Dtos;
 using RestaurantManagement.Shared.Results;
@@ -41,6 +43,7 @@ public sealed class PublicRestaurantOrderingController : ControllerBase
     /// <param name="slug">The restaurant's public slug, from its own web address.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     [HttpGet("{slug}/menu")]
+    [EnableRateLimiting(PublicRateLimiting.PublicRead)]
     [ProducesResponseType(typeof(PublicRestaurantResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<PublicRestaurantResponse>> GetMenu(
@@ -61,6 +64,7 @@ public sealed class PublicRestaurantOrderingController : ControllerBase
     /// <param name="request">The table, and what they want.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     [HttpPost("{slug}/orders")]
+    [EnableRateLimiting(PublicRateLimiting.PublicWrite)]
     [ProducesResponseType(typeof(PublicOrderResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -96,6 +100,7 @@ public sealed class PublicRestaurantOrderingController : ControllerBase
     /// <param name="request">The key they were given when they ordered.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     [HttpPost("{slug}/orders/cancel")]
+    [EnableRateLimiting(PublicRateLimiting.PublicWrite)]
     [ProducesResponseType(typeof(PublicOrderResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]

@@ -14,6 +14,11 @@ import {
 } from "@/features/public/api";
 import { OrderComposer, type OrderDraftLine } from "@/features/public/order-composer";
 import { OrderSentOverlay } from "@/features/public/order-sent";
+import {
+  clearReceipt,
+  readReceipt,
+  writeReceipt,
+} from "@/features/public/receipt-store";
 import { ApiError } from "@/lib/api/client";
 import { cn } from "@/lib/utils/cn";
 import type { PublicOrder, PublicRestaurant } from "@/types/public-ordering";
@@ -27,7 +32,13 @@ import type { PublicOrder, PublicRestaurant } from "@/types/public-ordering";
  *
  * That question is asked first and deliberately holds back the menu. Choosing a table
  * after building a basket would mean discovering at the last step that the one you are
- * sitting at is taken, with an order already assembled.
+ * sitting at is taken, with an order already assembled. Somebody who arrived by scanning
+ * the code on their table has already answered it, and it is preselected from the query
+ * string rather than asked again.
+ *
+ * The receipt outlives the page. It is kept on the phone, because a pulled refresh or a
+ * browser reclaiming a backgrounded tab would otherwise take away the order number and
+ * the one copy of the key that lets them cancel.
  *
  * Choosing the food is `OrderComposer`, shared with the scanned pad, so improving one
  * improves both.
@@ -57,12 +68,38 @@ export default function WebsiteOrderPage() {
     let cancelled = false;
 
     async function load() {
+      // Read before the fetch, so the receipt is already in place by the time the
+      // spinner clears and the page never flickers through the table picker.
+      const saved = readReceipt(slug);
+
+      if (saved !== null && !cancelled) {
+        setPlaced(saved.order);
+        setCancelled(saved.cancelled);
+      }
+
+      // The table a scanned code arrived with. Taken from the address rather than
+      // useSearchParams because it cannot change for the life of this page, and
+      // reading it here keeps it out of render.
+      const asked = new URLSearchParams(window.location.search).get("table");
+
       try {
         const loaded = await getPublicRestaurant(slug);
 
         if (!cancelled) {
           setRestaurant(loaded);
           setFailed(null);
+
+          // Honoured only when that table is actually free. Preselecting a taken one
+          // would show the whole menu and then refuse the order at the last step,
+          // which is precisely the moment this flow is built to avoid. Left unset, the
+          // picker below shows their table as "in use", which is the useful answer.
+          const scanned = loaded.tables.find(
+            (candidate) => candidate.id === asked && candidate.isAvailable,
+          );
+
+          if (scanned !== undefined) {
+            setTableId(scanned.id);
+          }
         }
       } catch (caught) {
         if (!cancelled) {
@@ -107,6 +144,18 @@ export default function WebsiteOrderPage() {
       setCancelling(false);
     }
   }, [slug, placed]);
+
+  // Written whenever the receipt changes, rather than at each of the three places that
+  // change it. One rule in one place: what is on screen is what the phone remembers.
+  useEffect(() => {
+    if (placed === null) {
+      clearReceipt(slug);
+
+      return;
+    }
+
+    writeReceipt(slug, placed, cancelled);
+  }, [slug, placed, cancelled]);
 
   const place = useCallback(
     async (items: OrderDraftLine[]) => {

@@ -166,7 +166,27 @@ public sealed record PublicTableResponse(
 /// </summary>
 /// <param name="Slug">The restaurant's public slug, for building its web address.</param>
 /// <param name="RestaurantName">Display name, so a redirect can say where it is going.</param>
-public sealed record ScannedTableRestaurantResponse(string Slug, string RestaurantName);
+/// <param name="TableId">
+/// The table the code was printed for.
+///
+/// The whole point of scanning rather than typing a web address: the code says where
+/// the customer is sitting, so the ordering page should not have to ask them. Without
+/// it a redirect throws away the only thing the scan knew.
+///
+/// It gives nothing away. The same identifiers come back from the public menu call for
+/// every table in the restaurant, along with their names and whether they are free,
+/// because a customer on a website has to be able to pick one. This is that same
+/// identifier, for the one table whose printed code the caller is holding.
+/// </param>
+/// <param name="TableName">
+/// What the table is called in the room, so the page can say "Table 7" before it has
+/// loaded anything else.
+/// </param>
+public sealed record ScannedTableRestaurantResponse(
+    string Slug,
+    string RestaurantName,
+    Guid TableId,
+    string TableName);
 
 /// <summary>
 /// A table a customer may say they are sitting at.
