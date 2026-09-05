@@ -57,7 +57,7 @@ import type { EditableLine, Order, WaiterMenuCategory } from "@/types/order";
  */
 export default function OrderDetailPage() {
   return (
-    <RequireAuth roles={["Staff"]}>
+    <RequireAuth roles={["Staff"]} staffRoles={["Waiter"]}>
       <OrderDetail />
     </RequireAuth>
   );

@@ -34,7 +34,7 @@ const REFRESH_MS = 20_000;
  */
 export default function KitchenPage() {
   return (
-    <RequireAuth roles={["Staff"]}>
+    <RequireAuth roles={["Staff"]} staffRoles={["Chef"]}>
       <Kitchen />
     </RequireAuth>
   );

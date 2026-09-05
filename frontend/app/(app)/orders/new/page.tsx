@@ -44,7 +44,7 @@ import type {
  */
 export default function NewOrderPage() {
   return (
-    <RequireAuth roles={["Staff"]}>
+    <RequireAuth roles={["Staff"]} staffRoles={["Waiter"]}>
       <NewOrder />
     </RequireAuth>
   );

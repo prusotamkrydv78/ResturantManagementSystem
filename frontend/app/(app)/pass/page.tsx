@@ -31,7 +31,7 @@ import type { PassTicket } from "@/types/order";
  */
 export default function PassPage() {
   return (
-    <RequireAuth roles={["Staff"]}>
+    <RequireAuth roles={["Staff"]} staffRoles={["Waiter"]}>
       <Pass />
     </RequireAuth>
   );

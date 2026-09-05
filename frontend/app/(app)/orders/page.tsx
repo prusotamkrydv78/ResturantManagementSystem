@@ -28,7 +28,7 @@ import type { OrderSummary } from "@/types/order";
  */
 export default function OrdersPage() {
   return (
-    <RequireAuth roles={["Staff"]}>
+    <RequireAuth roles={["Staff"]} staffRoles={["Waiter"]}>
       <Orders />
     </RequireAuth>
   );

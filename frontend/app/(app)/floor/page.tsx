@@ -40,7 +40,7 @@ const REFRESH_MS = 20_000;
  */
 export default function FloorPage() {
   return (
-    <RequireAuth roles={["Staff", "RestaurantManager"]}>
+    <RequireAuth roles={["Staff", "RestaurantManager"]} staffRoles={["Waiter"]}>
       <FloorOverviewScreen />
     </RequireAuth>
   );
