@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using RestaurantManagement.Infrastructure.Persistence;
 
@@ -11,9 +12,11 @@ using RestaurantManagement.Infrastructure.Persistence;
 namespace RestaurantManagement.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260904135830_RenamePublicOrderKey")]
+    partial class RenamePublicOrderKey
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -799,20 +802,8 @@ namespace RestaurantManagement.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("CustomerId")
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<decimal>("DiscountAmount")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<string>("DiscountReason")
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
-
                     b.Property<int>("OrderNumber")
                         .HasColumnType("int");
-
-                    b.Property<string>("PlacedFromIp")
-                        .HasMaxLength(45)
-                        .HasColumnType("nvarchar(45)");
 
                     b.Property<string>("PublicOrderKey")
                         .HasMaxLength(32)
@@ -826,14 +817,6 @@ namespace RestaurantManagement.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .ValueGeneratedOnAddOrUpdate()
                         .HasColumnType("rowversion");
-
-                    b.Property<decimal>("ServiceChargeAmount")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal>("ServiceChargeRate")
-                        .HasPrecision(6, 4)
-                        .HasColumnType("decimal(6,4)");
 
                     b.Property<string>("Source")
                         .IsRequired()
@@ -856,20 +839,8 @@ namespace RestaurantManagement.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("TableId")
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<decimal>("Total")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("decimal(18,2)");
-
                     b.Property<DateTimeOffset>("UpdatedAtUtc")
                         .HasColumnType("datetimeoffset");
-
-                    b.Property<decimal>("VatAmount")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal>("VatRate")
-                        .HasPrecision(6, 4)
-                        .HasColumnType("decimal(6,4)");
 
                     b.HasKey("Id");
 
@@ -904,8 +875,6 @@ namespace RestaurantManagement.Infrastructure.Persistence.Migrations
                             t.HasCheckConstraint("CK_Orders_Completion", "([Status] = 'Completed' AND [CompletedAtUtc] IS NOT NULL) OR ([Status] <> 'Completed' AND [CompletedAtUtc] IS NULL)");
 
                             t.HasCheckConstraint("CK_Orders_Confirmation", "([ConfirmedAtUtc] IS NULL AND [ConfirmedByStaffId] IS NULL) OR ([ConfirmedAtUtc] IS NOT NULL AND [ConfirmedByStaffId] IS NOT NULL)");
-
-                            t.HasCheckConstraint("CK_Orders_Discount", "([DiscountAmount] = 0 AND [DiscountReason] IS NULL) OR ([DiscountAmount] > 0 AND [DiscountReason] IS NOT NULL)");
 
                             t.HasCheckConstraint("CK_Orders_Source", "([Source] IN ('QrCode', 'Website') AND [CreatedByStaffId] IS NULL) OR ([Source] NOT IN ('QrCode', 'Website') AND [CreatedByStaffId] IS NOT NULL)");
 
@@ -991,9 +960,11 @@ namespace RestaurantManagement.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("OrderId");
+                    b.HasIndex("OrderId")
+                        .IsUnique();
 
-                    b.HasIndex("OrderId", "RestaurantId");
+                    b.HasIndex("OrderId", "RestaurantId")
+                        .IsUnique();
 
                     b.HasIndex("RestaurantId", "Method");
 
@@ -1113,13 +1084,6 @@ namespace RestaurantManagement.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset>("CreatedAtUtc")
                         .HasColumnType("datetimeoffset");
 
-                    b.Property<string>("Currency")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(3)
-                        .HasColumnType("nvarchar(3)")
-                        .HasDefaultValue("NPR");
-
                     b.Property<bool>("IsActive")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bit")
@@ -1133,12 +1097,6 @@ namespace RestaurantManagement.Infrastructure.Persistence.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
-                    b.Property<decimal>("ServiceChargeRate")
-                        .ValueGeneratedOnAdd()
-                        .HasPrecision(6, 4)
-                        .HasColumnType("decimal(6,4)")
-                        .HasDefaultValue(0.10m);
-
                     b.Property<string>("Slug")
                         .IsRequired()
                         .HasMaxLength(120)
@@ -1146,12 +1104,6 @@ namespace RestaurantManagement.Infrastructure.Persistence.Migrations
 
                     b.Property<DateTimeOffset>("UpdatedAtUtc")
                         .HasColumnType("datetimeoffset");
-
-                    b.Property<decimal>("VatRate")
-                        .ValueGeneratedOnAdd()
-                        .HasPrecision(6, 4)
-                        .HasColumnType("decimal(6,4)")
-                        .HasDefaultValue(0.13m);
 
                     b.HasKey("Id");
 
@@ -1162,10 +1114,7 @@ namespace RestaurantManagement.Infrastructure.Persistence.Migrations
                     b.HasIndex("Slug")
                         .IsUnique();
 
-                    b.ToTable("Restaurants", null, t =>
-                        {
-                            t.HasCheckConstraint("CK_Restaurants_Rates", "[VatRate] >= 0 AND [VatRate] <= 1 AND [ServiceChargeRate] >= 0 AND [ServiceChargeRate] <= 1");
-                        });
+                    b.ToTable("Restaurants", (string)null);
                 });
 
             modelBuilder.Entity("RestaurantManagement.Domain.Restaurants.RestaurantTable", b =>
@@ -1551,9 +1500,9 @@ namespace RestaurantManagement.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("RestaurantManagement.Domain.Payments.Payment", b =>
                 {
                     b.HasOne("RestaurantManagement.Domain.Orders.Order", "Order")
-                        .WithMany("Payments")
-                        .HasForeignKey("OrderId", "RestaurantId")
-                        .HasPrincipalKey("Id", "RestaurantId")
+                        .WithOne("Payment")
+                        .HasForeignKey("RestaurantManagement.Domain.Payments.Payment", "OrderId", "RestaurantId")
+                        .HasPrincipalKey("RestaurantManagement.Domain.Orders.Order", "Id", "RestaurantId")
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
 
@@ -1668,7 +1617,7 @@ namespace RestaurantManagement.Infrastructure.Persistence.Migrations
 
                     b.Navigation("KitchenTickets");
 
-                    b.Navigation("Payments");
+                    b.Navigation("Payment");
                 });
 
             modelBuilder.Entity("RestaurantManagement.Domain.Orders.OrderItem", b =>

@@ -25,7 +25,6 @@ internal static class OrderBuilder
             TableId = Guid.NewGuid(),
             OrderNumber = 1,
             Status = OrderStatus.Open,
-            Subtotal = 12.50m,
             CreatedByStaffId = Guid.NewGuid(),
             CreatedAtUtc = new DateTimeOffset(2026, 8, 24, 19, 0, 0, TimeSpan.Zero),
             UpdatedAtUtc = new DateTimeOffset(2026, 8, 24, 19, 0, 0, TimeSpan.Zero),
@@ -42,6 +41,13 @@ internal static class OrderBuilder
             LineTotal = 12.50m,
             CreatedAtUtc = order.CreatedAtUtc,
         });
+
+        // Priced through the same arithmetic the product uses, so a test that pays a
+        // bill pays what the bill actually says. Setting Subtotal alone used to be
+        // enough; it is not now that tax and a service charge sit on top of it.
+        order.ServiceChargeRate = 0.10m;
+        order.VatRate = 0.13m;
+        order.RecalculateBill(12.50m);
 
         return order;
     }

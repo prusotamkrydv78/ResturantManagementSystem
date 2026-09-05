@@ -3,26 +3,27 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Check, Info, UtensilsCrossed, X } from "lucide-react";
+import { ArrowLeft, Check, Info, Plus, UtensilsCrossed } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Surface } from "@/components/ui/surface";
 import { EmptyState, Spinner } from "@/components/ui/states";
+import { ToastProvider, useToast } from "@/components/ui/toast";
 import {
-  cancelWebsiteOrder,
   getPublicRestaurant,
+  lookupWebsiteOrder,
   placeWebsiteOrder,
 } from "@/features/public/api";
 import { OrderComposer, type OrderDraftLine } from "@/features/public/order-composer";
+import { isAtLeast, STAGE_COPY } from "@/features/public/order-progress";
 import { OrderSentOverlay } from "@/features/public/order-sent";
 import { OrderTimeline } from "@/features/public/order-timeline";
-import { isAtLeast, STAGE_COPY } from "@/features/public/order-progress";
-import { useOrderUpdates } from "@/features/public/use-order-updates";
-import { ToastProvider, useToast } from "@/components/ui/toast";
 import {
-  clearReceipt,
-  readReceipt,
-  writeReceipt,
-} from "@/features/public/receipt-store";
+  forgetInUrl,
+  readHandle,
+  rememberInUrl,
+} from "@/features/public/order-handle";
+import { clearReceipt, writeReceipt } from "@/features/public/receipt-store";
+import { useOrderUpdates } from "@/features/public/use-order-updates";
 import { ApiError } from "@/lib/api/client";
 import { cn } from "@/lib/utils/cn";
 import type { PublicOrder, PublicRestaurant } from "@/types/public-ordering";
@@ -32,17 +33,25 @@ import type { PublicOrder, PublicRestaurant } from "@/types/public-ordering";
  *
  * The way in for somebody who found the restaurant rather than sat down in it. The one
  * difference from the code printed on a table is a single question: a scanned code
- * already says where the guest is, and this page has to ask.
+ * already says where the guest is, and this page has to ask. That question is asked
+ * first and holds back the menu, because choosing a table after building a basket would
+ * mean discovering at the last step that the one you are sitting at is taken. Somebody
+ * who arrived by scanning has already answered it, and it is preselected.
  *
- * That question is asked first and deliberately holds back the menu. Choosing a table
- * after building a basket would mean discovering at the last step that the one you are
- * sitting at is taken, with an order already assembled. Somebody who arrived by scanning
- * the code on their table has already answered it, and it is preselected from the query
- * string rather than asked again.
+ * After the order is sent the page becomes a receipt, and stays useful: it says where
+ * the food has got to, and while nothing has reached the kitchen it can take a second
+ * round. Adding is the only change a customer can make alone - it withdraws nothing and
+ * affects nothing being cooked. Removing a line or calling the order off is a
+ * conversation with a waiter, who can see the table and what the kitchen has started.
  *
- * The receipt outlives the page. It is kept on the phone, because a pulled refresh or a
- * browser reclaiming a backgrounded tab would otherwise take away the order number and
- * the one copy of the key that lets them cancel.
+ * Losing your place is the failure this page works hardest to prevent, because a guest
+ * who has lost it is sitting in front of food with no idea whether the restaurant heard
+ * them. The key that says "this order is mine" is therefore kept in three places that
+ * fail differently - the address bar, local storage, and the printed code on the table -
+ * and the page recovers from whichever of them survived. See `order-handle`.
+ *
+ * What it recovers is then read back from the server rather than from the phone, so a
+ * page reopened an hour later shows the bill as it now stands rather than as it was.
  *
  * Choosing the food is `OrderComposer`, shared with the scanned pad, so improving one
  * improves both.
@@ -67,30 +76,81 @@ function WebsiteOrder() {
   const [placing, setPlacing] = useState(false);
   const [placeError, setPlaceError] = useState<string | null>(null);
   const [placed, setPlaced] = useState<PublicOrder | null>(null);
+  // Whether the menu is open on top of an existing order, for a second round. Distinct
+  // from having no order at all: the table is already settled and must not be asked
+  // again, and the basket adds to what is there rather than starting something new.
+  const [adding, setAdding] = useState(false);
   // Separate from the order itself, because the receipt should be built and
   // sitting there ready by the time the overlay clears, not assembling afterwards.
   const [celebrating, setCelebrating] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
-  // Cancelling, and how it went. Kept apart from the order because the response to a
-  // cancellation says nothing about status - what changed is what the customer is
-  // allowed to do next, and that is a fact about this page.
-  const [cancelling, setCancelling] = useState(false);
-  const [cancelled, setCancelled] = useState(false);
-  const [cancelError, setCancelError] = useState<string | null>(null);
+  // True while the page is asking the restaurant about a key it found lying around, so
+  // the menu does not flash up underneath a receipt that is about to replace it.
+  const [recovering, setRecovering] = useState(true);
+
+  const { notify } = useToast();
+
+  /**
+   * Finds out whether this visitor already has an order here, and picks it up.
+   *
+   * On mount and only on mount, which is load bearing. This used to re-run whenever the
+   * page refetched, and because of that anything which cleared the receipt was undone a
+   * moment later by a restore reading the copy that had not been cleared yet - so
+   * "order something else" appeared to do nothing at all.
+   *
+   * The key can come from the address bar, from storage, or from the code they scanned
+   * on their table; the order itself always comes from the restaurant. A phone's own
+   * copy is a snapshot from whenever it was written, and after a battery dies and an
+   * hour passes it is the least trustworthy thing on the screen.
+   */
+  useEffect(() => {
+    let cancelled = false;
+
+    async function recover() {
+      const handle = readHandle(slug);
+
+      if (handle.tableId !== null && !cancelled) {
+        setTableId(handle.tableId);
+      }
+
+      if (handle.orderKey === null) {
+        if (!cancelled) {
+          setRecovering(false);
+        }
+
+        return;
+      }
+
+      try {
+        const found = await lookupWebsiteOrder(slug, handle.orderKey);
+
+        if (!cancelled) {
+          setPlaced(found);
+        }
+      } catch {
+        // Settled, called off, or a key that names nothing here any more. Forgotten
+        // rather than reported: the guest did not ask for this and there is nothing
+        // for them to do about it, so the page simply starts clean.
+        clearReceipt(slug);
+        forgetInUrl();
+      } finally {
+        if (!cancelled) {
+          setRecovering(false);
+        }
+      }
+    }
+
+    void recover();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [slug]);
 
   useEffect(() => {
     let cancelled = false;
 
     async function load() {
-      // Read before the fetch, so the receipt is already in place by the time the
-      // spinner clears and the page never flickers through the table picker.
-      const saved = readReceipt(slug);
-
-      if (saved !== null && !cancelled) {
-        setPlaced(saved.order);
-        setCancelled(saved.cancelled);
-      }
-
       // The table a scanned code arrived with. Taken from the address rather than
       // useSearchParams because it cannot change for the life of this page, and
       // reading it here keeps it out of render.
@@ -134,39 +194,11 @@ function WebsiteOrder() {
     };
   }, [slug, reloadKey]);
 
-  const cancel = useCallback(async () => {
-    if (placed?.cancelKey === null || placed?.cancelKey === undefined) {
-      return;
-    }
-
-    setCancelError(null);
-    setCancelling(true);
-
-    try {
-      await cancelWebsiteOrder(slug, placed.cancelKey);
-      setCancelled(true);
-    } catch (caught) {
-      // The likely failure is that a member of staff sent the order through while the
-      // customer was deciding, and the server says so in words meant for them. Shown
-      // rather than retried: the answer will not change back.
-      setCancelError(
-        caught instanceof ApiError
-          ? caught.message
-          : "We could not cancel your order. Please speak to a member of staff.",
-      );
-    } finally {
-      setCancelling(false);
-    }
-  }, [slug, placed]);
-
-  const { notify } = useToast();
-
   // Followed for as long as the page is open, on the strength of the key they were
-  // handed when they placed it. Null before they have ordered, and after cancelling -
-  // there is nothing left to follow in either case.
-  const { stage, live } = useOrderUpdates({
+  // handed when they placed it.
+  const { stage, live, closed } = useOrderUpdates({
     slug,
-    cancelKey: cancelled ? null : (placed?.cancelKey ?? null),
+    orderKey: placed?.orderKey ?? null,
     onUpdate: useCallback(
       (update: { stage: keyof typeof STAGE_COPY }) => {
         const copy = STAGE_COPY[update.stage];
@@ -187,17 +219,24 @@ function WebsiteOrder() {
     ),
   });
 
-  // Written whenever the receipt changes, rather than at each of the three places that
-  // change it. One rule in one place: what is on screen is what the phone remembers.
+  // Written whenever the receipt changes, rather than at each of the places that change
+  // it. One rule in one place: what is on screen is what the phone remembers.
   useEffect(() => {
     if (placed === null) {
       clearReceipt(slug);
+      forgetInUrl();
 
       return;
     }
 
-    writeReceipt(slug, placed, cancelled);
-  }, [slug, placed, cancelled]);
+    writeReceipt(slug, placed, tableId);
+
+    // Mirrored into the address, which is the copy that survives the tab being closed
+    // and the only one that can be sent to somebody else at the same table.
+    if (placed.orderKey !== null && tableId !== "") {
+      rememberInUrl(placed.orderKey, tableId);
+    }
+  }, [slug, placed, tableId]);
 
   const place = useCallback(
     async (items: OrderDraftLine[]) => {
@@ -205,9 +244,18 @@ function WebsiteOrder() {
       setPlacing(true);
 
       try {
-        setCancelled(false);
-        setCancelError(null);
-        setPlaced(await placeWebsiteOrder(slug, { tableId, items }));
+        const sent = await placeWebsiteOrder(slug, {
+          tableId,
+          items,
+          // Present only when adding to what they already have. It is what tells the
+          // restaurant that the order running on this table is theirs.
+          ...(placed?.orderKey === null || placed?.orderKey === undefined
+            ? {}
+            : { orderKey: placed.orderKey }),
+        });
+
+        setPlaced(sent);
+        setAdding(false);
         setCelebrating(true);
       } catch (caught) {
         setPlaceError(
@@ -226,8 +274,16 @@ function WebsiteOrder() {
         setPlacing(false);
       }
     },
-    [slug, tableId],
+    [slug, tableId, placed],
   );
+
+  /** Forgets this order and goes back to an empty page. */
+  const startOver = useCallback(() => {
+    setPlaced(null);
+    setAdding(false);
+    setPlaceError(null);
+    setReloadKey((key) => key + 1);
+  }, []);
 
   if (failed !== null) {
     return (
@@ -254,19 +310,31 @@ function WebsiteOrder() {
     );
   }
 
-  if (restaurant === null) {
+  if (restaurant === null || recovering) {
     return (
       <Centre>
         <div className="flex justify-center py-12">
-          <Spinner label="Loading the menu…" />
+          <Spinner
+            label={recovering ? "Finding your order…" : "Loading the menu…"}
+          />
         </div>
       </Centre>
     );
   }
 
-  // Sent. The page stops being a menu and becomes a receipt, because the only thing
-  // that matters now is the number they quote to a member of staff.
-  if (placed !== null) {
+  // Sent, and not currently adding to it. The page stops being a menu and becomes a
+  // receipt, because what matters now is where the food is and the number they quote.
+  if (placed !== null && !adding) {
+    // Both conditions, and they answer different questions. `canAddMore` is what the
+    // restaurant said when the order was last touched; the stage is what has happened
+    // since. Without the second a guest would keep seeing the button after the kitchen
+    // had the order, and only find out by pressing it.
+    const canAdd =
+      !closed &&
+      placed.canAddMore &&
+      placed.orderKey !== null &&
+      !isAtLeast(stage, "WithKitchen");
+
     return (
       <Centre>
         {celebrating && (
@@ -277,31 +345,15 @@ function WebsiteOrder() {
         )}
 
         <Surface className="flex flex-col gap-4 p-5">
-          {cancelled ? (
-            <p
-              role="status"
-              className="flex items-start gap-2 text-sm font-medium text-muted"
-            >
-              <X className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-              Your order has been cancelled. Nothing is being prepared, and there is
-              nothing to pay.
-            </p>
-          ) : (
-            <p
-              role="status"
-              className="flex items-start gap-2 text-sm font-medium text-success"
-            >
-              <Check className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-              Your order is with {restaurant.restaurantName}.
-            </p>
-          )}
-
           <p
-            className={cn(
-              "text-3xl font-semibold",
-              cancelled ? "text-subtle line-through" : "text-text",
-            )}
+            role="status"
+            className="flex items-start gap-2 text-sm font-medium text-success"
           >
+            <Check className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+            Your order is with {restaurant.restaurantName}.
+          </p>
+
+          <p className="text-3xl font-semibold text-text">
             Order #{placed.orderNumber}
           </p>
 
@@ -329,68 +381,49 @@ function WebsiteOrder() {
             </span>
           </div>
 
-          {!cancelled && (
-            <p className="text-sm text-muted">
-              Pay with a member of staff when you are finished, and quote order #
-              {placed.orderNumber}.
-            </p>
-          )}
+          <p className="text-sm text-muted">
+            Pay with a member of staff when you are finished, and quote order #
+            {placed.orderNumber}.
+          </p>
 
-          {!cancelled && <OrderTimeline stage={stage} live={live} />}
+          {/* Only while the order is still running. A settled or cancelled one has
+              nowhere left to go, and a timeline frozen mid-way would suggest it does. */}
+          {!closed && <OrderTimeline stage={stage} live={live} />}
 
-          {/* Offered while the order is still waiting for somebody at the restaurant
-              to come over and confirm it, which is the whole window. Once a member of
-              staff has agreed the order with the table in person, a phone quietly
-              withdrawing what was just agreed is not something this should allow - so
-              the attempt is refused and the refusal explains why.
-
-              The page does not poll, so this button can still be showing after that
-              moment has passed. That is fine and is why the server decides: the worst
-              case is a tap that comes back with the honest answer. */}
-          {/* Closed live. `canCancel` was true when the order was placed and this page
-              does not reload, so without the stage a guest would keep seeing a button
-              that the server now refuses - and only find out by pressing it. */}
-          {!cancelled &&
-            placed.canCancel &&
-            placed.cancelKey !== null &&
-            !isAtLeast(stage, "Confirmed") && (
-            <div className="flex flex-col gap-2 border-t border-border pt-3">
-              {cancelError !== null && (
-                <p
-                  role="alert"
-                  className="flex items-start gap-2 text-sm text-warning"
-                >
+          <div className="flex flex-col gap-2 border-t border-border pt-3">
+            {closed ? (
+              <>
+                <p className="flex items-start gap-2 text-sm text-muted">
                   <Info className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-                  {cancelError}
+                  This order has been closed by the restaurant. If that is not right,
+                  ask a member of staff.
                 </p>
-              )}
 
-              <Button
-                variant="secondary"
-                onClick={cancel}
-                disabled={cancelling || cancelError !== null}
-              >
-                {cancelling ? "Cancelling…" : "Cancel this order"}
-              </Button>
+                <Button variant="secondary" onClick={startOver}>
+                  Start a new order
+                </Button>
+              </>
+            ) : canAdd ? (
+              <>
+                <Button onClick={() => setAdding(true)} icon={<Plus />}>
+                  Order something else
+                </Button>
 
-              <p className="text-2xs text-subtle">
-                You can cancel until a member of staff has been over to confirm it with
-                you.
+                <p className="text-2xs text-subtle">
+                  Anything you add goes onto this same order and the same bill. You can
+                  keep adding until the kitchen starts on it.
+                </p>
+              </>
+            ) : (
+              // Not an error and not a disabled button. There is nothing for a guest to
+              // do here except talk to somebody, so that is what it says.
+              <p className="flex items-start gap-2 text-sm text-muted">
+                <Info className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+                Your order is with the kitchen now. Ask a member of staff if you would
+                like anything else, or if something needs changing.
               </p>
-            </div>
-          )}
-
-          <Button
-            variant="secondary"
-            onClick={() => {
-              setPlaced(null);
-              setCancelled(false);
-              setCancelError(null);
-              setReloadKey((key) => key + 1);
-            }}
-          >
-            {cancelled ? "Start a new order" : "Order something else"}
-          </Button>
+            )}
+          </div>
         </Surface>
       </Centre>
     );
@@ -419,22 +452,40 @@ function WebsiteOrder() {
   }
 
   const table = restaurant.tables.find((candidate) => candidate.id === tableId);
-  const hasTable = table !== undefined && table.isAvailable;
+  // Adding to an existing order keeps its table, which is by definition not free any
+  // more - it has their own order running on it. Asking again, or refusing it as taken,
+  // would both be wrong.
+  const hasTable = adding ? tableId !== "" : table !== undefined && table.isAvailable;
 
   return (
     <>
       <header className="border-b border-border bg-surface">
         <div className="mx-auto flex max-w-2xl items-center gap-3 px-4 py-4">
-          <Link
-            href={`/r/${slug}`}
-            aria-label="Back to the website"
-            className="shrink-0 rounded-md p-1.5 text-muted transition-colors hover:bg-surface-3 hover:text-text"
-          >
-            <ArrowLeft className="size-5" aria-hidden="true" />
-          </Link>
+          {adding ? (
+            <button
+              type="button"
+              onClick={() => setAdding(false)}
+              aria-label="Back to your order"
+              className="shrink-0 rounded-md p-1.5 text-muted transition-colors hover:bg-surface-3 hover:text-text"
+            >
+              <ArrowLeft className="size-5" aria-hidden="true" />
+            </button>
+          ) : (
+            <Link
+              href={`/r/${slug}`}
+              aria-label="Back to the website"
+              className="shrink-0 rounded-md p-1.5 text-muted transition-colors hover:bg-surface-3 hover:text-text"
+            >
+              <ArrowLeft className="size-5" aria-hidden="true" />
+            </Link>
+          )}
           <div className="min-w-0">
             <p className="text-xs font-medium tracking-wide text-muted uppercase">
-              {hasTable ? table.name : "Order online"}
+              {adding
+                ? `Adding to order #${placed?.orderNumber}`
+                : hasTable
+                  ? table?.name
+                  : "Order online"}
             </p>
             <h1 className="truncate text-2xl font-semibold text-text">
               {restaurant.restaurantName}
@@ -446,42 +497,70 @@ function WebsiteOrder() {
       <main className="mx-auto flex w-full max-w-2xl flex-col gap-4 px-4 py-4 pb-28">
         {/* Asked first, and the menu waits behind it. Discovering at the checkout that
             your table is taken, with a basket already built, is the one bad moment
-            this flow can have. */}
-        <Surface className="flex flex-col gap-3 p-4">
-          <div>
-            <h2 className="text-base font-semibold text-text">
-              Which table are you at?
-            </h2>
-            <p className="text-sm text-muted">
-              So your food reaches you. Ask a member of staff if you are not sure.
-            </p>
-          </div>
+            this flow can have.
 
-          <div className="flex flex-wrap gap-2">
-            {restaurant.tables.map((candidate) => (
-              <button
-                key={candidate.id}
-                type="button"
-                disabled={!candidate.isAvailable}
-                aria-pressed={candidate.id === tableId}
-                onClick={() => setTableId(candidate.id)}
-                className={cn(
-                  "flex flex-col items-start rounded-md border px-3 py-2 text-left transition-colors",
-                  candidate.id === tableId
-                    ? "border-primary bg-primary-soft text-primary"
-                    : "border-border-strong text-text hover:bg-surface-3",
-                  !candidate.isAvailable &&
-                    "cursor-not-allowed border-border text-subtle hover:bg-transparent",
-                )}
-              >
-                <span className="text-sm font-medium">{candidate.name}</span>
-                <span className="text-2xs">
-                  {candidate.isAvailable ? `seats ${candidate.capacity}` : "in use"}
+            Skipped entirely when adding: the table was decided when the order was
+            opened and cannot move. */}
+        {!adding && (
+          <Surface className="flex flex-col gap-3 p-4">
+            <div>
+              <h2 className="text-base font-semibold text-text">
+                Which table are you at?
+              </h2>
+              <p className="text-sm text-muted">
+                So your food reaches you. Ask a member of staff if you are not sure.
+              </p>
+            </div>
+
+            {/* The one dead end this flow can produce: a guest whose table shows as
+                taken because they already ordered on it and their phone forgot. Left
+                without this they would sit there assuming the restaurant lost their
+                order, so the way back is written next to the thing that blocked them. */}
+            {restaurant.tables.some((candidate) => !candidate.isAvailable) && (
+              <p className="flex items-start gap-2 rounded-md bg-surface-3 px-3 py-2 text-2xs text-muted">
+                <Info className="mt-px size-3.5 shrink-0" aria-hidden="true" />
+                <span>
+                  A table already in use cannot be picked. If you have{" "}
+                  <strong className="font-semibold text-text">already ordered</strong>{" "}
+                  there, scan the code on your table to pick your order back up — or ask
+                  a member of staff and they will find it for you.
                 </span>
-              </button>
-            ))}
-          </div>
-        </Surface>
+              </p>
+            )}
+
+            <div className="flex flex-wrap gap-2">
+              {restaurant.tables.map((candidate) => (
+                <button
+                  key={candidate.id}
+                  type="button"
+                  disabled={!candidate.isAvailable}
+                  aria-pressed={candidate.id === tableId}
+                  onClick={() => setTableId(candidate.id)}
+                  className={cn(
+                    "flex flex-col items-start rounded-md border px-3 py-2 text-left transition-colors",
+                    candidate.id === tableId
+                      ? "border-primary bg-primary-soft text-primary"
+                      : "border-border-strong text-text hover:bg-surface-3",
+                    !candidate.isAvailable &&
+                      "cursor-not-allowed border-border text-subtle hover:bg-transparent",
+                  )}
+                >
+                  <span className="text-sm font-medium">{candidate.name}</span>
+                  <span className="text-2xs">
+                    {candidate.isAvailable ? `seats ${candidate.capacity}` : "in use"}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </Surface>
+        )}
+
+        {adding && (
+          <p className="px-1 text-sm text-muted">
+            Anything you choose here is added to order #{placed?.orderNumber} and the
+            same bill.
+          </p>
+        )}
 
         {hasTable ? (
           <OrderComposer

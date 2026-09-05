@@ -111,7 +111,7 @@ public sealed class DashboardService : IDashboardService
                 ((order.CompletedAtUtc != null && order.CompletedAtUtc >= dayStart) ||
                  (order.CancelledAtUtc != null && order.CancelledAtUtc >= dayStart)))
             .Include(order => order.Table)
-            .Include(order => order.Payment)
+            .Include(order => order.Payments)
             .ToListAsync(cancellationToken);
 
         var availableMenuItems = await _dbContext.MenuItems
@@ -195,9 +195,11 @@ public sealed class DashboardService : IDashboardService
             .Where(order => order.Status == OrderStatus.Cancelled)
             .ToList();
 
+        // Flattened, because one order can now have several payments against it. A
+        // split bill contributes to both the cash and the card figure, which is exactly
+        // what a manager counting a till at the end of a shift needs.
         var payments = completed
-            .Where(order => order.Payment is not null)
-            .Select(order => order.Payment!)
+            .SelectMany(order => order.Payments)
             .ToList();
 
         // Every method is listed even when nothing came in on it, so the breakdown
@@ -295,8 +297,11 @@ public sealed class DashboardService : IDashboardService
                     order.OrderNumber,
                     order.Table.Name,
                     null,
-                    order.Payment?.Amount ?? order.Subtotal,
-                    order.Payment?.Method,
+                    order.Payments.Count == 0 ? order.Total : order.AmountPaid,
+                    // The method of a split bill is genuinely ambiguous, so a single
+                    // payment names its method and anything else names none rather than
+                    // picking one of them to display.
+                    order.Payments.Count == 1 ? order.Payments.First().Method : null,
                     null));
             }
 

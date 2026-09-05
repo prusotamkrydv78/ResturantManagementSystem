@@ -72,7 +72,7 @@ public class OrderCompletionTests
     public void A_paid_order_cannot_be_completed_again()
     {
         var order = OrderBuilder.Open();
-        order.Payment = PaymentFor(order);
+        order.Payments.Add(PaymentFor(order));
 
         Assert.False(order.CanComplete);
         Assert.False(order.TryComplete(Now));

@@ -25,8 +25,15 @@ const PREFIX = "rms.receipt.";
 /** A placed order as the phone remembers it. */
 export interface StoredReceipt {
   order: PublicOrder;
-  /** Whether they went on to cancel it, so a refresh does not undo that news. */
-  cancelled: boolean;
+  /**
+   * The table it was placed on.
+   *
+   * Kept because the order itself does not carry it - a customer's own order
+   * deliberately holds no identifiers - and adding a second round has to name the same
+   * table. Without this, a phone that reloaded could follow its order but not add to
+   * it.
+   */
+  tableId: string;
   /** When this was written, so a stale one can be ignored rather than shown. */
   savedAtMs: number;
 }
@@ -88,12 +95,12 @@ export function readReceipt(slug: string): StoredReceipt | null {
 export function writeReceipt(
   slug: string,
   order: PublicOrder,
-  cancelled: boolean,
+  tableId: string,
 ): void {
   try {
     window.localStorage.setItem(
       keyFor(slug),
-      JSON.stringify({ order, cancelled, savedAtMs: Date.now() }),
+      JSON.stringify({ order, tableId, savedAtMs: Date.now() }),
     );
   } catch {
     // Nothing to do and nothing worth telling the customer. Failing to remember an

@@ -58,29 +58,59 @@ public interface IPublicOrderingService
         CancellationToken cancellationToken);
 
     /// <summary>
-    /// Places an order from the website, on the table the customer chose.
+    /// Reads back an order the customer already has, from the key they hold.
     /// </summary>
-    Task<Result<PublicOrderResponse>> PlaceWebsiteOrderAsync(
+    /// <remarks>
+    /// How somebody who lost their place gets it back. A phone that cleared its storage,
+    /// a flat battery, a link opened on a different handset - all of them arrive here
+    /// with a key and nothing else, and leave with the order in full.
+    ///
+    /// It is also what makes the receipt trustworthy rather than merely remembered. The
+    /// copy a phone keeps is a snapshot from whenever it was written; this is what the
+    /// restaurant currently says, so a page that reopens after an hour shows the bill as
+    /// it now stands rather than as it was.
+    ///
+    /// Refused once the order has been settled or called off. There is nothing useful
+    /// left to show a customer at that point, and a key that outlives its order is a
+    /// capability with no purpose.
+    /// </remarks>
+    Task<Result<PublicOrderResponse>> LookupWebsiteOrderAsync(
         string slug,
-        PlaceWebsiteOrderRequest request,
+        LookupWebsiteOrderRequest request,
         CancellationToken cancellationToken);
 
     /// <summary>
-    /// Calls off an order the customer placed themselves, on the strength of the key
-    /// they were given when they placed it.
+    /// Places an order from the website, or adds to one the customer already has.
     /// </summary>
     /// <remarks>
-    /// Allowed only while the order is still waiting for somebody at the restaurant to
-    /// look at it. Once any line has gone to the kitchen the answer is no, permanently:
-    /// food is being cooked, and the person who can stop it is standing in the room.
+    /// Both, because to a customer they are the same act: choosing food and sending it.
+    /// Which one happens is decided by whether they presented the key from an order they
+    /// already have - the only thing that can tell the person who started the order at
+    /// that table from a stranger claiming it.
     ///
-    /// This is the customer half of a two-sided rule. The other half - a member of staff
-    /// confirming an order explicitly rather than by sending it through - does not exist
-    /// yet, and reaching the kitchen stands in for it.
+    /// Adding stops the moment anything reaches the kitchen. Until then an order is a
+    /// list on a screen and another line costs nobody anything; after it the kitchen is
+    /// working from paper that no longer matches, and a second round has to be a
+    /// conversation so that somebody knows to send it.
+    ///
+    /// Adding after a waiter has confirmed clears the confirmation, so the new lines are
+    /// agreed before they can go anywhere. There is deliberately no way for a customer to
+    /// remove a line or call the order off; those are conversations with a waiter.
     /// </remarks>
-    Task<Result<PublicOrderResponse>> CancelWebsiteOrderAsync(
+    /// <param name="slug">The restaurant's public slug.</param>
+    /// <param name="request">The table, what they want, and their key if they have one.</param>
+    /// <param name="placedFromIp">
+    /// Where the request came from, recorded on the order as an audit trail.
+    ///
+    /// Never used to identify anybody, and it cannot be: every phone on a restaurant's
+    /// wifi shares one address. It is here so a flood of junk orders can be traced and
+    /// blocked, which is a question about a source rather than about a person.
+    /// </param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task<Result<PublicOrderResponse>> PlaceWebsiteOrderAsync(
         string slug,
-        CancelWebsiteOrderRequest request,
+        PlaceWebsiteOrderRequest request,
+        string? placedFromIp,
         CancellationToken cancellationToken);
 
     Task<Result<PublicOrderResponse>> PlaceOrderAsync(

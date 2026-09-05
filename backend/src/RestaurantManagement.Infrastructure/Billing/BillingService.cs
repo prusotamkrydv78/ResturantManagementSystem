@@ -146,6 +146,9 @@ public sealed class BillingService : IBillingService
 
         // Reported apart so the manager is told which thing stopped them, rather
         // than one blanket refusal covering three different situations.
+        //
+        // Fully paid, not merely "has a payment". A half-settled bill is still owed
+        // money and must still accept the other half.
         if (order.IsPaid)
         {
             return Result.Failure<RecordPaymentResponse>(BillingErrors.AlreadyPaid);
@@ -173,36 +176,53 @@ public sealed class BillingService : IBillingService
 
         var now = DateTimeOffset.UtcNow;
 
+        // Null means "the rest of it", which is the ordinary case and keeps a single
+        // payment from having to echo a figure the server already knows.
+        var amount = request.Amount ?? order.AmountOutstanding;
+
+        // The one number a request may name, bounded on both sides. It cannot invent a
+        // total or reduce one - only say how much of a figure the server calculated was
+        // handed over. Overpaying is refused rather than quietly recorded, because
+        // change given at a counter is not revenue and a bill that reads as overpaid
+        // hides a mistake somebody needs to fix.
+        if (amount <= 0m)
+        {
+            return Result.Failure<RecordPaymentResponse>(BillingErrors.AmountNotPositive);
+        }
+
+        if (amount > order.AmountOutstanding)
+        {
+            return Result.Failure<RecordPaymentResponse>(
+                BillingErrors.AmountExceedsOutstanding(order.AmountOutstanding));
+        }
+
         var payment = new Payment
         {
             Id = Guid.CreateVersion7(),
             RestaurantId = restaurantId,
             OrderId = order.Id,
-            // From the order the server already stored. The request has no amount
-            // field at all, so there is nothing here to be talked out of.
-            Amount = order.Subtotal,
+            Amount = amount,
             Method = request.Method,
             RecordedByUserId = managerUserId,
             RecordedAtUtc = now,
         };
 
-        // Asks the order to close rather than assigning to it. The guard is the same
-        // one the response reports, so what the manager was shown and what the write
-        // path enforces cannot drift.
-        //
-        // This has to happen before the payment is handed to the change tracker.
-        // Adding it fixes up the navigation on the other side, so the order would
-        // read as already paid and refuse to close, taking a first settlement with
-        // it. Both writes still land in the one transaction below; only the order of
-        // these two lines matters.
-        if (!order.TryComplete(now))
-        {
-            return Result.Failure<RecordPaymentResponse>(BillingErrors.AlreadyCompleted);
-        }
-
+        // Added to the navigation first, and this ordering is the reverse of what it
+        // used to be. The order now closes because it is paid rather than in spite of
+        // it, so the payment has to be visible to the order before it is asked whether
+        // the bill is settled.
+        order.Payments.Add(payment);
         _dbContext.Payments.Add(payment);
 
-        await ReleaseTableAsync(order, now, cancellationToken);
+        // Only when the bill is actually covered. A part payment leaves the order open
+        // and the table occupied, which is the whole point: the party is still sitting
+        // there and still owes money.
+        var settled = order.TryComplete(now);
+
+        if (settled)
+        {
+            await ReleaseTableAsync(order, now, cancellationToken);
+        }
 
         // One transaction over all three writes. A single SaveChanges is already
         // atomic, but the table release depends on a query taken just before it, so
@@ -228,26 +248,15 @@ public sealed class BillingService : IBillingService
 
             return Result.Failure<RecordPaymentResponse>(BillingErrors.Conflict);
         }
-        catch (DbUpdateException exception) when (IsDuplicatePayment(exception))
-        {
-            // The unique index caught a second payment. This is the case an
-            // application check cannot hold on its own, which is why it is in the
-            // schema; nothing was written, so the table stays occupied.
-            await transaction.RollbackAsync(cancellationToken);
-
-            _logger.LogWarning(
-                "A duplicate payment for order {OrderId} was refused by the database.",
-                orderId);
-
-            return Result.Failure<RecordPaymentResponse>(BillingErrors.AlreadyPaid);
-        }
-
         _logger.LogInformation(
-            "Manager {ManagerId} closed order {OrderNumber} with a {Method} payment of {Amount}.",
+            settled
+                ? "Manager {ManagerId} closed order {OrderNumber} with a {Method} payment of {Amount}; nothing outstanding."
+                : "Manager {ManagerId} took a {Method} part payment of {Amount} against order {OrderNumber}; {Outstanding} still owed.",
             managerUserId,
             order.OrderNumber,
             payment.Method,
-            payment.Amount);
+            payment.Amount,
+            order.AmountOutstanding);
 
         var names = new Dictionary<Guid, string>
         {
@@ -264,8 +273,6 @@ public sealed class BillingService : IBillingService
         {
             names[order.CreatedByStaffId.Value] = placedBy;
         }
-
-        order.Payment = payment;
 
         return Result.Success(new RecordPaymentResponse(
             ToPayment(payment, names),
@@ -422,7 +429,7 @@ public sealed class BillingService : IBillingService
             .Include(candidate => candidate.Items)
             .Include(candidate => candidate.Table)
             .Include(candidate => candidate.Restaurant)
-            .Include(candidate => candidate.Payment)
+            .Include(candidate => candidate.Payments)
             .SingleOrDefaultAsync(cancellationToken);
 
         if (order is null)
@@ -433,13 +440,17 @@ public sealed class BillingService : IBillingService
         // Both conditions, not either: a receipt describes money that was taken, so it
         // needs the payment, and it describes a closed bill, so it needs the order to
         // have ended that way. Neither on its own is enough to print.
-        if (order.Status != OrderStatus.Completed || order.Payment is null)
+        if (order.Status != OrderStatus.Completed || order.Payments.Count == 0)
         {
             return Result.Failure<ReceiptResponse>(BillingErrors.NoReceipt);
         }
 
         var names = await NamesFor([order], cancellationToken);
-        var payment = order.Payment;
+
+        // The last one, which is the one that closed the bill. A split bill has several
+        // and the receipt is printed at the end, so the time and the person on it should
+        // be the moment the table actually finished paying.
+        var payment = order.Payments.OrderBy(row => row.RecordedAtUtc).Last();
 
         return Result.Success(new ReceiptResponse(
             order.Restaurant.Name,
@@ -493,7 +504,7 @@ public sealed class BillingService : IBillingService
             .Include(candidate => candidate.Table)
             .Include(candidate => candidate.KitchenTickets)
                 .ThenInclude(ticket => ticket.Items)
-            .Include(candidate => candidate.Payment);
+            .Include(candidate => candidate.Payments);
 
     /// <summary>
     /// When an order ended, whichever way it ended. One value to sort a mixed history
@@ -570,7 +581,7 @@ public sealed class BillingService : IBillingService
             .Include(order => order.Table)
             .Include(order => order.KitchenTickets)
                 .ThenInclude(ticket => ticket.Items)
-            .Include(order => order.Payment);
+            .Include(order => order.Payments);
 
     /// <summary>
     /// Display names for everyone referenced by a set of orders, in one query.
@@ -587,7 +598,7 @@ public sealed class BillingService : IBillingService
             .SelectMany(order => new[]
             {
                 order.CreatedByStaffId,
-                order.Payment?.RecordedByUserId,
+                order.Payments.Select(payment => (Guid?)payment.RecordedByUserId).FirstOrDefault(),
                 order.CancelledByUserId,
             })
             .Where(id => id is not null)
@@ -694,12 +705,21 @@ public sealed class BillingService : IBillingService
             order.Status,
             order.Table.Name,
             order.Subtotal,
+            order.DiscountAmount,
+            order.ServiceChargeAmount,
+            order.VatAmount,
+            order.Total,
+            order.AmountPaid,
+            order.AmountOutstanding,
             order.Items.Sum(item => item.Quantity),
             OrderAttribution.PlacedBy(order, names),
             order.CreatedAtUtc,
             ClosedAt(order),
             order.KitchenTickets.Count,
-            order.Payment is null ? null : ToPayment(order.Payment, names),
+            order.Payments
+                .OrderBy(payment => payment.RecordedAtUtc)
+                .Select(payment => ToPayment(payment, names))
+                .ToList(),
             ToCancellation(order, names));
 
     private static BillingOrderSummaryResponse ToSummary(
@@ -711,6 +731,12 @@ public sealed class BillingService : IBillingService
             order.Status,
             order.Table.Name,
             order.Subtotal,
+            order.DiscountAmount,
+            order.ServiceChargeAmount,
+            order.VatAmount,
+            order.Total,
+            order.AmountPaid,
+            order.AmountOutstanding,
             order.Items.Sum(item => item.Quantity),
             OrderAttribution.PlacedBy(order, names),
             order.CreatedAtUtc,
@@ -718,8 +744,11 @@ public sealed class BillingService : IBillingService
             order.KitchenTickets.Count,
             order.UnfinishedKitchenTicketCount,
             order.UnsentItemCount,
-            order.CanComplete,
-            order.Payment is null ? null : ToPayment(order.Payment, names),
+            order.CanSettle,
+            order.Payments
+                .OrderBy(payment => payment.RecordedAtUtc)
+                .Select(payment => ToPayment(payment, names))
+                .ToList(),
             ToCancellation(order, names));
 
     private static BillingOrderResponse ToDetail(
@@ -732,6 +761,12 @@ public sealed class BillingService : IBillingService
             order.Table.Name,
             order.Table.Capacity,
             order.Subtotal,
+            order.DiscountAmount,
+            order.ServiceChargeAmount,
+            order.VatAmount,
+            order.Total,
+            order.AmountPaid,
+            order.AmountOutstanding,
             order.Items.Sum(item => item.Quantity),
             OrderAttribution.PlacedBy(order, names),
             order.CreatedAtUtc,
@@ -741,9 +776,12 @@ public sealed class BillingService : IBillingService
                 .Where(item => item.KitchenTicketItem is null)
                 .Sum(item => item.Quantity),
             order.StartedKitchenTicketCount,
-            order.CanComplete,
+            order.CanSettle,
             order.CanCancel,
-            order.Payment is null ? null : ToPayment(order.Payment, names),
+            order.Payments
+                .OrderBy(payment => payment.RecordedAtUtc)
+                .Select(payment => ToPayment(payment, names))
+                .ToList(),
             ToCancellation(order, names),
             order.Items
                 .OrderBy(item => item.ItemName)

@@ -26,6 +26,14 @@ public sealed class OrderConfiguration : IEntityTypeConfiguration<Order>
             .IsRequired()
             .HasPrecision(18, 2);
 
+        // Every figure on the bill at the same precision as the subtotal it derives
+        // from. Money the database rounds differently from the code is money that
+        // stops adding up on a receipt.
+        builder.Property(order => order.DiscountAmount).IsRequired().HasPrecision(18, 2);
+        builder.Property(order => order.ServiceChargeAmount).IsRequired().HasPrecision(18, 2);
+        builder.Property(order => order.VatAmount).IsRequired().HasPrecision(18, 2);
+        builder.Property(order => order.Total).IsRequired().HasPrecision(18, 2);
+
         // Maintained by SQL Server. EF compares it on update and raises a
         // concurrency exception when someone else has saved in the meantime.
         builder.Property(order => order.RowVersion).IsRowVersion();
@@ -42,11 +50,15 @@ public sealed class OrderConfiguration : IEntityTypeConfiguration<Order>
         builder.Ignore(order => order.UnsentItemCount);
         builder.Ignore(order => order.StartedKitchenTicketCount);
         builder.Ignore(order => order.CanComplete);
+        builder.Ignore(order => order.CanSettle);
+        builder.Ignore(order => order.AmountPaid);
+        builder.Ignore(order => order.AmountOutstanding);
+        builder.Ignore(order => order.IsPartlyPaid);
         builder.Ignore(order => order.CanCancel);
         builder.Ignore(order => order.IsSelfService);
         builder.Ignore(order => order.IsCustomerPlaced);
         builder.Ignore(order => order.NeedsConfirmation);
-        builder.Ignore(order => order.CanGuestCancel);
+        builder.Ignore(order => order.CanCustomerAddTo);
 
         builder.Property(order => order.Source)
             .IsRequired()
@@ -60,11 +72,11 @@ public sealed class OrderConfiguration : IEntityTypeConfiguration<Order>
         // The key a customer holds for their own order. Filtered, because only the
         // handful of orders placed from a website carry one and an index over a
         // column that is null for everything else is mostly empty pages.
-        builder.Property(order => order.PublicCancelKey).HasMaxLength(32);
+        builder.Property(order => order.PublicOrderKey).HasMaxLength(32);
 
-        builder.HasIndex(order => order.PublicCancelKey)
+        builder.HasIndex(order => order.PublicOrderKey)
             .IsUnique()
-            .HasFilter("[PublicCancelKey] IS NOT NULL");
+            .HasFilter("[PublicOrderKey] IS NOT NULL");
 
         // Bound to the restaurant on both sides, so an order cannot be attributed to a
         // customer of a different restaurant.
@@ -102,6 +114,27 @@ public sealed class OrderConfiguration : IEntityTypeConfiguration<Order>
         // Long enough for a real sentence, short enough that it stays a reason
         // rather than becoming a notes field.
         builder.Property(order => order.CancellationReason).HasMaxLength(200);
+
+        // Same bound, and for the same reason: a discount without an explanation is
+        // unexplained missing money.
+        builder.Property(order => order.DiscountReason).HasMaxLength(200);
+
+        // Long enough for an IPv6 address with an embedded IPv4 tail. Not indexed, and
+        // that is deliberate: an index would invite querying by it, and this is an audit
+        // field rather than a way to find somebody's order.
+        builder.Property(order => order.PlacedFromIp).HasMaxLength(45);
+
+        // The rates as snapshotted, at the same precision the restaurant holds them.
+        builder.Property(order => order.VatRate).HasPrecision(6, 4);
+        builder.Property(order => order.ServiceChargeRate).HasPrecision(6, 4);
+
+        // A discount has to have a reason, and a reason without a discount is a note
+        // about nothing. Held in the schema as well as in the service, because this is
+        // the pairing somebody will eventually try to fix with a hand-written UPDATE.
+        builder.ToTable(table => table.HasCheckConstraint(
+            "CK_Orders_Discount",
+            "([DiscountAmount] = 0 AND [DiscountReason] IS NULL) " +
+            "OR ([DiscountAmount] > 0 AND [DiscountReason] IS NOT NULL)"));
 
         // Open orders are what both the waiter list and the billing queue ask for,
         // and completed ones are what a future takings figure would.

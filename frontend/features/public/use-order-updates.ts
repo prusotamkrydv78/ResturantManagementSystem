@@ -25,27 +25,52 @@ import {
  * Only ever the one order. There is no way from here to ask about another, because the
  * group is chosen by the server from the key rather than named by the client.
  *
- * Entirely optional, like every other realtime path in this product. A refused key, a
- * blocked websocket or a sleeping phone leaves the receipt exactly as it was - which is
- * why the stage starts as null and the page reads that as "nothing has happened yet"
- * rather than as an error.
+ * Entirely optional, like every other realtime path in this product. A blocked websocket
+ * or a sleeping phone leaves the receipt exactly as it was.
  */
+
+/** What the hub answers when a key is accepted. */
+interface WatchHandle {
+  orderNumber: number;
+  /** Where the order already stands, or null when nothing has happened to it yet. */
+  stage: OrderStage | null;
+}
+
 export function useOrderUpdates({
   slug,
-  cancelKey,
+  orderKey,
   onUpdate,
 }: {
   slug: string;
   /** The key from placing the order, or null when there is nothing to follow. */
-  cancelKey: string | null;
+  orderKey: string | null;
   /**
    * Called for each step forward, for a toast. Held in a ref internally, so an inline
    * arrow does not tear the connection down and rebuild it on every render.
+   *
+   * Only for steps that arrive while the page is open. The stage the order was already
+   * at when the page loaded is not announced: telling somebody their food is ready the
+   * instant they open a page, about something that happened twenty minutes ago, is a
+   * notification about the past.
    */
   onUpdate?: (update: CustomerOrderUpdate) => void;
-}): { stage: OrderStage | null; live: boolean } {
+}): {
+  /** The furthest stage reached, or null while nothing has happened yet. */
+  stage: OrderStage | null;
+  /** Whether the socket is up and following the order. */
+  live: boolean;
+  /**
+   * Whether the restaurant says this order is no longer running.
+   *
+   * Told apart from a failed connection deliberately. A settled, cancelled or unknown
+   * order will never come back, so the page can offer to start a fresh one instead of
+   * showing a receipt that can no longer do anything.
+   */
+  closed: boolean;
+} {
   const [stage, setStage] = useState<OrderStage | null>(null);
   const [live, setLive] = useState(false);
+  const [closed, setClosed] = useState(false);
   const latest = useRef(onUpdate);
 
   useEffect(() => {
@@ -53,7 +78,7 @@ export function useOrderUpdates({
   }, [onUpdate]);
 
   useEffect(() => {
-    if (cancelKey === null) {
+    if (orderKey === null) {
       return;
     }
 
@@ -77,19 +102,44 @@ export function useOrderUpdates({
       // The group is joined by the connection, not by the account, so a reconnection
       // has to ask again - otherwise a phone that went through a tunnel comes back
       // connected and silent, which is the worst of both.
-      const rejoin = async () => {
+      //
+      // The answer also carries where the order has got to, which is how a page that
+      // was closed catches up on everything it missed.
+      const join = async () => {
         try {
-          await built.invoke<number | null>("WatchOrder", slug, cancelKey);
+          const handle = await built.invoke<WatchHandle | null>(
+            "WatchOrder",
+            slug,
+            orderKey,
+          );
+
+          if (disposed) {
+            return false;
+          }
+
+          if (handle === null) {
+            // The order is not running any more, or the key names nothing. Neither
+            // will change, so there is nothing to retry.
+            setClosed(true);
+            setLive(false);
+
+            return false;
+          }
+
+          setClosed(false);
+
+          if (handle.stage !== null) {
+            setStage((current) => furthest(current, handle.stage!));
+          }
+
+          return true;
         } catch {
-          // Refused or unreachable. The receipt stands on its own.
+          // Unreachable rather than refused. The receipt stands on its own.
+          return false;
         }
       };
 
-      built.onreconnected(() => {
-        setLive(true);
-        void rejoin();
-      });
-
+      built.onreconnected(() => void join().then(setLive));
       built.onreconnecting(() => setLive(false));
       built.onclose(() => setLive(false));
 
@@ -102,14 +152,7 @@ export function useOrderUpdates({
           return;
         }
 
-        // Null means the key names no order we may follow - a wrong key, a wrong
-        // restaurant, or an order already settled or called off. Told apart from a
-        // failed connection because there is no point retrying it.
-        const watching = await built.invoke<number | null>(
-          "WatchOrder",
-          slug,
-          cancelKey,
-        );
+        const following = await join();
 
         if (disposed) {
           await built.stop();
@@ -118,7 +161,7 @@ export function useOrderUpdates({
         }
 
         connection = built;
-        setLive(watching !== null);
+        setLive(following);
       } catch {
         setLive(false);
       }
@@ -134,7 +177,7 @@ export function useOrderUpdates({
         void connection.stop();
       }
     };
-  }, [slug, cancelKey]);
+  }, [slug, orderKey]);
 
-  return { stage, live };
+  return { stage, live, closed };
 }

@@ -85,17 +85,18 @@ public sealed record PublicOrderLineResponse(
 /// staff still has to send their order through.
 /// </param>
 /// <param name="PlacedAtUtc">When the first line went on.</param>
-/// <param name="CanCancel">
-/// Whether the customer may still call this off themselves. True until a member of staff
-/// sends any part of it to the kitchen, and false the moment they do.
+/// <param name="CanAddMore">
+/// Whether the customer may still add to this order themselves. True until any part of
+/// it goes to the kitchen, and false the moment it does - from then on a second round is
+/// a conversation with a waiter, so that somebody knows to send it.
 /// </param>
-/// <param name="CancelKey">
-/// What to send back to cancel this order, or null.
+/// <param name="OrderKey">
+/// What to send back to add to this order, or null.
 ///
 /// Present exactly once, in the response to placing an order from the website, and never
-/// on a read. It is the whole authority to cancel, so it is given to the person who
-/// placed the order and to nobody else - a page that lists orders would be handing out
-/// the ability to cancel other people's.
+/// on a read. Without an account it is the only thing that can stand for "this is my
+/// order", so it goes to the person who placed it and to nobody else - a page that
+/// listed orders would be handing out the ability to change other people's.
 /// </param>
 public sealed record PublicOrderResponse(
     int OrderNumber,
@@ -104,23 +105,8 @@ public sealed record PublicOrderResponse(
     decimal Subtotal,
     int AwaitingKitchenCount,
     DateTimeOffset PlacedAtUtc,
-    bool CanCancel,
-    string? CancelKey);
-
-/// <summary>
-/// Payload for a customer calling off their own order.
-///
-/// The key is the entire request. It names the order, and holding it is the permission -
-/// there is no account behind a website order, so there is nothing else it could be. No
-/// order number, because a number is printed on a receipt and sequential enough to guess
-/// at a neighbour's.
-/// </summary>
-public sealed class CancelWebsiteOrderRequest
-{
-    /// <summary>The key handed back when the order was placed.</summary>
-    [Required(ErrorMessage = "This order cannot be cancelled from here.")]
-    public string CancelKey { get; set; } = string.Empty;
-}
+    bool CanAddMore,
+    string? OrderKey);
 
 /// <summary>
 /// What a guest gets from scanning the code on their table.
@@ -182,11 +168,29 @@ public sealed record PublicTableResponse(
 /// What the table is called in the room, so the page can say "Table 7" before it has
 /// loaded anything else.
 /// </param>
+/// <param name="RunningOrderKey">
+/// The key for the order already running on this table, or null when there is none.
+///
+/// This is how a customer who has lost their place gets it back. A phone that cleared
+/// its storage, a flat battery, a different handset - none of those matter if the code
+/// screwed to the table can hand the order back, and that code is the one thing in this
+/// situation a guest reliably still has.
+///
+/// Given out on the strength of physical presence: the token is printed on that table
+/// and somebody scanning it is sitting there. That is a weaker claim than holding the
+/// key itself, which is why the only thing it buys is the customer's own order at the
+/// table they are at - and why anything added afterwards withdraws the waiter's
+/// confirmation, so a person reads the order back to the table before it can move.
+///
+/// Only for an order the customer placed themselves. A waiter's order is theirs to
+/// manage and has no key at all.
+/// </param>
 public sealed record ScannedTableRestaurantResponse(
     string Slug,
     string RestaurantName,
     Guid TableId,
-    string TableName);
+    string TableName,
+    string? RunningOrderKey);
 
 /// <summary>
 /// A table a customer may say they are sitting at.
@@ -232,6 +236,20 @@ public sealed record PublicRestaurantResponse(
     bool IsAcceptingOrders);
 
 /// <summary>
+/// Payload for picking an order back up.
+///
+/// The key is the whole request, and the whole permission. It goes in a body rather
+/// than a path because a path is what ends up in a server log, a browser history and a
+/// screenshot - and this one string is what stands for "this order is mine".
+/// </summary>
+public sealed class LookupWebsiteOrderRequest
+{
+    /// <summary>The key handed back when the order was placed.</summary>
+    [Required(ErrorMessage = "We could not find that order.")]
+    public string OrderKey { get; set; } = string.Empty;
+}
+
+/// <summary>
 /// Payload for ordering from the website.
 ///
 /// Carries a table, which the token request deliberately does not: a scanned code says
@@ -244,6 +262,19 @@ public sealed class PlaceWebsiteOrderRequest
     /// <summary>Which table the customer says they are sitting at.</summary>
     [Required(ErrorMessage = "Choose the table you are sitting at.")]
     public Guid TableId { get; set; }
+
+    /// <summary>
+    /// The key from an order they already have here, or null for a first order.
+    ///
+    /// What turns this request from "start an order" into "add to mine". A table that
+    /// already has an order running is refused to a stranger, because joining somebody
+    /// to another party's bill is the one mistake here that costs real money - and this
+    /// is how the person who started that order is told apart from a stranger.
+    ///
+    /// The table is still sent alongside it and still has to match, so a key cannot be
+    /// used to add food to an order at a different table.
+    /// </summary>
+    public string? OrderKey { get; set; }
 
     /// <summary>What they want. At least one line is required.</summary>
     [Required(ErrorMessage = "Add something to your order first.")]

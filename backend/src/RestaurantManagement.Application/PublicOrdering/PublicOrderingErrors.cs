@@ -32,17 +32,17 @@ public static class PublicOrderingErrors
             + "member of staff.");
 
     /// <summary>
-    /// The order can no longer be called off by the customer.
+    /// Nothing more can be added to the order from a phone.
     ///
-    /// One error for every reason: the kitchen has been told about part of it, a member
-    /// of staff has already closed or cancelled it, or it has been paid for. The
-    /// customer's next move is the same in all of them, and it is not a button.
+    /// One error for every reason: part of it has gone to the kitchen, or a member of
+    /// staff has closed, settled or called it off. The customer's next move is the same
+    /// in all of them, and it is to speak to somebody.
     /// </summary>
-    public static readonly Error CannotCancel =
+    public static readonly Error CannotAddMore =
         new(
-            "public.cannot_cancel",
-            "Your order is already being prepared, so it cannot be cancelled here. Please "
-            + "speak to a member of staff.");
+            "public.cannot_add_more",
+            "Your order is already with the kitchen, so it cannot be changed here. Ask a "
+            + "member of staff and they will sort it out for you.");
 
     /// <summary>The restaurant is not open to website orders at all.</summary>
     public static readonly Error NotAcceptingOrders =

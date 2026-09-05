@@ -294,7 +294,13 @@ public sealed class OrderService : IOrderService
             });
         }
 
-        order.Subtotal = order.Items.Sum(item => item.LineTotal);
+        // Snapshotted from the restaurant at the moment the order opens, exactly as a
+        // line snapshots its price. A manager changing the service charge at nine
+        // o'clock must not rewrite the bill of a table that sat down at seven.
+        order.ServiceChargeRate = waiter.Value.ServiceChargeRate;
+        order.VatRate = waiter.Value.VatRate;
+
+        order.RecalculateBill(order.Items.Sum(item => item.LineTotal));
 
         // Seated from now until the bill is settled. Only availability moves here;
         // whether the table is in service at all stays the manager decision.
@@ -659,7 +665,10 @@ public sealed class OrderService : IOrderService
 
         /* ---- 4. Totals, recalculated from our own figures ---- */
 
-        order.Subtotal = keptLines.Sum(line => line.LineTotal);
+        // Re-priced from the lines, through the rates this order already holds. The
+        // rates are not re-read: an order keeps the ones it opened with for its whole
+        // life, however many times it is edited.
+        order.RecalculateBill(keptLines.Sum(line => line.LineTotal));
         order.UpdatedAtUtc = DateTimeOffset.UtcNow;
 
         try
@@ -1152,10 +1161,13 @@ public sealed class OrderService : IOrderService
     /// The active check matters: an access token issued moments before the account
     /// was switched off would otherwise still work until it expired.
     /// </summary>
-    private async Task<(Guid RestaurantId, string FullName)?> ResolveWaiterAsync(
+    private async Task<WaiterContext?> ResolveWaiterAsync(
         Guid staffUserId,
         CancellationToken cancellationToken)
     {
+        // The restaurant's charge rates come back with the account, because opening an
+        // order needs them and a second query for two decimals on the hot path of every
+        // order taken would be waste.
         var rows = await _dbContext.Users
             .AsNoTracking()
             .Where(user =>
@@ -1164,11 +1176,34 @@ public sealed class OrderService : IOrderService
                 user.PlatformRole == PlatformRole.Staff &&
                 user.StaffRole == StaffRole.Waiter &&
                 user.RestaurantId != null)
-            .Select(user => new { RestaurantId = user.RestaurantId!.Value, user.FullName })
+            .Join(
+                _dbContext.Restaurants,
+                user => user.RestaurantId,
+                restaurant => (Guid?)restaurant.Id,
+                (user, restaurant) => new WaiterContext(
+                    restaurant.Id,
+                    user.FullName,
+                    restaurant.ServiceChargeRate,
+                    restaurant.VatRate))
             .ToListAsync(cancellationToken);
 
-        return rows.Count == 0 ? null : (rows[0].RestaurantId, rows[0].FullName);
+        return rows.Count == 0 ? null : rows[0];
     }
+
+    /// <summary>
+    /// Who is taking the order, and what their restaurant charges.
+    /// </summary>
+    /// <param name="RestaurantId">The restaurant they work in.</param>
+    /// <param name="FullName">Their name, for attribution on the order.</param>
+    /// <param name="ServiceChargeRate">Snapshotted onto any order they open.</param>
+    /// <param name="VatRate">Snapshotted onto any order they open.</param>
+    /// A struct, so the nullable wrapper stays a Nullable&lt;T&gt; and every call site
+    /// keeps reading it as .Value the way it did when this was a tuple.
+    private readonly record struct WaiterContext(
+        Guid RestaurantId,
+        string FullName,
+        decimal ServiceChargeRate,
+        decimal VatRate);
 
     /// <summary>
     /// The display name of one staff account, or null when there is nobody to name.

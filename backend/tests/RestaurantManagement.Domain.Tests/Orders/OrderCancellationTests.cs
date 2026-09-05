@@ -97,16 +97,16 @@ public class OrderCancellationTests
     public void A_paid_order_cannot_be_cancelled()
     {
         var order = OrderBuilder.Open();
-        order.Payment = new Payment
+        order.Payments.Add(new Payment
         {
             Id = Guid.NewGuid(),
             OrderId = order.Id,
             RestaurantId = order.RestaurantId,
-            Amount = order.Subtotal,
+            Amount = order.Total,
             Method = PaymentMethod.Card,
             RecordedByUserId = Manager,
             RecordedAtUtc = Now,
-        };
+        });
 
         // There is no refund in this product, so cancelling a paid order would leave a
         // record saying money was taken for something that never happened.

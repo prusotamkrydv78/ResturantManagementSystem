@@ -86,6 +86,28 @@ public static class BillingErrors
     /// record saying money was taken for something that never happened, which is worse
     /// than refusing.
     /// </summary>
+    /// <summary>
+    /// A payment of nothing, or of a negative amount.
+    ///
+    /// Refused rather than ignored. A zero payment on a bill would read as a settled
+    /// line that moved no money, and a negative one is a refund - which this product
+    /// does not have and must not be talked into inventing.
+    /// </summary>
+    public static readonly Error AmountNotPositive =
+        new("billing.amount_not_positive", "Enter an amount greater than zero.");
+
+    /// <summary>
+    /// More money than the bill is owed.
+    ///
+    /// Carries the outstanding figure, because the useful thing to tell somebody at a
+    /// counter is what the bill actually comes to. Change handed back is not revenue,
+    /// so an overpayment recorded as one would quietly overstate a day is takings.
+    /// </summary>
+    public static Error AmountExceedsOutstanding(decimal outstanding) =>
+        new(
+            "billing.amount_exceeds_outstanding",
+            $"That is more than the bill still owes. Outstanding: {outstanding:0.00}.");
+
     public static readonly Error PaidCannotCancel =
         new(
             "billing.paid_cannot_cancel",

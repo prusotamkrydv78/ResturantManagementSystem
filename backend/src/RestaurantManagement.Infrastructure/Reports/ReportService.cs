@@ -108,7 +108,7 @@ public sealed class ReportService : IReportService
                   order.CancelledAtUtc < end)))
             .Include(order => order.Items)
             .Include(order => order.Table)
-            .Include(order => order.Payment)
+            .Include(order => order.Payments)
             .ToListAsync(cancellationToken);
 
         var completed = closed
@@ -125,8 +125,7 @@ public sealed class ReportService : IReportService
         // the order totals. The two agree today, and reading the payments means this
         // figure stays honest if they ever cannot.
         var payments = completed
-            .Where(order => order.Payment is not null)
-            .Select(order => order.Payment!)
+            .SelectMany(order => order.Payments)
             .ToList();
 
         var paymentTotal = payments.Sum(payment => payment.Amount);
@@ -177,10 +176,10 @@ public sealed class ReportService : IReportService
             order.Table.Name,
             // What was taken, not what the order came to. They match today, and this
             // reads the record that actually says how much money changed hands.
-            order.Payment?.Amount ?? order.Subtotal,
+            order.Payments.Count == 0 ? order.Total : order.AmountPaid,
             order.Items.Sum(item => item.Quantity),
             order.CompletedAtUtc ?? order.UpdatedAtUtc,
-            order.Payment?.Method,
+            order.Payments.Count == 1 ? order.Payments.First().Method : null,
             null);
 
     private static ReportOrderResponse ToCancelledRow(Order order) =>

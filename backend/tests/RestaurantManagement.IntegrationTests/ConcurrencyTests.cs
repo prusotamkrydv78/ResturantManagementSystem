@@ -81,14 +81,14 @@ public class ConcurrencyTests
 
         // Both load the order before either writes, so both see it open and unpaid.
         var firstOrder = await first.Orders
-            .Include(o => o.Payment)
+            .Include(o => o.Payments)
             .SingleAsync(o => o.Id == order.Id);
         var secondOrder = await second.Orders
-            .Include(o => o.Payment)
+            .Include(o => o.Payments)
             .SingleAsync(o => o.Id == order.Id);
 
-        Assert.Null(firstOrder.Payment);
-        Assert.Null(secondOrder.Payment);
+        Assert.Empty(firstOrder.Payments);
+        Assert.Empty(secondOrder.Payments);
 
         var firstResult = await Settle(first, scenario, order.Id);
         var secondResult = await Settle(second, scenario, order.Id);
@@ -117,8 +117,8 @@ public class ConcurrencyTests
         await using var settling = _database.NewContext();
         await using var cancelling = _database.NewContext();
 
-        await settling.Orders.Include(o => o.Payment).SingleAsync(o => o.Id == order.Id);
-        await cancelling.Orders.Include(o => o.Payment).SingleAsync(o => o.Id == order.Id);
+        await settling.Orders.Include(o => o.Payments).SingleAsync(o => o.Id == order.Id);
+        await cancelling.Orders.Include(o => o.Payments).SingleAsync(o => o.Id == order.Id);
 
         var settled = await Settle(settling, scenario, order.Id);
 

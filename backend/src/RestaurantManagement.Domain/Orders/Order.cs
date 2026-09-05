@@ -38,11 +38,67 @@ public class Order
     public OrderStatus Status { get; set; } = OrderStatus.Open;
 
     /// <summary>
-    /// Sum of the line totals, calculated by the server from its own snapshots. No
-    /// tax, discount or service charge exists yet, so this is currently also the
-    /// amount owed; those adjustments will layer on top rather than replace it.
+    /// Sum of the line totals, calculated by the server from its own snapshots.
+    ///
+    /// What the food cost, before anything is taken off or added on. Never the amount
+    /// owed - that is <see cref="Total"/>, and confusing the two is how a restaurant
+    /// undercharges by twenty three per cent.
     /// </summary>
     public decimal Subtotal { get; set; }
+
+    /// <summary>
+    /// Money taken off the bill, in currency and not as a percentage.
+    ///
+    /// Stored as an amount even when a manager entered a percentage, because the
+    /// percentage is a way of arriving at a figure and the figure is what was agreed.
+    /// Keeping the percentage would mean a later change to the lines silently changing
+    /// a discount somebody had already promised a table.
+    ///
+    /// Applied before the service charge and the tax, so both are calculated on what is
+    /// actually being charged.
+    /// </summary>
+    public decimal DiscountAmount { get; set; }
+
+    /// <summary>
+    /// Why the discount was given, or null when there is none.
+    ///
+    /// Required whenever there is a discount, and free text for the same reason a
+    /// cancellation reason is: the honest answer to "why did this table pay less" is a
+    /// sentence, and a fixed list would be this product guessing at a restaurant's
+    /// vocabulary. It is also the only thing standing between a discount feature and
+    /// unexplained missing money.
+    /// </summary>
+    public string? DiscountReason { get; set; }
+
+    /// <summary>
+    /// The service charge rate this order was opened with, as a fraction.
+    ///
+    /// Snapshotted from the restaurant rather than read live, exactly as a line
+    /// snapshots its price. A manager changing the rate at nine o'clock must not
+    /// rewrite the bill of a table that sat down at seven.
+    /// </summary>
+    public decimal ServiceChargeRate { get; set; }
+
+    /// <summary>The service charge in currency, derived from the rate.</summary>
+    public decimal ServiceChargeAmount { get; set; }
+
+    /// <summary>
+    /// The VAT rate this order was opened with, as a fraction. Snapshotted for the same
+    /// reason as the service charge, and with more legal weight behind it.
+    /// </summary>
+    public decimal VatRate { get; set; }
+
+    /// <summary>The VAT in currency, derived from the rate.</summary>
+    public decimal VatAmount { get; set; }
+
+    /// <summary>
+    /// What the table owes. The one figure a customer is asked to pay.
+    ///
+    /// Stored rather than computed on read, because it is the number a payment is
+    /// checked against and the number printed on a receipt. A total that is recalculated
+    /// every time it is looked at is a total that can change after somebody has paid it.
+    /// </summary>
+    public decimal Total { get; set; }
 
     /// <summary>
     /// The staff account that placed the order, when a person did.
@@ -134,18 +190,43 @@ public class Order
     /// The key the customer who placed this order holds, or null.
     ///
     /// Set only on an order somebody placed from the restaurant website, and handed
-    /// back exactly once - in the response to placing it. It is what lets them call
-    /// their own order off without an account: they hold it, nobody else has been
-    /// given it, and it names exactly one order.
+    /// back exactly once - in the response to placing it. Without an account it is the
+    /// only thing that can stand for "this is my order": they hold it, nobody else has
+    /// been given it, and it names exactly one order.
+    ///
+    /// It buys two things. Following the order, so their phone can say where the food
+    /// is; and adding to it, which is the one change to a running order a customer can
+    /// make on their own. It deliberately does not buy calling the order off - that is
+    /// a conversation with a waiter, not a button on a phone.
     ///
     /// Random rather than derived from the identifier. Order numbers are sequential
     /// and printed on receipts, so anybody who has eaten here could guess a
     /// neighbour's; this is unguessable by construction.
     ///
-    /// Null for anything a member of staff placed. They cancel through billing, as
-    /// themselves, and a capability nobody needs is a capability worth not having.
+    /// Null for anything a member of staff placed. They are standing at the table and
+    /// can simply add to the order, and a capability nobody needs is a capability worth
+    /// not having.
     /// </summary>
-    public string? PublicCancelKey { get; set; }
+    public string? PublicOrderKey { get; set; }
+
+    /// <summary>
+    /// The address the order was placed from, or null.
+    ///
+    /// An audit trail, and deliberately nothing else. It is here so that a flood of
+    /// junk orders can be traced to a source and blocked, and so a restaurant arguing
+    /// about a disputed order has something to look at.
+    ///
+    /// It is emphatically not an identity, and nothing in this product may use it as
+    /// one. Every phone on a restaurant's wifi shares a single address, so it cannot
+    /// tell one table from another - matching a customer by it would hand somebody
+    /// else's bill to whoever asked. It is also unstable in the other direction: mobile
+    /// networks rotate addresses, and a guest who walks out of wifi range changes theirs
+    /// mid-meal. Too coarse to distinguish people and too fickle to follow one.
+    ///
+    /// Recovering an order is done with the key the customer holds, or by scanning the
+    /// code on their table. Both of those name exactly one order.
+    /// </summary>
+    public string? PlacedFromIp { get; set; }
 
     /// <summary>
     /// Row version maintained by the database, used for optimistic concurrency.
@@ -169,7 +250,52 @@ public class Order
     /// The record of this order being paid, if it has been. One at most, which the
     /// database enforces rather than trusting this navigation to be the only route.
     /// </summary>
-    public Payment? Payment { get; set; }
+    public ICollection<Payment> Payments { get; } = [];
+
+    /// <summary>
+    /// Recomputes the money on the bill from a subtotal and the rates this order holds.
+    ///
+    /// One method, called from every path that changes what is on the order, because
+    /// four places each doing their own arithmetic is four chances to disagree about
+    /// what a table owes.
+    ///
+    /// The order matters and is the Nepalese convention: take the discount off the food,
+    /// add the service charge to what is left, then tax the two together. Service charge
+    /// is part of the taxable amount rather than something added after tax.
+    ///
+    /// Everything is rounded to the currency's two places at each step rather than only
+    /// at the end. A receipt has to add up when somebody checks it by hand, and a total
+    /// carrying a third decimal place that the printed lines do not show is a total that
+    /// appears wrong to the person paying it.
+    /// </summary>
+    /// <param name="subtotal">
+    /// The sum of the lines. Passed in rather than read off <see cref="Items"/>, because
+    /// the paths that append to an order deliberately compute it without loading every
+    /// line - and a navigation that was not loaded would silently zero the bill.
+    /// </param>
+    public void RecalculateBill(decimal subtotal)
+    {
+        Subtotal = Round(subtotal);
+
+        // A discount larger than the bill takes it to zero rather than negative. Nobody
+        // is owed money for eating here, and the alternative is a bill that pays out.
+        var chargeable = Math.Max(0m, Subtotal - Round(DiscountAmount));
+
+        ServiceChargeAmount = Round(chargeable * ServiceChargeRate);
+        VatAmount = Round((chargeable + ServiceChargeAmount) * VatRate);
+        Total = chargeable + ServiceChargeAmount + VatAmount;
+    }
+
+    /// <summary>
+    /// To the currency's smallest unit, away from zero.
+    ///
+    /// Away from zero rather than the default to-even, because to-even is a statistical
+    /// convention for reducing bias across many roundings and a bill is not a sample -
+    /// it is one number a person is about to hand over, and half a paisa going the
+    /// restaurant's way is what everybody expects.
+    /// </summary>
+    private static decimal Round(decimal value) =>
+        Math.Round(value, 2, MidpointRounding.AwayFromZero);
 
     /// <summary>
     /// Whether the order may still be changed.
@@ -227,8 +353,32 @@ public class Order
         && ConfirmedAtUtc is null
         && !Items.Any(item => item.IsSubmittedToKitchen);
 
-    /// <summary>Whether a payment has been recorded against this order.</summary>
-    public bool IsPaid => Payment is not null;
+    /// <summary>
+    /// What has been taken so far, across every payment against this order.
+    ///
+    /// Requires <see cref="Payments"/> to be loaded. A caller that has not loaded them
+    /// reads this as zero, which errs towards the order looking unpaid - the safe
+    /// direction, since the alternative is closing a bill nobody settled.
+    /// </summary>
+    public decimal AmountPaid => Payments.Sum(payment => payment.Amount);
+
+    /// <summary>
+    /// What is still owed. Never negative: a table that overpaid is owed change, not a
+    /// negative bill, and change is handed over at the counter rather than modelled.
+    /// </summary>
+    public decimal AmountOutstanding => Math.Max(0m, Total - AmountPaid);
+
+    /// <summary>
+    /// Whether the bill has been settled in full.
+    ///
+    /// The whole bill, not the existence of a payment. Half of a split bill is a paid
+    /// payment and an unpaid order, and treating the first as the second would close a
+    /// table that still owes money.
+    /// </summary>
+    public bool IsPaid => Payments.Count > 0 && AmountOutstanding <= 0m;
+
+    /// <summary>Whether something has been paid, but not all of it.</summary>
+    public bool IsPartlyPaid => Payments.Count > 0 && AmountOutstanding > 0m;
 
     /// <summary>
     /// Kitchen work still running on this order.
@@ -272,9 +422,28 @@ public class Order
     /// This is deliberately about lines rather than tickets. Requiring merely that some
     /// ticket exists would let three lines be billed after only one had been sent.
     /// </summary>
-    public bool CanComplete =>
+    public bool CanSettle =>
         Status == OrderStatus.Open &&
         !IsPaid &&
+        UnsentItemCount == 0 &&
+        UnfinishedKitchenTicketCount == 0;
+
+    /// <summary>
+    /// Whether the order may now be closed.
+    ///
+    /// Split from <see cref="CanSettle"/> when bills became payable in parts, and the
+    /// difference between the two is the whole point: one asks whether money may be
+    /// taken, the other whether the bill is finished. A half-paid order answers yes to
+    /// the first and no to the second.
+    ///
+    /// Requires the bill to be paid rather than unpaid, which is the opposite of what
+    /// this condition used to say. The old rule was guarding against a second payment
+    /// on an order that already had one; that job now belongs to the payment path,
+    /// which checks the outstanding amount and refuses to overpay.
+    /// </summary>
+    public bool CanComplete =>
+        Status == OrderStatus.Open &&
+        IsPaid &&
         UnsentItemCount == 0 &&
         UnfinishedKitchenTicketCount == 0;
 
@@ -299,33 +468,34 @@ public class Order
     /// there is no refund path to undo a payment and no way to un-cook a plate; a
     /// guest who walks out has to be recordable at any point.
     ///
-    /// This is the rule for somebody who works here. A customer calling off their own
-    /// order answers to <see cref="CanGuestCancel"/>, which is stricter.
+    /// Staff only. A customer cannot call off their own order at all: the moment one
+    /// exists somebody may already be acting on it, and a phone withdrawing an order
+    /// behind a waiter's back is a disagreement this product should not create. What a
+    /// customer can do is add to it - see <see cref="CanCustomerAddTo"/> - and ask a
+    /// member of staff for anything else.
     /// </summary>
     public bool CanCancel => Status == OrderStatus.Open && !IsPaid;
 
     /// <summary>
-    /// Whether the customer who placed this may still call it off themselves.
+    /// Whether the customer who placed this may still add to it themselves.
     ///
-    /// Stricter than <see cref="CanCancel"/>: the order must also be unconfirmed, and
-    /// nothing on it may have reached the kitchen.
+    /// Adding is the one change to a running order a customer can make alone, and it is
+    /// safe in a way that removing is not: nothing already agreed is withdrawn, nothing
+    /// being cooked is affected, and the worst case is a larger bill they asked for.
     ///
-    /// Confirmation is the real line. Up to that point nobody at the restaurant has
-    /// looked at the order, so calling it off costs nothing and inconveniences nobody.
-    /// After it, a member of staff has read the order back to the table and agreed it,
-    /// and a phone quietly withdrawing what was just agreed in person is exactly the
-    /// disagreement this product should not create.
+    /// The line is the kitchen, not the confirmation. Up to the moment food is sent, an
+    /// order is still a list on a screen and another item on it costs nobody anything.
+    /// Once a ticket exists the kitchen is working from paper that no longer matches,
+    /// and a second round has to be a new conversation so somebody knows to send it.
     ///
-    /// The kitchen condition is kept as well, though a confirmation now stands in front
-    /// of every submission and so it should be unreachable. It costs one clause, and it
-    /// is the condition that actually protects the food.
-    ///
-    /// The whole order rather than a line. Cancelling half of something is a
-    /// conversation to have with a waiter, not a button.
+    /// Adding after a waiter has confirmed is allowed, and clears the confirmation -
+    /// see <see cref="Order.TryConfirm"/> for what that gate protects. Lines nobody has
+    /// agreed must not ride into the kitchen on the back of an agreement about
+    /// different ones.
     /// </summary>
-    public bool CanGuestCancel =>
-        CanCancel
-        && ConfirmedAtUtc is null
+    public bool CanCustomerAddTo =>
+        Status == OrderStatus.Open
+        && !IsPaid
         && !Items.Any(item => item.IsSubmittedToKitchen);
 
     /// <summary>

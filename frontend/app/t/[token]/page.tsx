@@ -43,7 +43,18 @@ export default function PublicOrderingPage() {
   const params = useParams<{ token: string }>();
   const token = params.token;
   const router = useRouter();
-  const { isAuthenticated, isLoading } = useAuth();
+  const { user, isAuthenticated, isLoading } = useAuth();
+
+  // Who the pad is actually for, which is not the same as "signed in".
+  //
+  // The endpoints behind it admit a restaurant's staff and its manager, and nobody
+  // else. A platform administrator, or somebody with an account and no restaurant, is
+  // signed in and still has no business taking an order - forking on authentication
+  // alone sent them to a pad that answered every call with a refusal, when the right
+  // answer was to treat them as what they are here: a customer holding a menu.
+  const worksHere =
+    isAuthenticated &&
+    (user?.platformRole === "Staff" || user?.platformRole === "RestaurantManager");
 
   const [table, setTable] = useState<PublicTable | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
@@ -93,13 +104,18 @@ export default function PublicOrderingPage() {
           // Replaced rather than pushed, so the back button returns to whatever they
           // were doing before scanning rather than to a page that only bounces them
           // here again.
-          // The table travels with them. Somebody who just scanned the code screwed
-          // to table seven should not then be asked which table they are at - that
-          // was the one thing the scan knew, and dropping it made the code no better
-          // than the web address printed underneath it.
-          router.replace(
-            `/r/${where.slug}/order?table=${encodeURIComponent(where.tableId)}`,
-          );
+          // The table travels with them, and so does their order if this table has
+          // one running. Somebody who just scanned the code screwed to table seven
+          // should not be asked which table they are at, and if their phone lost the
+          // order they placed twenty minutes ago, the code they are holding is what
+          // hands it back.
+          const query = new URLSearchParams({ table: where.tableId });
+
+          if (where.runningOrderKey !== null) {
+            query.set("k", where.runningOrderKey);
+          }
+
+          router.replace(`/r/${where.slug}/order?${query.toString()}`);
         }
       } catch {
         if (!cancelled) {
@@ -110,12 +126,12 @@ export default function PublicOrderingPage() {
       }
     }
 
-    void (isAuthenticated ? loadPad() : sendToWebsite());
+    void (worksHere ? loadPad() : sendToWebsite());
 
     return () => {
       cancelled = true;
     };
-  }, [token, reloadKey, isAuthenticated, isLoading, router]);
+  }, [token, reloadKey, worksHere, isLoading, router]);
 
   const place = useCallback(
     async (items: OrderDraftLine[]) => {

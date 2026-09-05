@@ -142,12 +142,12 @@ public sealed class PlatformService : IPlatformService
                     order.Subtotal,
                     order.CompletedAtUtc,
                     order.CancelledAtUtc,
-                    PaymentAmount = order.Payment == null
+                    PaymentAmount = !order.Payments.Any()
                         ? (decimal?)null
-                        : order.Payment.Amount,
-                    PaymentMethod = order.Payment == null
+                        : order.Payments.Sum(payment => payment.Amount),
+                    PaymentMethod = order.Payments.Count() != 1
                         ? (PaymentMethod?)null
-                        : order.Payment.Method,
+                        : order.Payments.First().Method,
                 })
                 .ToListAsync(cancellationToken);
 

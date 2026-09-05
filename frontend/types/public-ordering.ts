@@ -46,20 +46,20 @@ export interface PublicOrder {
   awaitingKitchenCount: number;
   placedAtUtc: string;
   /**
-   * Whether the customer may still call this off themselves.
+   * Whether the customer may still add to this order themselves.
    *
-   * True until a member of staff sends any part of it to the kitchen. After that the
-   * food is being cooked and the only person who can stop it is in the room.
+   * True until any part of it goes to the kitchen. After that a second round has to be
+   * a conversation with a waiter, so that somebody knows to send it.
    */
-  canCancel: boolean;
+  canAddMore: boolean;
   /**
-   * What to send back to cancel, or null.
+   * What to send back to add to this order, or null.
    *
-   * Given exactly once, in the response to placing an order from the website, and
-   * never on a read - a page that could read it back for any order would be able to
-   * cancel other people's.
+   * Given in the response to placing an order and to adding to one, and never on a
+   * read - a page that could read it back for any order would be able to change other
+   * people's.
    */
-  cancelKey: string | null;
+  orderKey: string | null;
 }
 
 /** Everything the scanned page needs, in one response. */
@@ -85,6 +85,14 @@ export interface PublicTable {
 export interface ScannedTableRestaurant {
   slug: string;
   restaurantName: string;
+  /**
+   * The key for the order already running on this table, or null.
+   *
+   * How somebody who lost their place gets it back. A phone that cleared its storage
+   * or ran out of battery still has the printed code on the table, and that code names
+   * exactly one order.
+   */
+  runningOrderKey: string | null;
   /**
    * The table the printed code belongs to.
    *
@@ -129,6 +137,13 @@ export interface PublicRestaurant {
 export interface PlaceWebsiteOrderPayload {
   tableId: string;
   items: PublicOrderLinePayload[];
+  /**
+   * The key from an order they already have at this table, for a second round.
+   *
+   * Omitted for a first order, where the table has to be free. Sending it is what
+   * tells the person who started that order from a stranger claiming the table.
+   */
+  orderKey?: string;
 }
 
 /** One line a guest is asking for. */

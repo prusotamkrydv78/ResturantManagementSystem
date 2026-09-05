@@ -52,18 +52,22 @@ public sealed class CustomerHub : Hub
     /// <summary>
     /// Asks to follow the order this key names.
     ///
-    /// Returns the order number on success and null on refusal, deliberately without
-    /// saying which of the several reasons applied - a wrong key, a wrong restaurant, or
-    /// an order that has already been settled or called off all answer the same way. The
-    /// page turns a null into "we cannot follow this one", which is the whole of what a
-    /// customer can usefully do about it.
+    /// Answers with the order number and where the order already stands, and null on
+    /// refusal - deliberately without saying which of the several reasons applied, since
+    /// a wrong key, a wrong restaurant and an order already settled or called off all
+    /// mean the same thing to the page.
+    ///
+    /// The current stage is part of the answer rather than something the page waits for.
+    /// A phone that reloads while the food is cooking has no other way to learn what it
+    /// missed, and without it a guest would see an empty timeline and be offered actions
+    /// that were withdrawn twenty minutes ago.
     ///
     /// Callable more than once, so a reconnection re-joins without a new connection, and
     /// so a customer who orders a second round can follow the new order.
     /// </summary>
     /// <param name="slug">The restaurant's public slug.</param>
-    /// <param name="cancelKey">The key handed back when the order was placed.</param>
-    public async Task<int?> WatchOrder(string slug, string cancelKey)
+    /// <param name="orderKey">The key handed back when the order was placed.</param>
+    public async Task<CustomerOrderHandle?> WatchOrder(string slug, string orderKey)
     {
         var attempts = Context.Items.TryGetValue(nameof(MaxAttempts), out var stored)
             ? (int)(stored ?? 0)
@@ -76,7 +80,7 @@ public sealed class CustomerHub : Hub
             return null;
         }
 
-        var handle = await _watch.ResolveAsync(slug, cancelKey, Context.ConnectionAborted);
+        var handle = await _watch.ResolveAsync(slug, orderKey, Context.ConnectionAborted);
 
         if (handle is null)
         {
@@ -92,10 +96,11 @@ public sealed class CustomerHub : Hub
         await Groups.AddToGroupAsync(Context.ConnectionId, OrderGroup(handle.OrderId));
 
         _logger.LogDebug(
-            "Customer connection {ConnectionId} is following order {OrderNumber}.",
+            "Customer connection {ConnectionId} is following order {OrderNumber} at {Stage}.",
             Context.ConnectionId,
-            handle.OrderNumber);
+            handle.OrderNumber,
+            handle.Stage);
 
-        return handle.OrderNumber;
+        return handle;
     }
 }

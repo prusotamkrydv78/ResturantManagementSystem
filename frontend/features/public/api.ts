@@ -50,7 +50,15 @@ export function getPublicRestaurant(slug: string): Promise<PublicRestaurant> {
   );
 }
 
-/** Place an order from the website, on the table the customer chose. */
+/**
+ * Place an order from the website, or add to one they already have.
+ *
+ * One call for both, because to a customer they are the same act. Passing `orderKey`
+ * is what makes it an addition; without it the table has to be free.
+ *
+ * The key never goes in the URL. A path ends up in a server log, a browser history and
+ * a shared link, and this is the one string that stands for "this is my order".
+ */
 export function placeWebsiteOrder(
   slug: string,
   payload: PlaceWebsiteOrderPayload,
@@ -66,21 +74,24 @@ export function placeWebsiteOrder(
 }
 
 /**
- * Call off an order the customer placed from the website.
+ * Read back an order from the key the customer holds.
  *
- * The key is the whole authority, which is why it never goes in the URL: a path is
- * what ends up in a server log, a browser history and a shared link, and this is the
- * one string that lets somebody cancel an order.
+ * What turns a recovered key into a receipt. It is also what makes the receipt current
+ * rather than merely remembered: the copy on the phone is a snapshot from whenever it
+ * was written, and this is what the restaurant says now.
+ *
+ * A POST because the key travels in the body, never a path - a path ends up in a server
+ * log and a browser history.
  */
-export function cancelWebsiteOrder(
+export function lookupWebsiteOrder(
   slug: string,
-  cancelKey: string,
+  orderKey: string,
 ): Promise<PublicOrder> {
   return apiFetch<PublicOrder>(
-    `/api/public/restaurants/${encodeURIComponent(slug)}/orders/cancel`,
+    `/api/public/restaurants/${encodeURIComponent(slug)}/orders/lookup`,
     {
       method: "POST",
-      body: JSON.stringify({ cancelKey }),
+      body: JSON.stringify({ orderKey }),
       auth: false,
     },
   );

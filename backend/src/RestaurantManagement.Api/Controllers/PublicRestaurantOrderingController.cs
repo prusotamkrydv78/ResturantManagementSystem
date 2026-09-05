@@ -58,8 +58,20 @@ public sealed class PublicRestaurantOrderingController : ControllerBase
     }
 
     /// <summary>
-    /// Places an order on the table the customer said they were sitting at.
+    /// Places an order on the table the customer said they were sitting at, or adds to
+    /// one they already have there.
     /// </summary>
+    /// <remarks>
+    /// One route for both, because to a customer they are the same act. Which happens is
+    /// decided by whether the body carries the key from an order they already have - the
+    /// only thing that can tell the person who started that order from a stranger
+    /// claiming the table.
+    ///
+    /// There is deliberately no route for a customer to remove a line or call an order
+    /// off. Adding is safe on its own: nothing agreed is withdrawn and nothing being
+    /// cooked is affected. Anything else is a conversation with a waiter, who can see
+    /// the whole table and what the kitchen has already started.
+    /// </remarks>
     /// <param name="slug">The restaurant's public slug.</param>
     /// <param name="request">The table, and what they want.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
@@ -77,6 +89,10 @@ public sealed class PublicRestaurantOrderingController : ControllerBase
         var result = await _publicOrdering.PlaceWebsiteOrderAsync(
             slug,
             request,
+            // Taken from the connection rather than from a header. A forwarded-for
+            // header is written by the caller and can say anything, which is worthless
+            // in an audit trail; this is the address the socket actually came from.
+            HttpContext.Connection.RemoteIpAddress?.ToString(),
             cancellationToken);
 
         return result.IsFailure
@@ -85,32 +101,29 @@ public sealed class PublicRestaurantOrderingController : ControllerBase
     }
 
     /// <summary>
-    /// Calls off an order the customer placed themselves.
-    ///
-    /// A POST rather than a DELETE, and deliberately: nothing is deleted. The order
-    /// stays exactly where it was with a cancelled status, a time and a reason on it,
-    /// because a restaurant looking at its evening wants to see the table that ordered
-    /// and changed its mind, not a gap.
-    ///
-    /// The key in the body is the whole authority. It was handed out once, when the
-    /// order was placed, so holding it is the same as having placed the order - which
-    /// is the only claim an anonymous caller can make here, and the only one needed.
+    /// Reads back an order from the key the customer holds.
     /// </summary>
+    /// <remarks>
+    /// How a guest who lost their place picks it up again, and how a page that has been
+    /// closed for an hour catches up with what has happened since.
+    ///
+    /// A POST because the key travels in the body. It reads rather than writes, but a
+    /// key in a path would end up in a server log and a browser history, and this one
+    /// string is the whole claim that an order belongs to somebody.
+    /// </remarks>
     /// <param name="slug">The restaurant's public slug.</param>
-    /// <param name="request">The key they were given when they ordered.</param>
+    /// <param name="request">The key they hold.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    [HttpPost("{slug}/orders/cancel")]
-    [EnableRateLimiting(PublicRateLimiting.PublicWrite)]
+    [HttpPost("{slug}/orders/lookup")]
+    [EnableRateLimiting(PublicRateLimiting.PublicRead)]
     [ProducesResponseType(typeof(PublicOrderResponse), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status409Conflict)]
-    public async Task<ActionResult<PublicOrderResponse>> CancelOrder(
+    public async Task<ActionResult<PublicOrderResponse>> LookupOrder(
         string slug,
-        CancelWebsiteOrderRequest request,
+        LookupWebsiteOrderRequest request,
         CancellationToken cancellationToken)
     {
-        var result = await _publicOrdering.CancelWebsiteOrderAsync(
+        var result = await _publicOrdering.LookupWebsiteOrderAsync(
             slug,
             request,
             cancellationToken);
@@ -136,12 +149,12 @@ public sealed class PublicRestaurantOrderingController : ControllerBase
             return StatusCodes.Status404NotFound;
         }
 
-        // A cancellation that came too late is a conflict for the same reason a busy
-        // table is: the request was well formed, and it would have worked a minute ago.
-        // It is the one failure here whose answer never changes back.
+        // An addition that came too late is a conflict for the same reason a busy table
+        // is: the request was well formed, and it would have worked a minute ago. It is
+        // the one failure here whose answer never changes back.
         return error == PublicOrderingErrors.TableInUse ||
             error == PublicOrderingErrors.StaffServing ||
-            error == PublicOrderingErrors.CannotCancel
+            error == PublicOrderingErrors.CannotAddMore
             ? StatusCodes.Status409Conflict
             : StatusCodes.Status400BadRequest;
     }

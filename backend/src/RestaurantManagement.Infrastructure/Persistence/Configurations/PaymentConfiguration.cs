@@ -33,7 +33,10 @@ public sealed class PaymentConfiguration : IEntityTypeConfiguration<Payment>
         // own: two managers pressing the button at the same instant both read "not
         // paid" before either writes. A second insert here fails outright, so
         // charging a table twice is impossible rather than unlikely.
-        builder.HasIndex(payment => payment.OrderId).IsUnique();
+        // Not unique any more. A bill can be settled in parts - half cash, half card -
+        // and the order closes when the payments cover the total rather than when the
+        // first one arrives. What used to be enforced here is now a sum on the order.
+        builder.HasIndex(payment => payment.OrderId);
 
         // Groundwork for the questions a restaurant asks at the end of a shift:
         // what came in, and how much of it was cash. No report is built on these
@@ -50,13 +53,13 @@ public sealed class PaymentConfiguration : IEntityTypeConfiguration<Payment>
         // the restaurant from reaching a payment by two cascade paths, which SQL
         // Server rejects outright.
         builder.HasOne(payment => payment.Order)
-            .WithOne(order => order.Payment)
-            .HasForeignKey<Payment>(payment => new
+            .WithMany(order => order.Payments)
+            .HasForeignKey(payment => new
             {
                 payment.OrderId,
                 payment.RestaurantId,
             })
-            .HasPrincipalKey<Domain.Orders.Order>(order => new
+            .HasPrincipalKey(order => new
             {
                 order.Id,
                 order.RestaurantId,

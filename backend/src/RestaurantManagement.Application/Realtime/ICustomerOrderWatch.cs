@@ -24,7 +24,7 @@ public interface ICustomerOrderWatch
     /// </summary>
     Task<CustomerOrderHandle?> ResolveAsync(
         string slug,
-        string cancelKey,
+        string orderKey,
         CancellationToken cancellationToken);
 }
 
@@ -32,8 +32,16 @@ public interface ICustomerOrderWatch
 /// What the hub needs about an order somebody is entitled to follow.
 /// </summary>
 /// <param name="OrderId">Which order, for the group name.</param>
-/// <param name="OrderNumber">
-/// So the first message can tell the phone where the order already stands, rather than
-/// leaving it blank until the next thing happens.
+/// <param name="OrderNumber">Their own order number, so a page can check it matches.</param>
+/// <param name="Stage">
+/// How far along the order already is, or null when nothing has happened to it yet.
+///
+/// Answered on joining rather than left blank until the next event, and that matters more
+/// than it sounds. A phone that reloads while the food is cooking would otherwise show an
+/// empty timeline and offer actions that were withdrawn twenty minutes ago - the page has
+/// no other way to learn what it missed while it was closed.
 /// </param>
-public sealed record CustomerOrderHandle(Guid OrderId, int OrderNumber);
+public sealed record CustomerOrderHandle(
+    Guid OrderId,
+    int OrderNumber,
+    CustomerOrderStage? Stage);

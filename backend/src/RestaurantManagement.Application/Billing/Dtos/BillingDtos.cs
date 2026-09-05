@@ -71,6 +71,15 @@ public sealed record PaymentResponse(
 /// <param name="Status">Open, Completed or Cancelled.</param>
 /// <param name="TableName">What staff call the table.</param>
 /// <param name="Subtotal">Server-calculated sum of the lines.</param>
+/// <param name="DiscountAmount">Money taken off, in currency. Zero when there is none.</param>
+/// <param name="ServiceChargeAmount">The service charge, calculated on the discounted food.</param>
+/// <param name="VatAmount">Tax, calculated on the food plus the service charge.</param>
+/// <param name="Total">
+/// What the table owes. This is the figure to show and the figure a payment is checked
+/// against; the subtotal is only what the food cost.
+/// </param>
+/// <param name="AmountPaid">Taken so far, across every payment against this order.</param>
+/// <param name="AmountOutstanding">Still owed. Zero once the bill is settled.</param>
 /// <param name="ItemCount">How many units in total.</param>
 /// <param name="PlacedByName">The waiter who took it.</param>
 /// <param name="CreatedAtUtc">When it was placed.</param>
@@ -85,8 +94,8 @@ public sealed record PaymentResponse(
 /// settled, and the number is sent rather than just the verdict so a list can say which
 /// of the two kitchen conditions is holding an order up: nothing sent, or nothing ready.
 /// </param>
-/// <param name="CanComplete">Whether it may be paid for and closed now.</param>
-/// <param name="Payment">The payment record, once there is one.</param>
+/// <param name="CanSettle">Whether money may be taken against it now.</param>
+/// <param name="Payments">Every payment taken against it, oldest first. A split bill has more than one.</param>
 /// <param name="Cancellation">Why it was called off, if it was.</param>
 public sealed record BillingOrderSummaryResponse(
     Guid Id,
@@ -94,6 +103,12 @@ public sealed record BillingOrderSummaryResponse(
     OrderStatus Status,
     string TableName,
     decimal Subtotal,
+    decimal DiscountAmount,
+    decimal ServiceChargeAmount,
+    decimal VatAmount,
+    decimal Total,
+    decimal AmountPaid,
+    decimal AmountOutstanding,
     int ItemCount,
     string PlacedByName,
     DateTimeOffset CreatedAtUtc,
@@ -101,8 +116,8 @@ public sealed record BillingOrderSummaryResponse(
     int KitchenTicketCount,
     int UnfinishedKitchenTicketCount,
     int UnsentItemCount,
-    bool CanComplete,
-    PaymentResponse? Payment,
+    bool CanSettle,
+    IReadOnlyList<PaymentResponse> Payments,
     CancellationResponse? Cancellation);
 
 /// <summary>One order in full, as the manager reviews it before settling.</summary>
@@ -111,7 +126,16 @@ public sealed record BillingOrderSummaryResponse(
 /// <param name="Status">Open, Completed or Cancelled.</param>
 /// <param name="TableName">What staff call the table.</param>
 /// <param name="TableCapacity">How many the table seats.</param>
-/// <param name="Subtotal">Server-calculated sum of the lines, and the amount due.</param>
+/// <param name="Subtotal">Server-calculated sum of the lines, before tax and charges.</param>
+/// <param name="DiscountAmount">Money taken off, in currency. Zero when there is none.</param>
+/// <param name="ServiceChargeAmount">The service charge, calculated on the discounted food.</param>
+/// <param name="VatAmount">Tax, calculated on the food plus the service charge.</param>
+/// <param name="Total">
+/// What the table owes. This is the figure to show and the figure a payment is checked
+/// against; the subtotal is only what the food cost.
+/// </param>
+/// <param name="AmountPaid">Taken so far, across every payment against this order.</param>
+/// <param name="AmountOutstanding">Still owed. Zero once the bill is settled.</param>
 /// <param name="ItemCount">How many units in total.</param>
 /// <param name="PlacedByName">The waiter who took it.</param>
 /// <param name="CreatedAtUtc">When it was placed.</param>
@@ -125,9 +149,9 @@ public sealed record BillingOrderSummaryResponse(
 /// Tickets the kitchen has already picked up or finished. Does not stop a
 /// cancellation; it is what tells the manager what calling the order off throws away.
 /// </param>
-/// <param name="CanComplete">Whether it may be paid for and closed now.</param>
+/// <param name="CanSettle">Whether money may be taken against it now.</param>
 /// <param name="CanCancel">Whether it may be called off now.</param>
-/// <param name="Payment">The payment record, once there is one.</param>
+/// <param name="Payments">Every payment taken against it, oldest first. A split bill has more than one.</param>
 /// <param name="Cancellation">Why it was called off, if it was.</param>
 /// <param name="Items">The lines, at the prices they were ordered at.</param>
 /// <param name="KitchenTickets">Its submissions, newest first.</param>
@@ -138,6 +162,12 @@ public sealed record BillingOrderResponse(
     string TableName,
     int TableCapacity,
     decimal Subtotal,
+    decimal DiscountAmount,
+    decimal ServiceChargeAmount,
+    decimal VatAmount,
+    decimal Total,
+    decimal AmountPaid,
+    decimal AmountOutstanding,
     int ItemCount,
     string PlacedByName,
     DateTimeOffset CreatedAtUtc,
@@ -145,9 +175,9 @@ public sealed record BillingOrderResponse(
     int UnfinishedKitchenTicketCount,
     int UnsubmittedItemCount,
     int StartedKitchenTicketCount,
-    bool CanComplete,
+    bool CanSettle,
     bool CanCancel,
-    PaymentResponse? Payment,
+    IReadOnlyList<PaymentResponse> Payments,
     CancellationResponse? Cancellation,
     IReadOnlyList<BillingOrderItemResponse> Items,
     IReadOnlyList<BillingKitchenTicketResponse> KitchenTickets);
@@ -171,6 +201,20 @@ public sealed class RecordPaymentRequest
         typeof(PaymentMethod),
         ErrorMessage = "Choose cash, card or a digital payment.")]
     public PaymentMethod Method { get; set; }
+
+    /// <summary>
+    /// How much arrived, or null to settle whatever is still outstanding.
+    ///
+    /// The one amount a request is allowed to name, and it is bounded on both sides:
+    /// more than zero, and no more than the order still owes. It cannot invent a total
+    /// or discount a bill - it can only say how much of a known figure was handed over,
+    /// which is what makes half cash and half card expressible.
+    ///
+    /// Null is the common case and means "the rest of it", so the ordinary single
+    /// payment never has to echo a figure the server already knows.
+    /// </summary>
+    [Range(0.01, 9_999_999, ErrorMessage = "Enter an amount greater than zero.")]
+    public decimal? Amount { get; set; }
 }
 
 /// <summary>The result of settling an order.</summary>
@@ -230,6 +274,15 @@ public sealed class CancelOrderRequest
 /// <param name="Status">Completed or Cancelled.</param>
 /// <param name="TableName">What staff call the table.</param>
 /// <param name="Subtotal">What the order came to, whether or not it was paid.</param>
+/// <param name="DiscountAmount">Money taken off, in currency. Zero when there is none.</param>
+/// <param name="ServiceChargeAmount">The service charge, calculated on the discounted food.</param>
+/// <param name="VatAmount">Tax, calculated on the food plus the service charge.</param>
+/// <param name="Total">
+/// What the table owes. This is the figure to show and the figure a payment is checked
+/// against; the subtotal is only what the food cost.
+/// </param>
+/// <param name="AmountPaid">Taken so far, across every payment against this order.</param>
+/// <param name="AmountOutstanding">Still owed. Zero once the bill is settled.</param>
 /// <param name="ItemCount">How many units were on it.</param>
 /// <param name="PlacedByName">The waiter who took it.</param>
 /// <param name="CreatedAtUtc">When it was placed.</param>
@@ -237,7 +290,7 @@ public sealed class CancelOrderRequest
 /// When it ended, whichever way it ended, so one column sorts the whole history.
 /// </param>
 /// <param name="KitchenTicketCount">How many submissions it produced.</param>
-/// <param name="Payment">The payment record, for a completed order.</param>
+/// <param name="Payments">Every payment taken against it, oldest first.</param>
 /// <param name="Cancellation">The reason, for a cancelled one.</param>
 public sealed record OrderHistoryEntryResponse(
     Guid Id,
@@ -245,10 +298,16 @@ public sealed record OrderHistoryEntryResponse(
     OrderStatus Status,
     string TableName,
     decimal Subtotal,
+    decimal DiscountAmount,
+    decimal ServiceChargeAmount,
+    decimal VatAmount,
+    decimal Total,
+    decimal AmountPaid,
+    decimal AmountOutstanding,
     int ItemCount,
     string PlacedByName,
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset ClosedAtUtc,
     int KitchenTicketCount,
-    PaymentResponse? Payment,
+    IReadOnlyList<PaymentResponse> Payments,
     CancellationResponse? Cancellation);
