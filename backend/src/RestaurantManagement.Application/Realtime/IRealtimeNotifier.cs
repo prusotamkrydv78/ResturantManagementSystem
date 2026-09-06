@@ -63,6 +63,17 @@ public interface IRealtimeNotifier
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Tells the floor that a table wants to pay.
+    ///
+    /// The floor only. A kitchen has nothing to do about a bill, and the whole point of
+    /// splitting these by audience is that a chef's screen stays about food.
+    /// </summary>
+    Task BillRequestedAsync(
+        Guid restaurantId,
+        BillRequestedEvent payload,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Tells both sides the food has gone to the table: the floor so another waiter
     /// stops seeing it as waiting, and the kitchen so the pass clears.
     /// </summary>

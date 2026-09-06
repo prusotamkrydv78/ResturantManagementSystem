@@ -59,6 +59,8 @@ public sealed class OrderConfiguration : IEntityTypeConfiguration<Order>
         builder.Ignore(order => order.IsCustomerPlaced);
         builder.Ignore(order => order.NeedsConfirmation);
         builder.Ignore(order => order.CanCustomerAddTo);
+        builder.Ignore(order => order.IsBillRequested);
+        builder.Ignore(order => order.CanRequestBill);
 
         builder.Property(order => order.Source)
             .IsRequired()
@@ -123,6 +125,11 @@ public sealed class OrderConfiguration : IEntityTypeConfiguration<Order>
         // that is deliberate: an index would invite querying by it, and this is an audit
         // field rather than a way to find somebody's order.
         builder.Property(order => order.PlacedFromIp).HasMaxLength(45);
+
+        // What the floor asks for constantly once this exists: which tables are waiting
+        // to pay. Filtered, because at any moment that is a handful of rows.
+        builder.HasIndex(order => new { order.RestaurantId, order.BillRequestedAtUtc })
+            .HasFilter("[BillRequestedAtUtc] IS NOT NULL");
 
         // The rates as snapshotted, at the same precision the restaurant holds them.
         builder.Property(order => order.VatRate).HasPrecision(6, 4);

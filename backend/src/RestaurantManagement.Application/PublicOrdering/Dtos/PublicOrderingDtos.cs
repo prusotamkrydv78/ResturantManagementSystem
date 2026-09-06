@@ -85,6 +85,21 @@ public sealed record PublicOrderLineResponse(
 /// staff still has to send their order through.
 /// </param>
 /// <param name="PlacedAtUtc">When the first line went on.</param>
+/// <param name="ServiceChargeAmount">The service charge, on the food.</param>
+/// <param name="VatAmount">Tax, on the food plus the service charge.</param>
+/// <param name="Total">
+/// What the table owes, and the only figure a customer should ever be quoted.
+///
+/// Sent because the subtotal was being shown to guests under the word "Total", which
+/// understated every bill by the tax and the service charge - a guest reading 870 and
+/// being asked for 1081 at the counter. The food is still sent alongside it so the
+/// arithmetic on the receipt can be followed.
+/// </param>
+/// <param name="BillRequestedAtUtc">
+/// When they asked to pay, or null. Carried so a phone that reloads still shows that
+/// somebody has been told, rather than offering to ask all over again.
+/// </param>
+/// <param name="CanRequestBill">Whether asking for the bill would do anything now.</param>
 /// <param name="CanAddMore">
 /// Whether the customer may still add to this order themselves. True until any part of
 /// it goes to the kitchen, and false the moment it does - from then on a second round is
@@ -103,8 +118,13 @@ public sealed record PublicOrderResponse(
     IReadOnlyList<PublicOrderLineResponse> Lines,
     int ItemCount,
     decimal Subtotal,
+    decimal ServiceChargeAmount,
+    decimal VatAmount,
+    decimal Total,
     int AwaitingKitchenCount,
     DateTimeOffset PlacedAtUtc,
+    DateTimeOffset? BillRequestedAtUtc,
+    bool CanRequestBill,
     bool CanAddMore,
     string? OrderKey);
 
@@ -223,6 +243,10 @@ public sealed record PublicTableChoiceResponse(
 /// identifier.
 /// </summary>
 /// <param name="RestaurantName">Display name.</param>
+/// <param name="Currency">
+/// The ISO code every amount on this page is in. One per restaurant, so it is sent once
+/// here rather than repeated on each price.
+/// </param>
 /// <param name="Menu">The orderable menu, by section.</param>
 /// <param name="Tables">Tables a customer may say they are at.</param>
 /// <param name="IsAcceptingOrders">
@@ -231,9 +255,24 @@ public sealed record PublicTableChoiceResponse(
 /// </param>
 public sealed record PublicRestaurantResponse(
     string RestaurantName,
+    string Currency,
     IReadOnlyList<PublicMenuSectionResponse> Menu,
     IReadOnlyList<PublicTableChoiceResponse> Tables,
     bool IsAcceptingOrders);
+
+/// <summary>
+/// Payload for asking a waiter to bring the bill.
+///
+/// The key and nothing else. A table asking to pay is the simplest message in this
+/// product: which order, and that is all - there is no amount to name, because the
+/// restaurant already knows what is owed.
+/// </summary>
+public sealed class RequestBillRequest
+{
+    /// <summary>The key handed back when the order was placed.</summary>
+    [Required(ErrorMessage = "We could not find that order.")]
+    public string OrderKey { get; set; } = string.Empty;
+}
 
 /// <summary>
 /// Payload for picking an order back up.

@@ -62,6 +62,7 @@ export const REALTIME_EVENTS = [
   "ticketStarted",
   "ticketReady",
   "ticketServed",
+  "billRequested",
 ] as const;
 
 /** A customer's order landing on the floor. */
@@ -79,6 +80,14 @@ export interface OrderConfirmedPayload {
   orderNumber: number;
   tableName: string;
   confirmedByName: string;
+}
+
+/** A table asking to pay. */
+export interface BillRequestedPayload {
+  orderId: string;
+  orderNumber: number;
+  tableName: string;
+  total: number;
 }
 
 /** A ticket moving through the kitchen, and then off it. */

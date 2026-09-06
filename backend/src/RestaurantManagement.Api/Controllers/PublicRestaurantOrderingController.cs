@@ -101,6 +101,43 @@ public sealed class PublicRestaurantOrderingController : ControllerBase
     }
 
     /// <summary>
+    /// Asks a waiter to bring the bill to the table.
+    /// </summary>
+    /// <remarks>
+    /// The one thing a customer could not do from their phone, and the part of a meal
+    /// that goes wrong most often - catching somebody’s eye at the end, once the table
+    /// has already decided to leave.
+    ///
+    /// Recorded on the order as well as announced to the floor, so a waiter who was
+    /// carrying plates when it happened still finds the table waiting.
+    ///
+    /// Asking twice is not an error and keeps the original time: a guest tapping again
+    /// is being ignored, not making a mistake, and restarting the clock would hide the
+    /// table that has waited longest.
+    /// </remarks>
+    /// <param name="slug">The restaurant’s public slug.</param>
+    /// <param name="request">The key they hold.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    [HttpPost("{slug}/orders/bill-request")]
+    [EnableRateLimiting(PublicRateLimiting.PublicWrite)]
+    [ProducesResponseType(typeof(PublicOrderResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<PublicOrderResponse>> RequestBill(
+        string slug,
+        RequestBillRequest request,
+        CancellationToken cancellationToken)
+    {
+        var result = await _publicOrdering.RequestBillAsync(
+            slug,
+            request,
+            cancellationToken);
+
+        return result.IsFailure
+            ? ProblemFrom(result.Error!, StatusFor(result.Error!))
+            : Ok(result.Value);
+    }
+
+    /// <summary>
     /// Reads back an order from the key the customer holds.
     /// </summary>
     /// <remarks>

@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
+import { OrderReturnBar } from "@/features/public/order-return-bar";
 import { SiteRenderer } from "@/features/site/templates";
 import { serverApiUrl } from "@/lib/config/server-api";
 import { emptySiteContent, type PublicSite, type SiteContent } from "@/types/site";
@@ -108,11 +109,19 @@ export default async function RestaurantSitePage({ params }: PageProps<"/r/[slug
   }
 
   return (
-    <SiteRenderer
-      template={site.template}
-      content={withDefaults(site.content)}
-      restaurantName={site.restaurantName}
-      orderHref={`/r/${slug}/order`}
-    />
+    <>
+      <SiteRenderer
+        template={site.template}
+        content={withDefaults(site.content)}
+        restaurantName={site.restaurantName}
+        orderHref={`/r/${slug}/order`}
+      />
+
+      {/* A client island on an otherwise server-rendered page. It shows nothing for the
+          strangers this page is written for, and appears only for somebody who already
+          has an order here - who would otherwise have no way of knowing the site
+          remembers it. */}
+      <OrderReturnBar slug={slug} />
+    </>
   );
 }

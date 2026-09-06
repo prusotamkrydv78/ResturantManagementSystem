@@ -4,6 +4,7 @@ import { useToast } from "@/components/ui/toast";
 import { useAuth } from "@/features/auth/auth-context";
 import {
   useRealtimeEvent,
+  type BillRequestedPayload,
   type OrderConfirmedPayload,
   type OrderPlacedPayload,
   type TicketPayload,
@@ -112,6 +113,20 @@ export function ServiceToasts() {
       actionLabel: "Open the pass",
       duration: 12000,
       dedupeKey: `ticket:${event.ticketId}`,
+    });
+  });
+
+  useRealtimeEvent<BillRequestedPayload>("billRequested", (event) => {
+    notify({
+      // One of the two that chime. A table that has asked to pay has already decided to
+      // leave, and every minute after that is one they spend waiting on us.
+      tone: "alert",
+      title: `${event.tableName} is ready to pay`,
+      description: `Order #${event.orderNumber} · ${event.total.toFixed(2)}`,
+      href: `/orders/${event.orderId}`,
+      actionLabel: "Open the order",
+      duration: 12000,
+      dedupeKey: `bill:${event.orderId}`,
     });
   });
 

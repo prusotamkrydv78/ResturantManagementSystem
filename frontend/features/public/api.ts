@@ -97,6 +97,27 @@ export function lookupWebsiteOrder(
   );
 }
 
+/**
+ * Ask a waiter to bring the bill.
+ *
+ * Recorded against the order as well as announced to the floor, so a waiter who was
+ * carrying plates at that moment still finds the table waiting. Asking twice is not an
+ * error and does not restart the wait.
+ */
+export function requestBill(
+  slug: string,
+  orderKey: string,
+): Promise<PublicOrder> {
+  return apiFetch<PublicOrder>(
+    `/api/public/restaurants/${encodeURIComponent(slug)}/orders/bill-request`,
+    {
+      method: "POST",
+      body: JSON.stringify({ orderKey }),
+      auth: false,
+    },
+  );
+}
+
 /** What the scanned page needs: where they are, the menu, and their order so far. */
 export function getPublicTable(token: string): Promise<PublicTable> {
   return apiFetch<PublicTable>(

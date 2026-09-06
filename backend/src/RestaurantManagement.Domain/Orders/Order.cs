@@ -210,6 +210,23 @@ public class Order
     public string? PublicOrderKey { get; set; }
 
     /// <summary>
+    /// When the table asked for their bill, or null if they have not.
+    ///
+    /// A table putting its hand up, recorded rather than merely announced. A
+    /// notification reaches whoever is looking at a screen in that moment; this reaches
+    /// the waiter who was carrying plates when it happened, and the one who takes over
+    /// at the end of a shift. A guest who has asked to pay and been forgotten is the
+    /// worst few minutes of a meal.
+    ///
+    /// Kept as a time rather than a flag so the floor can show how long they have been
+    /// waiting, which is the part that decides who gets seen first.
+    ///
+    /// Cleared by nothing. Settling the order ends it, and an order that has been paid
+    /// is no longer asking for anything.
+    /// </summary>
+    public DateTimeOffset? BillRequestedAtUtc { get; set; }
+
+    /// <summary>
     /// The address the order was placed from, or null.
     ///
     /// An audit trail, and deliberately nothing else. It is here so that a flood of
@@ -493,6 +510,41 @@ public class Order
     /// agreed must not ride into the kitchen on the back of an agreement about
     /// different ones.
     /// </summary>
+    /// <summary>Whether this table is waiting to pay.</summary>
+    public bool IsBillRequested => BillRequestedAtUtc is not null;
+
+    /// <summary>
+    /// Whether the customer may ask for their bill.
+    ///
+    /// While the order is running and unpaid, which is the whole of it. Asking twice is
+    /// allowed and simply moves nothing - see <see cref="TryRequestBill"/> - because a
+    /// guest who taps again after five minutes is not making a mistake, they are being
+    /// ignored.
+    /// </summary>
+    public bool CanRequestBill => Status == OrderStatus.Open && !IsPaid;
+
+    /// <summary>
+    /// Records that the table has asked to pay.
+    ///
+    /// Returns false only when there is nothing to ask about: the order has already been
+    /// settled or called off. Asking a second time succeeds and deliberately keeps the
+    /// original time, because how long somebody has been waiting is the useful fact and
+    /// restarting the clock on every tap would hide exactly the tables that have waited
+    /// longest.
+    /// </summary>
+    public bool TryRequestBill(DateTimeOffset now)
+    {
+        if (!CanRequestBill)
+        {
+            return false;
+        }
+
+        BillRequestedAtUtc ??= now;
+        UpdatedAtUtc = now;
+
+        return true;
+    }
+
     public bool CanCustomerAddTo =>
         Status == OrderStatus.Open
         && !IsPaid

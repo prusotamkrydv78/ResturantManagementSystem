@@ -127,6 +127,17 @@ public sealed class SignalRRealtimeNotifier : IRealtimeNotifier
     }
 
     /// <inheritdoc />
+    public Task BillRequestedAsync(
+        Guid restaurantId,
+        BillRequestedEvent payload,
+        CancellationToken cancellationToken) =>
+        SendAsync(
+            OperationsHub.FloorGroup(restaurantId),
+            RealtimeEventNames.BillRequested,
+            payload,
+            cancellationToken);
+
+    /// <inheritdoc />
     public async Task TicketServedAsync(
         Guid restaurantId,
         TicketEvent payload,

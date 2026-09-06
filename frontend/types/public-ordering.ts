@@ -42,7 +42,21 @@ export interface PublicOrder {
   orderNumber: number;
   lines: PublicOrderLine[];
   itemCount: number;
+  /** What the food came to, before anything is added. Never the amount to pay. */
   subtotal: number;
+  serviceChargeAmount: number;
+  vatAmount: number;
+  /**
+   * What the table owes, and the only figure to put in front of a guest.
+   *
+   * The receipt used to show the subtotal under the word "Total", which understated
+   * every bill by the tax and the service charge.
+   */
+  total: number;
+  /** When they asked to pay, or null. Survives a reload, so the page stays honest. */
+  billRequestedAtUtc: string | null;
+  /** Whether asking for the bill would do anything now. */
+  canRequestBill: boolean;
   awaitingKitchenCount: number;
   placedAtUtc: string;
   /**
@@ -122,6 +136,8 @@ export interface PublicTableChoice {
  */
 export interface PublicRestaurant {
   restaurantName: string;
+  /** The ISO code every amount on this page is in. One per restaurant. */
+  currency: string;
   menu: PublicMenuSection[];
   tables: PublicTableChoice[];
   /** False when no table is open to ordering at all. */

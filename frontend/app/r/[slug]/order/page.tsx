@@ -3,7 +3,15 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Check, Info, Plus, UtensilsCrossed } from "lucide-react";
+import {
+  ArrowLeft,
+  Check,
+  HandCoins,
+  Info,
+  Plus,
+  ReceiptText,
+  UtensilsCrossed,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Surface } from "@/components/ui/surface";
 import { EmptyState, Spinner } from "@/components/ui/states";
@@ -12,6 +20,7 @@ import {
   getPublicRestaurant,
   lookupWebsiteOrder,
   placeWebsiteOrder,
+  requestBill,
 } from "@/features/public/api";
 import { OrderComposer, type OrderDraftLine } from "@/features/public/order-composer";
 import { isAtLeast, STAGE_COPY } from "@/features/public/order-progress";
@@ -87,6 +96,10 @@ function WebsiteOrder() {
   // True while the page is asking the restaurant about a key it found lying around, so
   // the menu does not flash up underneath a receipt that is about to replace it.
   const [recovering, setRecovering] = useState(true);
+  // Asking for the bill, and how it went. The answer replaces the whole order, so the
+  // "we have told them" state survives a reload without being tracked separately.
+  const [asking, setAsking] = useState(false);
+  const [askError, setAskError] = useState<string | null>(null);
 
   const { notify } = useToast();
 
@@ -127,12 +140,18 @@ function WebsiteOrder() {
         if (!cancelled) {
           setPlaced(found);
         }
-      } catch {
-        // Settled, called off, or a key that names nothing here any more. Forgotten
-        // rather than reported: the guest did not ask for this and there is nothing
-        // for them to do about it, so the page simply starts clean.
-        clearReceipt(slug);
-        forgetInUrl();
+      } catch (caught) {
+        // Only a definite answer from the restaurant is allowed to throw the key away.
+        //
+        // A 404 means this key names nothing here any more, which will not change and
+        // is worth forgetting. Anything else - a dropped connection, a phone waking up
+        // on a bad signal, a rate limit - means we do not know, and discarding somebody’s
+        // order because their wifi hiccuped is the difference between a slow page
+        // and a lost meal. The key is kept and the next load tries again.
+        if (caught instanceof ApiError && caught.status === 404) {
+          clearReceipt(slug);
+          forgetInUrl();
+        }
       } finally {
         if (!cancelled) {
           setRecovering(false);
@@ -222,6 +241,19 @@ function WebsiteOrder() {
   // Written whenever the receipt changes, rather than at each of the places that change
   // it. One rule in one place: what is on screen is what the phone remembers.
   useEffect(() => {
+    // Nothing at all until the recovery has finished, and this is the whole bug it was
+    // written to fix. `placed` starts null, so on every single load this effect used to
+    // run first and wipe both copies of the key - the stored one and the one in the
+    // address - while the lookup that needed them was still in flight. It survived only
+    // because the lookup usually came back and wrote them again; a reload in that window,
+    // or one failed request, lost the order permanently.
+    //
+    // The customer had done nothing wrong and had no way back, which is exactly the
+    // failure the three copies exist to prevent.
+    if (recovering) {
+      return;
+    }
+
     if (placed === null) {
       clearReceipt(slug);
       forgetInUrl();
@@ -236,7 +268,7 @@ function WebsiteOrder() {
     if (placed.orderKey !== null && tableId !== "") {
       rememberInUrl(placed.orderKey, tableId);
     }
-  }, [slug, placed, tableId]);
+  }, [slug, placed, tableId, recovering]);
 
   const place = useCallback(
     async (items: OrderDraftLine[]) => {
@@ -276,6 +308,31 @@ function WebsiteOrder() {
     },
     [slug, tableId, placed],
   );
+
+  /** Asks a waiter to bring the bill over. */
+  const askForBill = useCallback(async () => {
+    if (placed?.orderKey === null || placed?.orderKey === undefined) {
+      return;
+    }
+
+    setAskError(null);
+    setAsking(true);
+
+    try {
+      // The response is the order as it now stands, which carries the time the request
+      // was recorded - so the confirmed state comes from the restaurant rather than from
+      // a flag this page sets and then loses on the next reload.
+      setPlaced(await requestBill(slug, placed.orderKey));
+    } catch (caught) {
+      setAskError(
+        caught instanceof ApiError
+          ? caught.message
+          : "We could not reach the restaurant. Please catch a member of staff.",
+      );
+    } finally {
+      setAsking(false);
+    }
+  }, [slug, placed]);
 
   /** Forgets this order and goes back to an empty page. */
   const startOver = useCallback(() => {
@@ -324,6 +381,10 @@ function WebsiteOrder() {
 
   // Sent, and not currently adding to it. The page stops being a menu and becomes a
   // receipt, because what matters now is where the food is and the number they quote.
+  // One restaurant trades in one currency, so it is read once here rather than carried
+  // on every amount.
+  const money = restaurant.currency;
+
   if (placed !== null && !adding) {
     // Both conditions, and they answer different questions. `canAddMore` is what the
     // restaurant said when the order was last touched; the stage is what has happened
@@ -374,17 +435,71 @@ function WebsiteOrder() {
             ))}
           </ul>
 
-          <div className="flex items-baseline justify-between border-t border-border pt-3">
-            <span className="text-sm font-medium text-text">Total</span>
-            <span className="text-lg font-semibold text-text tabular">
-              {placed.subtotal.toFixed(2)}
-            </span>
+          {/* The whole bill, itemised. This used to show the subtotal under the word
+              "Total", which understated it by the tax and the service charge - a guest
+              reading one figure and being asked for another at the counter. The parts
+              are shown so the arithmetic can be followed rather than trusted. */}
+          <div className="flex flex-col gap-1 border-t border-border pt-3">
+            <Money label="Food" amount={placed.subtotal} currency={money} />
+
+            {placed.serviceChargeAmount > 0 && (
+              <Money
+                label="Service charge"
+                amount={placed.serviceChargeAmount}
+                currency={money}
+              />
+            )}
+
+            {placed.vatAmount > 0 && (
+              <Money label="VAT" amount={placed.vatAmount} currency={money} />
+            )}
+
+            <div className="mt-1 flex items-baseline justify-between border-t border-border pt-2">
+              <span className="text-sm font-medium text-text">Total</span>
+              <span className="text-lg font-semibold text-text tabular">
+                {money} {placed.total.toFixed(2)}
+              </span>
+            </div>
           </div>
 
-          <p className="text-sm text-muted">
-            Pay with a member of staff when you are finished, and quote order #
-            {placed.orderNumber}.
-          </p>
+          {/* Asking is not paying. The money still changes hands with a person, so the
+              button says what it does - it calls somebody over. */}
+          {placed.billRequestedAtUtc !== null ? (
+            <p
+              role="status"
+              className="flex items-start gap-2 rounded-md bg-success-soft px-3 py-2 text-sm font-medium text-success"
+            >
+              <Check className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+              A member of staff is on their way with your bill.
+            </p>
+          ) : placed.canRequestBill ? (
+            <div className="flex flex-col gap-2">
+              {askError !== null && (
+                <p role="alert" className="flex items-start gap-2 text-sm text-warning">
+                  <Info className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+                  {askError}
+                </p>
+              )}
+
+              <Button
+                variant="secondary"
+                onClick={() => void askForBill()}
+                disabled={asking}
+                icon={<HandCoins />}
+              >
+                {asking ? "Letting them know…" : "Ask for the bill"}
+              </Button>
+
+              <p className="text-2xs text-subtle">
+                A waiter will come over to take payment. You can keep sitting where you
+                are.
+              </p>
+            </div>
+          ) : (
+            <p className="text-sm text-muted">
+              This order has been settled. Thank you.
+            </p>
+          )}
 
           {/* Only while the order is still running. A settled or cancelled one has
               nowhere left to go, and a timeline frozen mid-way would suggest it does. */}
@@ -465,10 +580,10 @@ function WebsiteOrder() {
             <button
               type="button"
               onClick={() => setAdding(false)}
-              aria-label="Back to your order"
-              className="shrink-0 rounded-md p-1.5 text-muted transition-colors hover:bg-surface-3 hover:text-text"
+              className="flex shrink-0 items-center gap-1.5 rounded-md border border-border-strong px-2.5 py-1.5 text-sm font-medium text-text transition-colors hover:bg-surface-3"
             >
-              <ArrowLeft className="size-5" aria-hidden="true" />
+              <ArrowLeft className="size-4" aria-hidden="true" />
+              Your order
             </button>
           ) : (
             <Link
@@ -556,10 +671,25 @@ function WebsiteOrder() {
         )}
 
         {adding && (
-          <p className="px-1 text-sm text-muted">
-            Anything you choose here is added to order #{placed?.orderNumber} and the
-            same bill.
-          </p>
+          <button
+            type="button"
+            onClick={() => setAdding(false)}
+            className="flex w-full items-center gap-3 rounded-lg border border-primary-border bg-primary-soft px-3 py-2.5 text-left transition-colors hover:bg-surface-3"
+          >
+            <ReceiptText className="size-4 shrink-0 text-primary" aria-hidden="true" />
+            <span className="flex min-w-0 flex-col">
+              <span className="text-sm font-semibold text-text">
+                Back to order #{placed?.orderNumber}
+              </span>
+              <span className="text-2xs text-muted">
+                Anything you choose here is added to the same bill. Go back to follow it
+                or ask for the bill.
+              </span>
+            </span>
+            <span className="ml-auto shrink-0 text-sm font-semibold text-text tabular">
+              {money} {placed?.total.toFixed(2)}
+            </span>
+          </button>
         )}
 
         {hasTable ? (
@@ -576,6 +706,26 @@ function WebsiteOrder() {
         )}
       </main>
     </>
+  );
+}
+
+/** One line of the bill: what it is, and what it comes to. */
+function Money({
+  label,
+  amount,
+  currency,
+}: {
+  label: string;
+  amount: number;
+  currency: string;
+}) {
+  return (
+    <div className="flex items-baseline justify-between gap-3">
+      <span className="text-sm text-muted">{label}</span>
+      <span className="tabular text-sm text-text">
+        {currency} {amount.toFixed(2)}
+      </span>
+    </div>
   );
 }
 

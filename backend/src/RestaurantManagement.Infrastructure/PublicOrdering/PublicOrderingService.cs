@@ -223,9 +223,90 @@ public sealed class PublicOrderingService : IPublicOrderingService
 
         return Result.Success(new PublicRestaurantResponse(
             restaurant.Value.Name,
+            restaurant.Value.Currency,
             menu,
             tables,
             tables.Count > 0));
+    }
+
+    /// <inheritdoc />
+    public async Task<Result<PublicOrderResponse>> RequestBillAsync(
+        string slug,
+        RequestBillRequest request,
+        CancellationToken cancellationToken)
+    {
+        var restaurant = await ResolveRestaurantAsync(slug, cancellationToken);
+
+        if (restaurant is null)
+        {
+            return Result.Failure<PublicOrderResponse>(PublicOrderingErrors.NotFound);
+        }
+
+        var key = Normalise(request.OrderKey);
+
+        if (key is null)
+        {
+            return Result.Failure<PublicOrderResponse>(PublicOrderingErrors.NotFound);
+        }
+
+        // Tracked, because this one writes. The table is loaded for the name the waiter
+        // is about to be shown, and the payments for whether anything is still owed.
+        var order = await _dbContext.Orders
+            .Include(candidate => candidate.Items)
+                .ThenInclude(item => item.KitchenTicketItem)
+            .Include(candidate => candidate.Payments)
+            .Include(candidate => candidate.Table)
+            .SingleOrDefaultAsync(
+                candidate =>
+                    candidate.PublicOrderKey == key &&
+                    candidate.RestaurantId == restaurant.Value.Id,
+                cancellationToken);
+
+        if (order is null)
+        {
+            return Result.Failure<PublicOrderResponse>(PublicOrderingErrors.NotFound);
+        }
+
+        var now = DateTimeOffset.UtcNow;
+
+        // False only when the order has already been settled or called off, and asking
+        // to pay a bill that is paid is a request that has been answered - reported as
+        // success with the order as it stands, so a phone that lagged behind simply
+        // catches up rather than showing an error about nothing.
+        if (!order.TryRequestBill(now))
+        {
+            return Result.Success(ToResponse(order, order.PublicOrderKey));
+        }
+
+        try
+        {
+            await _dbContext.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            // Somebody moved the order underneath us, very likely a waiter settling it
+            // at the counter at the same moment. Nothing is owed by the guest here.
+            return Result.Failure<PublicOrderResponse>(PublicOrderingErrors.NotFound);
+        }
+
+        _logger.LogInformation(
+            "Table {TableName} asked for the bill on order {OrderNumber}, {Total} outstanding.",
+            order.Table.Name,
+            order.OrderNumber,
+            order.AmountOutstanding);
+
+        // After the save. A floor told to go and take a payment that then failed to
+        // record would send a waiter to a table for nothing.
+        await _realtime.BillRequestedAsync(
+            restaurant.Value.Id,
+            new BillRequestedEvent(
+                order.Id,
+                order.OrderNumber,
+                order.Table.Name,
+                order.Total),
+            cancellationToken);
+
+        return Result.Success(ToResponse(order, order.PublicOrderKey));
     }
 
     /// <inheritdoc />
@@ -256,8 +337,7 @@ public sealed class PublicOrderingService : IPublicOrderingService
             .SingleOrDefaultAsync(
                 candidate =>
                     candidate.PublicOrderKey == key &&
-                    candidate.RestaurantId == restaurant.Value.Id &&
-                    candidate.Status == OrderStatus.Open,
+                    candidate.RestaurantId == restaurant.Value.Id,
                 cancellationToken);
 
         if (order is null)
@@ -654,7 +734,7 @@ public sealed class PublicOrderingService : IPublicOrderingService
         return managed;
     }
 
-    private async Task<(Guid Id, string Name)?> ResolveRestaurantAsync(
+    private async Task<(Guid Id, string Name, string Currency)?> ResolveRestaurantAsync(
         string slug,
         CancellationToken cancellationToken)
     {
@@ -668,10 +748,10 @@ public sealed class PublicOrderingService : IPublicOrderingService
         var found = await _dbContext.Restaurants
             .AsNoTracking()
             .Where(restaurant => restaurant.Slug == normalised && restaurant.IsActive)
-            .Select(restaurant => new { restaurant.Id, restaurant.Name })
+            .Select(restaurant => new { restaurant.Id, restaurant.Name, restaurant.Currency })
             .SingleOrDefaultAsync(cancellationToken);
 
-        return found is null ? null : (found.Id, found.Name);
+        return found is null ? null : (found.Id, found.Name, found.Currency);
     }
 
     private async Task<RestaurantTable?> ResolveTableAsync(
@@ -834,10 +914,15 @@ public sealed class PublicOrderingService : IPublicOrderingService
             lines,
             order.Items.Sum(item => item.Quantity),
             order.Subtotal,
+            order.ServiceChargeAmount,
+            order.VatAmount,
+            order.Total,
             order.Items
                 .Where(item => !item.IsSubmittedToKitchen)
                 .Sum(item => item.Quantity),
             order.CreatedAtUtc,
+            order.BillRequestedAtUtc,
+            order.CanRequestBill,
             order.CanCustomerAddTo,
             orderKey);
     }

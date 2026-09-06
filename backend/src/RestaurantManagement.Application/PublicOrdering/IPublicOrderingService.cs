@@ -58,6 +58,27 @@ public interface IPublicOrderingService
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Records that a table has asked for their bill, and tells the floor.
+    /// </summary>
+    /// <remarks>
+    /// The one thing a customer could not do from their phone. Catching a waiter's eye
+    /// is the part of a meal that goes wrong most often, and it goes wrong at the end -
+    /// when somebody has already decided to leave.
+    ///
+    /// Written down as well as announced. A notification reaches whoever is looking at
+    /// a screen in that second; the record reaches the waiter who was carrying plates,
+    /// and the one who takes over the section twenty minutes later.
+    ///
+    /// Asking twice is not an error and does not move the clock. A guest tapping again
+    /// is not confused, they are being ignored, and resetting the wait would hide the
+    /// table that has waited longest from the screen meant to surface it.
+    /// </remarks>
+    Task<Result<PublicOrderResponse>> RequestBillAsync(
+        string slug,
+        RequestBillRequest request,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Reads back an order the customer already has, from the key they hold.
     /// </summary>
     /// <remarks>
@@ -70,9 +91,15 @@ public interface IPublicOrderingService
     /// restaurant currently says, so a page that reopens after an hour shows the bill as
     /// it now stands rather than as it was.
     ///
-    /// Refused once the order has been settled or called off. There is nothing useful
-    /// left to show a customer at that point, and a key that outlives its order is a
-    /// capability with no purpose.
+    /// Deliberately still answers for an order that has been settled or called off.
+    /// The first version refused, on the grounds that a finished order has nothing left
+    /// to do - which confused what a customer can act on with what they can see. A guest
+    /// who reloaded after paying was left staring at an empty menu, holding no record of
+    /// what they had ordered and no idea what had become of it.
+    ///
+    /// What they can do about it is already nil: adding is closed by the kitchen rule,
+    /// and the live feed refuses a finished order and tells the page so. Reading it back
+    /// costs nothing and leaves them holding their receipt.
     /// </remarks>
     Task<Result<PublicOrderResponse>> LookupWebsiteOrderAsync(
         string slug,

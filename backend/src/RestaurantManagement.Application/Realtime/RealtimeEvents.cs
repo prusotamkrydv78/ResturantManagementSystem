@@ -26,6 +26,9 @@ public static class RealtimeEventNames
     /// <summary>A waiter took the food to the table.</summary>
     public const string TicketServed = "ticketServed";
 
+    /// <summary>A table has asked for their bill.</summary>
+    public const string BillRequested = "billRequested";
+
     /// <summary>
     /// How far along a customer's own order is, sent to that customer alone.
     ///
@@ -68,6 +71,22 @@ public sealed record OrderConfirmedEvent(
     int OrderNumber,
     string TableName,
     string ConfirmedByName);
+
+/// <summary>
+/// A table asking to pay.
+/// </summary>
+/// <param name="OrderId">So a waiter can open it.</param>
+/// <param name="OrderNumber">Readable number.</param>
+/// <param name="TableName">Where to go. The only thing a waiter navigates by.</param>
+/// <param name="Total">
+/// What they owe, so the waiter can pick up the card machine knowing the figure rather
+/// than walking to the table to find out.
+/// </param>
+public sealed record BillRequestedEvent(
+    Guid OrderId,
+    int OrderNumber,
+    string TableName,
+    decimal Total);
 
 /// <summary>
 /// A ticket moving through the kitchen, and then off it.
