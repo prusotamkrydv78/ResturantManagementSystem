@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { AnimatePresence, motion, MotionConfig } from "motion/react";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -9,6 +10,7 @@ import {
   HandCoins,
   Info,
   Plus,
+  QrCode,
   ReceiptText,
   Star,
   UtensilsCrossed,
@@ -16,6 +18,7 @@ import {
 import { Button, LinkButton } from "@/components/ui/button";
 import { Surface } from "@/components/ui/surface";
 import { EmptyState, Spinner } from "@/components/ui/states";
+import { TapPulse } from "@/components/ui/tap-pulse";
 import { ToastProvider } from "@/components/ui/toast";
 import {
   getPublicRestaurant,
@@ -77,6 +80,9 @@ export default function WebsiteOrderPage() {
   // outside it, so the page brings its own. Same toasts, same chime, same mute.
   return (
     <ToastProvider>
+      {/* Mounted once for the page, so every control on it answers a finger without
+          having to be wired up individually. */}
+      <TapPulse />
       <WebsiteOrder />
     </ToastProvider>
   );
@@ -115,6 +121,25 @@ function WebsiteOrder() {
   // sitting there ready by the time the overlay clears, not assembling afterwards.
   const [celebrating, setCelebrating] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
+  /**
+   * Which step of placing an order they are on.
+   *
+   * Only ever "table" or "menu" here. The third - checking the order over - belongs to
+   * the composer, because the basket it is a view of lives in there; it reports which
+   * of the two it is showing and `step` below stitches the three together.
+   *
+   * Held rather than derived from whether a table is chosen. Picking one and moving on
+   * are two different acts, and collapsing them meant the menu appeared under a guest
+   * the instant they touched a tile - which is the drawer problem in another costume.
+   */
+  const [flowStage, setFlowStage] = useState<"table" | "menu">("table");
+  const [checking, setChecking] = useState(false);
+  // Whether the "which one am I at?" help is open.
+  //
+  // Opened by asking, and also by tapping a table that is already in use - because
+  // somebody doing that is either at a table they think is free, or is at their own
+  // table having forgotten they ordered, and the help answers both.
+  const [tableHelp, setTableHelp] = useState(false);
   // True while the page is asking the restaurant about a key it found lying around, so
   // the menu does not flash up underneath a receipt that is about to replace it.
   const [recovering, setRecovering] = useState(true);
@@ -251,6 +276,10 @@ function WebsiteOrder() {
 
           if (scanned !== undefined) {
             setTableId(scanned.id);
+            // Scanning the code on a table has answered step one already. Making them
+            // confirm what the code just told us would be asking a question we have
+            // the answer to.
+            setFlowStage("menu");
           }
         }
       } catch (caught) {
@@ -476,14 +505,41 @@ function WebsiteOrder() {
       cancelled = true;
     };
     // Deliberately not depending on `placed`: this reads it, and depending on it would
-    // re-run the moment its own result arrived.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // re-run the moment its own result arrived. Since the key moved out into its own
+    // state this no longer reads `placed` at all, so the rule is satisfied and the
+    // suppression it used to need is gone.
   }, [slug, reloadOrderKey, orderKey]);
+
+  /**
+   * Re-reads which tables are free when the page comes back into view.
+   *
+   * The list was fetched once and then trusted for as long as the tab stayed open, so
+   * somebody who put their phone down while deciding could sit looking at a table that
+   * had been taken minutes ago - and only find out after building a basket, which is
+   * the exact moment this whole flow is arranged to avoid.
+   *
+   * Only while they are still choosing. Once a table is picked the composer is mounted
+   * and holds the basket, and refetching could hide it mid-order and lose everything
+   * they had chosen - a far worse outcome than a slightly stale list.
+   */
+  useEffect(() => {
+    function recheck() {
+      if (!document.hidden && placed === null && tableId === "") {
+        setReloadKey((key) => key + 1);
+      }
+    }
+
+    document.addEventListener("visibilitychange", recheck);
+
+    return () => document.removeEventListener("visibilitychange", recheck);
+  }, [placed, tableId]);
 
   /** Forgets this order and goes back to an empty page. */
   const startOver = useCallback(() => {
     setPlaced(null);
     setOrderKey(null);
+    setFlowStage("table");
+    setChecking(false);
     setAdding(false);
     setPlaceError(null);
     setReloadKey((key) => key + 1);
@@ -532,6 +588,29 @@ function WebsiteOrder() {
   // on every amount.
   const money = restaurant.currency;
 
+  const table = restaurant.tables.find((candidate) => candidate.id === tableId);
+  // Adding to an existing order keeps its table, which is by definition not free any
+  // more - it has their own order running on it. Asking again, or refusing it as taken,
+  // would both be wrong.
+  const hasTable = adding ? tableId !== "" : table !== undefined && table.isAvailable;
+
+  /**
+   * The step actually on screen.
+   *
+   *
+   * Checking wins over everything, because it is where they are. Adding a second round
+   * has no table step at all - the table came with the order being added to - so it
+   * starts on the menu. And a menu step with no table falls back to the table: a table
+   * can be taken while somebody is deciding, and the menu is no use without one.
+   */
+  const step: "table" | "menu" | "check" = checking
+    ? "check"
+    : adding
+      ? "menu"
+      : flowStage === "menu" && hasTable
+        ? "menu"
+        : "table";
+
   if (placed !== null && !adding) {
     // Both conditions, and they answer different questions. `canAddMore` is what the
     // restaurant said when the order was last touched; the stage is what has happened
@@ -544,7 +623,14 @@ function WebsiteOrder() {
       !isAtLeast(stage, "WithKitchen");
 
     return (
-      <Centre>
+      <>
+        <TopBar
+          slug={slug}
+          restaurantName={restaurant.restaurantName}
+          eyebrow={table?.name ?? "Your order"}
+        />
+
+        <Centre>
         {/* Keyed on the stage so a new one restarts the animations rather than
             swapping the words inside a panel that has already finished arriving.
 
@@ -567,29 +653,65 @@ function WebsiteOrder() {
           />
         )}
 
-        <Surface className="flex flex-col gap-4 p-5">
+        {/* The number, given the room it earns.
+
+            It used to be a paragraph in the middle of a stack of eight other things,
+            below a green sentence, at the same weight as the bill. It is the one piece
+            of this screen a guest has to read out loud to a stranger, and it wants
+            finding at arm's length across a noisy table - so it leads, and the table it
+            belongs to sits beside it as the check that they picked the right one. */}
+        <Surface className="flex flex-col gap-3 p-5">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex min-w-0 flex-col">
+              <span className="text-2xs font-medium tracking-wide text-muted uppercase">
+                Your order number
+              </span>
+              <span className="text-4xl leading-tight font-semibold text-text tabular">
+                #{placed.orderNumber}
+              </span>
+            </div>
+
+            {table !== undefined && (
+              <span className="shrink-0 rounded-full border border-border-strong px-2.5 py-1 text-2xs font-medium text-muted">
+                {table.name}
+              </span>
+            )}
+          </div>
+
           <p
             role="status"
-            className="flex items-start gap-2 text-sm font-medium text-success"
+            className="flex items-start gap-2 border-t border-border pt-3 text-sm font-medium text-success"
           >
             <Check className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
             Your order is with {restaurant.restaurantName}.
           </p>
+        </Surface>
 
-          <p className="text-3xl font-semibold text-text">
-            Order #{placed.orderNumber}
-          </p>
-
+        {/* What was ordered, and what it comes to. One card, because a guest checking
+            the bill is checking it against the list directly above it. */}
+        <Surface className="flex flex-col gap-4 p-5">
           <ul className="flex flex-col divide-y divide-border">
             {placed.lines.map((line, index) => (
               <li
                 key={`${line.itemName}-${index}`}
                 className="flex items-baseline justify-between gap-3 py-2"
               >
-                <span>
-                  <span className="tabular text-muted">{line.quantity}×</span>{" "}
-                  <span className="text-text">{line.itemName}</span>
+                <span className="flex min-w-0 flex-col">
+                  <span>
+                    <span className="tabular text-muted">{line.quantity}×</span>{" "}
+                    <span className="text-text">{line.itemName}</span>
+                  </span>
+
+                  {/* Read back, so a guest can see that what they asked for landed on
+                      the dish they meant. The kitchen is told the same thing against
+                      the same line; this is the guest's copy of it. */}
+                  {line.note !== null && (
+                    <span className="text-2xs text-muted italic">
+                      “{line.note}”
+                    </span>
+                  )}
                 </span>
+
                 <span className="shrink-0 tabular text-text">
                   {line.lineTotal.toFixed(2)}
                 </span>
@@ -624,6 +746,13 @@ function WebsiteOrder() {
             </div>
           </div>
 
+        </Surface>
+
+        {/* Everything about where it has got to and what happens next. Split off the
+            bill deliberately: one card answers "what did I order", this one answers
+            "what is happening", and running the two together as a single column of
+            eight blocks was what made this screen a wall. */}
+        <Surface className="flex flex-col gap-4 p-5">
           {/* Asking is not paying. The money still changes hands with a person, so the
               button says what it does - it calls somebody over. */}
           {placed.billRequestedAtUtc !== null ? (
@@ -677,7 +806,12 @@ function WebsiteOrder() {
             />
           )}
 
-          <div className="flex flex-col gap-2 border-t border-border pt-3">
+        </Surface>
+
+        {/* What they can do from here. Last, and on its own, so the buttons are not
+            competing with a total for the same glance. */}
+        <Surface className="flex flex-col gap-2 p-5">
+          <div className="flex flex-col gap-2">
             {placed.isSettled ? (
               <>
                 <p
@@ -746,7 +880,8 @@ function WebsiteOrder() {
             )}
           </div>
         </Surface>
-      </Centre>
+        </Centre>
+      </>
     );
   }
 
@@ -772,115 +907,205 @@ function WebsiteOrder() {
     );
   }
 
-  const table = restaurant.tables.find((candidate) => candidate.id === tableId);
-  // Adding to an existing order keeps its table, which is by definition not free any
-  // more - it has their own order running on it. Asking again, or refusing it as taken,
-  // would both be wrong.
-  const hasTable = adding ? tableId !== "" : table !== undefined && table.isAvailable;
-
   return (
     <>
-      <header className="border-b border-border bg-surface">
-        <div className="mx-auto flex max-w-2xl items-center gap-3 px-4 py-4">
-          {adding ? (
-            <button
-              type="button"
-              onClick={() => setAdding(false)}
-              className="flex shrink-0 items-center gap-1.5 rounded-md border border-border-strong px-2.5 py-1.5 text-sm font-medium text-text transition-colors hover:bg-surface-3"
-            >
-              <ArrowLeft className="size-4" aria-hidden="true" />
-              Your order
-            </button>
-          ) : (
-            <Link
-              href={`/r/${slug}`}
-              aria-label="Back to the website"
-              className="shrink-0 rounded-md p-1.5 text-muted transition-colors hover:bg-surface-3 hover:text-text"
-            >
-              <ArrowLeft className="size-5" aria-hidden="true" />
-            </Link>
-          )}
-          <div className="min-w-0">
-            <p className="text-xs font-medium tracking-wide text-muted uppercase">
-              {adding
-                ? `Adding to order #${placed?.orderNumber}`
-                : hasTable
-                  ? table?.name
-                  : "Order online"}
-            </p>
-            <h1 className="truncate text-2xl font-semibold text-text">
-              {restaurant.restaurantName}
-            </h1>
-          </div>
-        </div>
-      </header>
+      {/* The bar says which of the three things they are doing, and is the way back
+          out of it.
 
-      <main className="mx-auto flex w-full max-w-2xl flex-col gap-4 px-4 py-4 pb-28">
+          This is all the orientation the flow needed. It had a three segment progress
+          header as well, and on a flow this short that was a second thing to read
+          saying what the line above it already said - a diagram of a journey with two
+          stops in it. The steps themselves stay; only the picture of them is gone. */}
+      <TopBar
+        slug={slug}
+        restaurantName={restaurant.restaurantName}
+        eyebrow={
+          adding
+            ? `Adding to order #${placed?.orderNumber}`
+            : step === "table"
+              ? "Choose your table"
+              : step === "check"
+                ? "Check your order"
+                : (table?.name ?? "Order online")
+        }
+        backLabel={adding ? "Your order" : "Table"}
+        onBack={
+          adding
+            ? () => setAdding(false)
+            : step === "menu"
+              ? // The only move the bar owns. Going back from the check step is the
+                // "Add more" button on the card itself, which is where somebody
+                // looking at their order would reach for it.
+                () => setFlowStage("table")
+              : undefined
+        }
+      />
+
+      {/* The height of the bar above, published to anything inside that needs to stick
+          below it - the composer's search and course strip, and the scroll offset that
+          lands a course heading clear of both. */}
+      <MotionConfig reducedMotion="user">
+      <main
+        style={{ "--bar-h": "3.75rem" } as React.CSSProperties}
+        className="mx-auto flex w-full max-w-2xl flex-col gap-4 px-4 py-4 pb-28"
+      >
         {/* Asked first, and the menu waits behind it. Discovering at the checkout that
             your table is taken, with a basket already built, is the one bad moment
             this flow can have.
 
             Skipped entirely when adding: the table was decided when the order was
             opened and cannot move. */}
-        {!adding && (
+        <AnimatePresence initial={false} mode="popLayout">
+        {step === "table" && (
+          <motion.div
+            key="table"
+            // Leftmost of the three, so it arrives from the left and leaves to the
+            // left whichever direction it is being moved through. See SWAP in the
+            // composer for why no direction is tracked anywhere.
+            initial={{ opacity: 0, x: -24 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -24 }}
+            transition={{ duration: 0.26, ease: [0.16, 1, 0.3, 1] }}
+          >
           <Surface className="flex flex-col gap-3 p-4">
             <div>
               <h2 className="text-base font-semibold text-text">
                 Which table are you at?
               </h2>
               <p className="text-sm text-muted">
-                So your food reaches you. Ask a member of staff if you are not sure.
+                So your food reaches you, and so the bill is on the right table.
               </p>
             </div>
 
-            {/* The one dead end this flow can produce: a guest whose table shows as
-                taken because they already ordered on it and their phone forgot. Left
-                without this they would sit there assuming the restaurant lost their
-                order, so the way back is written next to the thing that blocked them. */}
-            {restaurant.tables.some((candidate) => !candidate.isAvailable) && (
-              <p className="flex items-start gap-2 rounded-md bg-surface-3 px-3 py-2 text-2xs text-muted">
-                <Info className="mt-px size-3.5 shrink-0" aria-hidden="true" />
-                <span>
-                  A table already in use cannot be picked. If you have{" "}
-                  <strong className="font-semibold text-text">already ordered</strong>{" "}
-                  there, scan the code on your table to pick your order back up — or ask
-                  a member of staff and they will find it for you.
-                </span>
-              </p>
-            )}
+            {/* Offered above the list rather than under it, because it is the better
+                way to answer this question and somebody should meet it before they
+                start guessing. The code on the table names that table and nothing
+                else, so it cannot be got wrong - which is exactly what this list can
+                be, silently, with somebody else's dinner. */}
+            <p className="flex items-start gap-2 rounded-md border border-primary-border bg-primary-soft px-3 py-2 text-2xs text-primary">
+              <QrCode className="mt-px size-3.5 shrink-0" aria-hidden="true" />
+              <span>
+                Sitting down already? Scanning the code on your table picks it for you,
+                and it is always the right one.
+              </span>
+            </p>
 
-            <div className="flex flex-wrap gap-2">
-              {restaurant.tables.map((candidate) => (
-                <button
-                  key={candidate.id}
-                  type="button"
-                  disabled={!candidate.isAvailable}
-                  aria-pressed={candidate.id === tableId}
-                  onClick={() => setTableId(candidate.id)}
-                  className={cn(
-                    "flex flex-col items-start rounded-md border px-3 py-2 text-left transition-colors",
-                    candidate.id === tableId
-                      ? "border-primary bg-primary-soft text-primary"
-                      : "border-border-strong text-text hover:bg-surface-3",
-                    !candidate.isAvailable &&
-                      "cursor-not-allowed border-border text-subtle hover:bg-transparent",
-                  )}
-                >
-                  <span className="text-sm font-medium">{candidate.name}</span>
-                  <span className="text-2xs">
-                    {candidate.isAvailable ? `seats ${candidate.capacity}` : "in use"}
-                  </span>
-                </button>
-              ))}
+            {/* Names only. Capacity was on these and could not be acted on - somebody
+                choosing here is already sitting somewhere, so how many it seats is a
+                fact for whoever assigns tables, not for them. */}
+            <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+              {restaurant.tables.map((candidate) => {
+                const chosen = candidate.id === tableId;
+
+                return (
+                  <button
+                    key={candidate.id}
+                    type="button"
+                    // aria-disabled rather than disabled, deliberately. A disabled
+                    // button leaves the tab order entirely, so somebody using a screen
+                    // reader was never told these tables existed - and the note about
+                    // what to do if yours is taken referred to something they could
+                    // not perceive. This way it is announced, reachable, and tapping
+                    // it opens the help that explains it.
+                    aria-disabled={!candidate.isAvailable}
+                    aria-pressed={chosen}
+                    onClick={() => {
+                      if (!candidate.isAvailable) {
+                        setTableHelp(true);
+
+                        return;
+                      }
+
+                      // Answering the question is the whole of the step, so it moves
+                      // on. There was a Continue button under this, which asked for a
+                      // second press to confirm something a tile press had already
+                      // said - and the only reason it existed was that the menu used
+                      // to appear underneath on the spot, which was the surprise a
+                      // drawer springs. The menu is its own step with its own slide
+                      // now, so a tap can go straight there.
+                      setTableId(candidate.id);
+                      setFlowStage("menu");
+                    }}
+                    className={cn(
+                      "pressable flex min-h-14 flex-col items-center justify-center gap-0.5 rounded-lg border px-2 py-2 text-center transition-colors",
+                      chosen
+                        ? "border-primary bg-primary-soft text-primary"
+                        : candidate.isAvailable
+                          ? "border-border-strong text-text hover:bg-surface-3"
+                          : "border-border border-dashed text-subtle hover:bg-surface-3",
+                    )}
+                  >
+                    <span className="text-sm font-medium">{candidate.name}</span>
+
+                    {/* Only the ones that cannot be chosen say anything, so the eye
+                        goes to the exceptions rather than reading a label under every
+                        tile that says the same thing. */}
+                    {!candidate.isAvailable && (
+                      <span className="text-2xs">in use</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* The honest answer to "I do not know". It cannot place the order without
+                a table - an order belongs to one, all the way down to the bill - so
+                this does not pretend to skip the question. It answers it. */}
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => setTableHelp((open) => !open)}
+                aria-expanded={tableHelp}
+                className="pressable flex items-center gap-1.5 self-start rounded-md text-2xs font-medium text-primary hover:underline"
+              >
+                <Info className="size-3.5 shrink-0" aria-hidden="true" />
+                I am not sure which table I am at
+              </button>
+
+              {tableHelp && (
+                <div className="settle-in flex flex-col gap-2 rounded-md bg-surface-3 px-3 py-2.5 text-2xs text-muted">
+                  <p>
+                    <strong className="font-semibold text-text">
+                      Look for a number on the table
+                    </strong>{" "}
+                    — usually on a small stand, or printed next to the code you would
+                    scan.
+                  </p>
+
+                  <p>
+                    <strong className="font-semibold text-text">
+                      Scan that code instead
+                    </strong>{" "}
+                    and you will not have to know. It opens the menu with your table
+                    already chosen.
+                  </p>
+
+                  <p>
+                    <strong className="font-semibold text-text">
+                      Yours shows as in use?
+                    </strong>{" "}
+                    Somebody is already ordering on it. If that was you, scan the code
+                    on the table to pick your order back up rather than starting a
+                    second one.
+                  </p>
+
+                  <p>
+                    Still stuck, or the tables have no numbers — ask a member of staff.
+                    They can see the room and will order for you.
+                  </p>
+                </div>
+              )}
             </div>
           </Surface>
+          </motion.div>
         )}
+        </AnimatePresence>
 
         {adding && (
           <button
             type="button"
             onClick={() => setAdding(false)}
-            className="flex w-full items-center gap-3 rounded-lg border border-primary-border bg-primary-soft px-3 py-2.5 text-left transition-colors hover:bg-surface-3"
+            className="pressable flex w-full items-center gap-3 rounded-lg border border-primary-border bg-primary-soft px-3 py-2.5 text-left transition-colors hover:bg-surface-3"
           >
             <ReceiptText className="size-4 shrink-0 text-primary" aria-hidden="true" />
             <span className="flex min-w-0 flex-col">
@@ -898,19 +1123,40 @@ function WebsiteOrder() {
           </button>
         )}
 
-        {hasTable ? (
-          <OrderComposer
-            menu={restaurant.menu}
-            onPlace={place}
-            placing={placing}
-            error={placeError}
-          />
-        ) : (
-          <p className="px-1 text-sm text-muted">
-            Pick your table above to see the menu.
-          </p>
+        {/* Paused rather than unmounted on the table step, and that is load-bearing:
+            the basket lives inside this component, so taking it off the page to show
+            an earlier step would throw away everything they had chosen. Going back to
+            correct a table has to cost nothing.
+
+            Paused, though, rather than merely hidden: the basket bar is portalled to
+            the body now, and `display: none` on this wrapper would not reach it. A
+            composer that renders nothing takes its bar with it. */}
+        {hasTable && (
+          <motion.div
+            // Bound to the step rather than keyed on it. A key would remount the
+            // composer and lose the basket, which is the one thing this must not do -
+            // so the wrapper is told where to be and the composer simply stays.
+            initial={false}
+            animate={{
+              opacity: step === "table" ? 0 : 1,
+              x: step === "table" ? 24 : 0,
+            }}
+            transition={{ duration: 0.26, ease: [0.16, 1, 0.3, 1] }}
+          >
+            <OrderComposer
+              flow="steps"
+              paused={step === "table"}
+              menu={restaurant.menu}
+              currency={money}
+              onPlace={place}
+              placing={placing}
+              error={placeError}
+              onStageChange={(reported) => setChecking(reported === "check")}
+            />
+          </motion.div>
         )}
       </main>
+      </MotionConfig>
     </>
   );
 }
@@ -935,10 +1181,74 @@ function Money({
   );
 }
 
-/** Centres a single panel, for the states with nothing else on the page. */
+/**
+ * The bar across the top of every state of this page.
+ *
+ * There was one of these, written inline, and only the menu had it. The receipt - the
+ * screen a guest sits with for the rest of the meal - had no bar at all, which meant no
+ * way back to the restaurant's site short of the browser's own button.
+ *
+ * The restaurant's name is the heading but no longer the loudest thing on the screen.
+ * At the old size it truncated on any phone and shouted the one fact a guest already
+ * knows, over the line that says which table they are at and what they are doing.
+ *
+ * Sticky, because on the menu it is the way back and the menu is long.
+ */
+function TopBar({
+  slug,
+  restaurantName,
+  eyebrow,
+  backLabel = "Back",
+  onBack,
+}: {
+  slug: string;
+  restaurantName: string;
+  /** The small line above the name: the table, or what this screen is for. */
+  eyebrow: string;
+  /** What the in-page back control says. Ignored without `onBack`. */
+  backLabel?: string;
+  /** Set to send the back control somewhere inside the page instead of out of it. */
+  onBack?: () => void;
+}) {
+  return (
+    <header className="sticky top-0 z-30 border-b border-border bg-surface/90 backdrop-blur">
+      <div className="mx-auto flex max-w-2xl items-center gap-3 px-4 py-3">
+        {onBack === undefined ? (
+          <Link
+            href={`/r/${slug}`}
+            aria-label="Back to the website"
+            className="shrink-0 rounded-md p-1.5 text-muted transition-colors hover:bg-surface-3 hover:text-text"
+          >
+            <ArrowLeft className="size-5" aria-hidden="true" />
+          </Link>
+        ) : (
+          <button
+            type="button"
+            onClick={onBack}
+            className="flex shrink-0 items-center gap-1.5 rounded-md border border-border-strong px-2.5 py-1.5 text-sm font-medium text-text transition-colors hover:bg-surface-3"
+          >
+            <ArrowLeft className="size-4" aria-hidden="true" />
+            {backLabel}
+          </button>
+        )}
+
+        <div className="min-w-0">
+          <p className="truncate text-2xs font-medium tracking-wide text-muted uppercase">
+            {eyebrow}
+          </p>
+          <h1 className="truncate text-lg leading-tight font-semibold text-text">
+            {restaurantName}
+          </h1>
+        </div>
+      </div>
+    </header>
+  );
+}
+
+/** Centres a column of panels, for the states with no menu on the page. */
 function Centre({ children }: { children: React.ReactNode }) {
   return (
-    <main className="mx-auto flex w-full max-w-md flex-col justify-center px-4 py-12">
+    <main className="mx-auto flex w-full max-w-md flex-col gap-3 px-4 py-8">
       {children}
     </main>
   );
