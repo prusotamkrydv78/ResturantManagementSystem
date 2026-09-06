@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -10,12 +10,13 @@ import {
   Info,
   Plus,
   ReceiptText,
+  Star,
   UtensilsCrossed,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button, LinkButton } from "@/components/ui/button";
 import { Surface } from "@/components/ui/surface";
 import { EmptyState, Spinner } from "@/components/ui/states";
-import { ToastProvider, useToast } from "@/components/ui/toast";
+import { ToastProvider } from "@/components/ui/toast";
 import {
   getPublicRestaurant,
   lookupWebsiteOrder,
@@ -25,22 +26,23 @@ import {
 import { OrderComposer, type OrderDraftLine } from "@/features/public/order-composer";
 import { isAtLeast, STAGE_COPY } from "@/features/public/order-progress";
 import { OrderSentOverlay } from "@/features/public/order-sent";
+import { StageMoment, useStageMoments } from "@/features/public/stage-moment";
+import { StayConnected } from "@/features/public/stay-connected";
 import { OrderTimeline } from "@/features/public/order-timeline";
 import {
   forgetInUrl,
+  ORDER_KEY_PARAM,
   readHandle,
   rememberInUrl,
 } from "@/features/public/order-handle";
 import { clearReceipt, writeReceipt } from "@/features/public/receipt-store";
-import { ReviewPanel, ReviewThanks } from "@/features/public/review-panel";
 import { useOrderUpdates } from "@/features/public/use-order-updates";
 import { ApiError } from "@/lib/api/client";
+import { buzz } from "@/lib/notify/buzz";
+import { pushIfHidden } from "@/lib/notify/push";
+import { useTabAlert } from "@/lib/notify/use-tab-alert";
 import { cn } from "@/lib/utils/cn";
-import type {
-  CustomerReview,
-  PublicOrder,
-  PublicRestaurant,
-} from "@/types/public-ordering";
+import type { PublicOrder, PublicRestaurant } from "@/types/public-ordering";
 
 /**
  * Ordering from the restaurant's own website.
@@ -83,6 +85,7 @@ export default function WebsiteOrderPage() {
 function WebsiteOrder() {
   const params = useParams<{ slug: string }>();
   const slug = params.slug;
+  const router = useRouter();
 
   const [restaurant, setRestaurant] = useState<PublicRestaurant | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
@@ -90,6 +93,20 @@ function WebsiteOrder() {
   const [placing, setPlacing] = useState(false);
   const [placeError, setPlaceError] = useState<string | null>(null);
   const [placed, setPlaced] = useState<PublicOrder | null>(null);
+  /**
+   * The key that says this order is theirs, held apart from the order itself.
+   *
+   * It has to be, because the server hands it back exactly once - on placing an order
+   * or adding to one - and never on a read. Every lookup therefore returns an order
+   * whose `orderKey` is null, and while this page kept the key inside `placed`, each
+   * refresh silently overwrote the real one with that null and then wrote the emptied
+   * receipt to storage. The URL copy was all that survived, so anything that navigated
+   * without carrying it - such as opening the review page - arrived unable to prove
+   * whose order it was.
+   *
+   * Written from whichever source actually had one and never cleared by a read.
+   */
+  const [orderKey, setOrderKey] = useState<string | null>(null);
   // Whether the menu is open on top of an existing order, for a second round. Distinct
   // from having no order at all: the table is already settled and must not be asked
   // again, and the basket adds to what is there rather than starting something new.
@@ -107,13 +124,37 @@ function WebsiteOrder() {
   const [askError, setAskError] = useState<string | null>(null);
   // Held only for the moment between sending a review and the page being reloaded.
   // What survives a reload is the order's own canReview, which the restaurant decides.
-  const [review, setReview] = useState<CustomerReview | null>(null);
+  // Set by the bill settling, and acted on once the full-screen moment announcing it
+  // has cleared. Sending somebody to another page mid-animation would throw away the
+  // one thing telling them why they are being sent.
+  const [headingToReview, setHeadingToReview] = useState(false);
   // Bumped when the restaurant says something changed that this page cannot derive -
   // today only the bill being settled. Kept apart from the reload that refetches the
   // menu, because that one also resets the table picker.
   const [reloadOrderKey, setReloadOrderKey] = useState(0);
+  // The stage a guest has not seen yet, for the tab title. Cleared the moment they
+  // look at the page again, because a tab still shouting about food they are eating
+  // is the kind of small wrongness that makes a site feel broken.
+  const [unseen, setUnseen] = useState<string | null>(null);
+  // Every stage takes the screen for a beat, queued so two landing together play in
+  // turn rather than cutting each other off.
+  const { moment, show: showMoment, done: momentDone } = useStageMoments();
 
-  const { notify } = useToast();
+  useTabAlert(unseen);
+
+  // Cleared on the way back rather than on a timer. The guest looking at the screen
+  // is the only reliable signal that they have seen it.
+  useEffect(() => {
+    function seen() {
+      if (!document.hidden) {
+        setUnseen(null);
+      }
+    }
+
+    document.addEventListener("visibilitychange", seen);
+
+    return () => document.removeEventListener("visibilitychange", seen);
+  }, []);
 
   /**
    * Finds out whether this visitor already has an order here, and picks it up.
@@ -151,6 +192,8 @@ function WebsiteOrder() {
 
         if (!cancelled) {
           setPlaced(found);
+          // From the handle rather than from the response, which never carries one.
+          setOrderKey(handle.orderKey);
         }
       } catch (caught) {
         // Only a definite answer from the restaurant is allowed to throw the key away.
@@ -163,6 +206,10 @@ function WebsiteOrder() {
         if (caught instanceof ApiError && caught.status === 404) {
           clearReceipt(slug);
           forgetInUrl();
+
+          if (!cancelled) {
+            setOrderKey(null);
+          }
         }
       } finally {
         if (!cancelled) {
@@ -229,25 +276,38 @@ function WebsiteOrder() {
   // handed when they placed it.
   const { stage, live, closed } = useOrderUpdates({
     slug,
-    orderKey: placed?.orderKey ?? null,
+    orderKey,
     onUpdate: useCallback(
       (update: { stage: keyof typeof STAGE_COPY }) => {
         const copy = STAGE_COPY[update.stage];
 
-        notify({
-          // The last two are endings; everything before them is progress the guest is
-          // waiting on.
-          tone:
-            update.stage === "Served" || update.stage === "Settled"
-              ? "success"
-              : "alert",
+        const ending = update.stage === "Served" || update.stage === "Settled";
+        // The one stage a guest is actually waiting for, and the only one that earns
+        // an interruption on every channel at once.
+        const awaited = update.stage === "Ready";
+
+        // The screen, for a beat. This is the announcement now, rather than a card in
+        // the corner: a guest picks the phone up *because* it buzzed, and the question
+        // they are holding on the way up is what happened - which is a poor thing to
+        // answer in a footnote while the receipt they have already read keeps the rest
+        // of the screen. The toast shape belongs to the staff side, where somebody is
+        // working a screen all shift and needs telling without being stopped.
+        showMoment(update.stage);
+
+        // The channel that works when the phone is face down on the table and on
+        // silent, which is most of the wait.
+        buzz(awaited ? "alert" : ending ? "done" : "gentle");
+
+        // And the one that works when the page is not even open. Fires only while
+        // hidden - see the module - so nobody watching the timeline is told twice.
+        pushIfHidden({
           title: copy.title,
-          description: copy.detail,
-          duration: 9000,
-          // One order, so one toast that keeps replacing itself. A guest should not
-          // end up with a stack of four telling them the story so far.
-          dedupeKey: "order-progress",
+          body: copy.detail,
+          tag: "rms-order",
         });
+
+        // The cheapest one, needing nobody's permission: a glance at the tab.
+        setUnseen(`${awaited ? "🍽" : "•"} ${copy.title}`);
 
         // The bill just closed at the counter. Re-read the order rather than guessing
         // at the new state: whether they may leave a review is the restaurant's answer,
@@ -255,11 +315,33 @@ function WebsiteOrder() {
         // the review card without anybody reloading.
         if (update.stage === "Settled") {
           setReloadOrderKey((key) => key + 1);
+          setHeadingToReview(true);
         }
       },
-      [notify],
+      [showMoment],
     ),
   });
+
+  /**
+   * Sends them to the review page once the bill has closed.
+   *
+   * Held until the moment announcing it has left the screen. That panel is the reason
+   * the page is about to change under them, and navigating out from underneath it would
+   * land somebody on a form with no idea what just happened.
+   *
+   * The key travels in the address rather than being looked up again at the other end.
+   * Storage is the copy most likely to have been cleared by a browser reclaiming space,
+   * and this is the one navigation where the key is certainly in hand.
+   */
+  useEffect(() => {
+    if (!headingToReview || moment !== null || orderKey === null) {
+      return;
+    }
+
+    router.push(
+      `/r/${slug}/review?${ORDER_KEY_PARAM}=${encodeURIComponent(orderKey)}`,
+    );
+  }, [headingToReview, moment, orderKey, router, slug]);
 
   // Written whenever the receipt changes, rather than at each of the places that change
   // it. One rule in one place: what is on screen is what the phone remembers.
@@ -284,14 +366,17 @@ function WebsiteOrder() {
       return;
     }
 
-    writeReceipt(slug, placed, tableId);
+    // The key is put back in on the way to storage. `placed` is whatever the last
+    // response said, and a response to a read says null - saving that verbatim is what
+    // used to empty the stored copy on every refresh.
+    writeReceipt(slug, { ...placed, orderKey }, tableId);
 
     // Mirrored into the address, which is the copy that survives the tab being closed
     // and the only one that can be sent to somebody else at the same table.
-    if (placed.orderKey !== null && tableId !== "") {
-      rememberInUrl(placed.orderKey, tableId);
+    if (orderKey !== null && tableId !== "") {
+      rememberInUrl(orderKey, tableId);
     }
-  }, [slug, placed, tableId, recovering]);
+  }, [slug, placed, orderKey, tableId, recovering]);
 
   const place = useCallback(
     async (items: OrderDraftLine[]) => {
@@ -304,12 +389,13 @@ function WebsiteOrder() {
           items,
           // Present only when adding to what they already have. It is what tells the
           // restaurant that the order running on this table is theirs.
-          ...(placed?.orderKey === null || placed?.orderKey === undefined
-            ? {}
-            : { orderKey: placed.orderKey }),
+          ...(orderKey === null ? {} : { orderKey }),
         });
 
         setPlaced(sent);
+        // Only ever replaced by a real one. Adding to an order returns the same key,
+        // but a response that omitted it must not take away the one already held.
+        setOrderKey((current) => sent.orderKey ?? current);
         setAdding(false);
         setCelebrating(true);
       } catch (caught) {
@@ -329,12 +415,12 @@ function WebsiteOrder() {
         setPlacing(false);
       }
     },
-    [slug, tableId, placed],
+    [slug, tableId, orderKey],
   );
 
   /** Asks a waiter to bring the bill over. */
   const askForBill = useCallback(async () => {
-    if (placed?.orderKey === null || placed?.orderKey === undefined) {
+    if (orderKey === null) {
       return;
     }
 
@@ -345,7 +431,7 @@ function WebsiteOrder() {
       // The response is the order as it now stands, which carries the time the request
       // was recorded - so the confirmed state comes from the restaurant rather than from
       // a flag this page sets and then loses on the next reload.
-      setPlaced(await requestBill(slug, placed.orderKey));
+      setPlaced(await requestBill(slug, orderKey));
     } catch (caught) {
       setAskError(
         caught instanceof ApiError
@@ -355,7 +441,7 @@ function WebsiteOrder() {
     } finally {
       setAsking(false);
     }
-  }, [slug, placed]);
+  }, [slug, orderKey]);
 
   /**
    * Re-reads the order after the restaurant has changed it under us.
@@ -365,12 +451,12 @@ function WebsiteOrder() {
    * reload will catch up.
    */
   useEffect(() => {
-    if (reloadOrderKey === 0 || placed?.orderKey === null || placed?.orderKey === undefined) {
+    if (reloadOrderKey === 0 || orderKey === null) {
       return;
     }
 
     let cancelled = false;
-    const key = placed.orderKey;
+    const key = orderKey;
 
     async function refresh() {
       try {
@@ -392,11 +478,12 @@ function WebsiteOrder() {
     // Deliberately not depending on `placed`: this reads it, and depending on it would
     // re-run the moment its own result arrived.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [slug, reloadOrderKey]);
+  }, [slug, reloadOrderKey, orderKey]);
 
   /** Forgets this order and goes back to an empty page. */
   const startOver = useCallback(() => {
     setPlaced(null);
+    setOrderKey(null);
     setAdding(false);
     setPlaceError(null);
     setReloadKey((key) => key + 1);
@@ -453,11 +540,26 @@ function WebsiteOrder() {
     const canAdd =
       !closed &&
       placed.canAddMore &&
-      placed.orderKey !== null &&
+      orderKey !== null &&
       !isAtLeast(stage, "WithKitchen");
 
     return (
       <Centre>
+        {/* Keyed on the stage so a new one restarts the animations rather than
+            swapping the words inside a panel that has already finished arriving.
+
+            Held back while the order-sent moment is still on screen: both are
+            full-screen, and two of them at once is one too many. The queue keeps
+            whatever arrived, so nothing is lost by waiting. */}
+        {moment !== null && !celebrating && (
+          <StageMoment
+            key={moment}
+            stage={moment}
+            orderNumber={placed.orderNumber}
+            onDone={momentDone}
+          />
+        )}
+
         {celebrating && (
           <OrderSentOverlay
             orderNumber={placed.orderNumber}
@@ -561,9 +663,19 @@ function WebsiteOrder() {
             </p>
           )}
 
+          {/* Offered here because this is the moment it makes sense to the person
+              being asked: they have ordered, and they are about to stop watching. */}
+          {!closed && <StayConnected orderNumber={placed.orderNumber} />}
+
           {/* Only while the order is still running. A settled or cancelled one has
               nowhere left to go, and a timeline frozen mid-way would suggest it does. */}
-          {!closed && <OrderTimeline stage={stage} live={live} />}
+          {!closed && (
+            <OrderTimeline
+              stage={stage}
+              live={live}
+              placedAtUtc={placed.placedAtUtc}
+            />
+          )}
 
           <div className="flex flex-col gap-2 border-t border-border pt-3">
             {placed.isSettled ? (
@@ -577,22 +689,28 @@ function WebsiteOrder() {
                   {restaurant.restaurantName}.
                 </p>
 
-                {/* Asked here rather than on a page of its own. Somebody who has just
-                    paid is standing up to leave, and sending them somewhere else is
-                    how a review form gets abandoned. */}
-                {review !== null ? (
-                  <ReviewThanks review={review} />
-                ) : placed.canReview && placed.orderKey !== null ? (
-                  <ReviewPanel
-                    slug={slug}
-                    orderKey={placed.orderKey}
-                    onSubmitted={setReview}
-                  />
-                ) : null}
+                {/* The settling itself sends them to the review page. This is for
+                    everybody that did not happen to: a phone that was locked at the
+                    moment, or somebody coming back to the receipt afterwards. A flow
+                    with only an automatic entrance is one nobody can return to. */}
+                {placed.canReview && orderKey !== null ? (
+                  <>
+                    <LinkButton
+                      href={`/r/${slug}/review?${ORDER_KEY_PARAM}=${encodeURIComponent(orderKey)}`}
+                      icon={<Star />}
+                    >
+                      Tell us how it went
+                    </LinkButton>
 
-                <Button variant="secondary" onClick={startOver}>
-                  Done
-                </Button>
+                    <Button variant="secondary" onClick={startOver}>
+                      No thanks, I am done
+                    </Button>
+                  </>
+                ) : (
+                  <Button variant="secondary" onClick={startOver}>
+                    Done
+                  </Button>
+                )}
               </>
             ) : closed ? (
               <>
