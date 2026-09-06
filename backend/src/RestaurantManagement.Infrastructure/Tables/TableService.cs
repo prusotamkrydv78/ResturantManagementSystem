@@ -42,7 +42,6 @@ public sealed class TableService : ITableService
 
         var tables = await TablesOf(restaurantId.Value)
             .AsNoTracking()
-            .OrderBy(table => table.Name)
             .Select(table => new TableResponse(
                 table.Id,
                 table.Name,
@@ -55,7 +54,13 @@ public sealed class TableService : ITableService
                 table.UpdatedAtUtc))
             .ToListAsync(cancellationToken);
 
-        return Result.Success<IReadOnlyList<TableResponse>>(tables);
+        // In memory, so that table 10 follows table 9 rather than table 1. See
+        // TableNameComparer.
+        var ordered = tables
+            .OrderBy(table => table.Name, TableNameComparer.Instance)
+            .ToList();
+
+        return Result.Success<IReadOnlyList<TableResponse>>(ordered);
     }
 
     /// <inheritdoc />

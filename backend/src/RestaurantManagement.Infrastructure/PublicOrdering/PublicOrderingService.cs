@@ -90,6 +90,7 @@ public sealed class PublicOrderingService : IPublicOrderingService
 
         return Result.Success(new PublicTableResponse(
             table.Restaurant.Name,
+            table.Restaurant.Currency,
             table.Name,
             true,
             null,
@@ -209,7 +210,6 @@ public sealed class PublicOrderingService : IPublicOrderingService
                 table.RestaurantId == restaurant.Value.Id &&
                 table.IsActive &&
                 table.IsOrderingEnabled)
-            .OrderBy(table => table.Name)
             .Select(table => new PublicTableChoiceResponse(
                 table.Id,
                 table.Name,
@@ -221,12 +221,19 @@ public sealed class PublicOrderingService : IPublicOrderingService
                     order.TableId == table.Id && order.Status == OrderStatus.Open)))
             .ToListAsync(cancellationToken);
 
+        // Ordered here rather than in the query, because the database sorts names as
+        // text and a guest looking for table 10 would find it second, between 1 and 2.
+        // See TableNameComparer.
+        var ordered = tables
+            .OrderBy(table => table.Name, TableNameComparer.Instance)
+            .ToList();
+
         return Result.Success(new PublicRestaurantResponse(
             restaurant.Value.Name,
             restaurant.Value.Currency,
             menu,
-            tables,
-            tables.Count > 0));
+            ordered,
+            ordered.Count > 0));
     }
 
     /// <inheritdoc />

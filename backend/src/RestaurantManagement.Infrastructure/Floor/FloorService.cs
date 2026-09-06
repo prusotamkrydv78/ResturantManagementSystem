@@ -108,7 +108,11 @@ public sealed class FloorService : IFloorService
         var rows = tables
             // By name, which is the order the room is in. Sorting by state would move
             // a card the moment someone sat down, and staff look for a table by name.
-            .OrderBy(table => table.Name, StringComparer.OrdinalIgnoreCase)
+            //
+            // Numbers in those names are compared as numbers - an ordinal sort put
+            // table 10 between 1 and 2, which on a floor plan is where somebody looks
+            // for it and does not find it. See TableNameComparer.
+            .OrderBy(table => table.Name, TableNameComparer.Instance)
             .Select(table => ToTable(
                 table,
                 byTable.TryGetValue(table.Id, out var orders) ? orders : [],

@@ -7,6 +7,7 @@ using RestaurantManagement.Application.Orders.Dtos;
 using RestaurantManagement.Application.Realtime;
 using RestaurantManagement.Domain.Identity;
 using RestaurantManagement.Domain.Orders;
+using RestaurantManagement.Domain.Restaurants;
 using RestaurantManagement.Infrastructure.Persistence;
 using RestaurantManagement.Shared.Results;
 
@@ -100,11 +101,16 @@ public sealed class OrderService : IOrderService
             .AsNoTracking()
             .Where(table =>
                 table.RestaurantId == waiter.Value.RestaurantId && table.IsActive)
-            .OrderBy(table => table.Name)
             .Select(table => new WaiterTableResponse(table.Id, table.Name, table.Capacity))
             .ToListAsync(cancellationToken);
 
-        return Result.Success<IReadOnlyList<WaiterTableResponse>>(tables);
+        // In memory, so that table 10 follows table 9 rather than table 1. See
+        // TableNameComparer.
+        var ordered = tables
+            .OrderBy(table => table.Name, TableNameComparer.Instance)
+            .ToList();
+
+        return Result.Success<IReadOnlyList<WaiterTableResponse>>(ordered);
     }
 
     /// <inheritdoc />

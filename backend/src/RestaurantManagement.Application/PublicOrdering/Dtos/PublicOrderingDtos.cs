@@ -152,6 +152,16 @@ public sealed record PublicOrderResponse(
 /// them.
 /// </summary>
 /// <param name="RestaurantName">Where they are.</param>
+/// <param name="Currency">
+/// The ISO code every amount on this pad is in.
+///
+/// It was simply missing, so every price on the screen behind every printed code in the
+/// building was a bare number - a menu of "450" and a total of "1,118.70" with nothing
+/// anywhere saying what in. The website response has carried this from the start; the
+/// scanned one, which is how most people will actually order, did not.
+///
+/// One per restaurant, so it is sent once here rather than repeated on each price.
+/// </param>
 /// <param name="TableName">Which table they are at.</param>
 /// <param name="CanOrder">
 /// Whether an order placed now would be accepted. False while a member of staff is
@@ -168,6 +178,7 @@ public sealed record PublicOrderResponse(
 /// </param>
 public sealed record PublicTableResponse(
     string RestaurantName,
+    string Currency,
     string TableName,
     bool CanOrder,
     string? UnavailableReason,
