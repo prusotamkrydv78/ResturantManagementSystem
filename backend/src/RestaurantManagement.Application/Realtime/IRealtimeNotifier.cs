@@ -74,6 +74,16 @@ public interface IRealtimeNotifier
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Tells the customer their order has been called off.
+    ///
+    /// Only the customer. The manager cancelling it watched themselves do it.
+    /// </summary>
+    Task OrderCancelledAsync(
+        Guid orderId,
+        int orderNumber,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Tells the floor that a table wants to pay.
     ///
     /// The floor only. A kitchen has nothing to do about a bill, and the whole point of

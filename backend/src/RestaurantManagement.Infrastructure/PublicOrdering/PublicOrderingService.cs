@@ -680,11 +680,19 @@ public sealed class PublicOrderingService : IPublicOrderingService
         // missing the line somebody just ordered is the one thing this page cannot do.
         var saved = await OpenOrderOfAsync(table, tracked: false, cancellationToken);
 
-        // The floor is told, but only about an order a customer placed. A waiter's own
-        // order needs no announcement: they are holding the device that made it, and
-        // interrupting them to report their own action is how a product teaches people
-        // to ignore its notifications.
-        if (order.IsCustomerPlaced)
+        // The floor is told whenever a customer was the one ordering - starting an
+        // order or adding to one, and whoever opened it.
+        //
+        // It used to ask whether the *order* was customer-placed, which stopped being
+        // the right question the moment a guest could add to an order a waiter typed:
+        // the dessert correctly reopened the confirmation gate and held the food back,
+        // and then nobody was told, so it sat there until somebody happened to reload.
+        // The gate reads the lines; this has to read the same thing.
+        //
+        // A waiter's own order still announces nothing: they are holding the device
+        // that made it, and reporting somebody's own action back to them is how a
+        // product teaches people to ignore its notifications.
+        if (placedByStaffId is null)
         {
             await _realtime.OrderPlacedAsync(
                 table.RestaurantId,

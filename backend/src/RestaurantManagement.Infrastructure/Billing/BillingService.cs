@@ -383,6 +383,14 @@ public sealed class BillingService : IBillingService
             order.StartedKitchenTicketCount,
             order.CancellationReason);
 
+        // The other ending, and the one that was silent. Without this a guest sits
+        // watching a live timeline for food that is never coming - worse than the
+        // settled case it mirrors, because at least a paid bill ends happily.
+        await _realtime.OrderCancelledAsync(
+            order.Id,
+            order.OrderNumber,
+            cancellationToken);
+
         var names = await NamesFor([order], cancellationToken);
 
         return Result.Success(ToDetail(order, names));

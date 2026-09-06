@@ -35,6 +35,18 @@ public enum CustomerOrderStage
     /// which nobody does at the moment they are standing up to leave.
     /// </summary>
     Settled = 5,
+
+    /// <summary>
+    /// The restaurant called the order off.
+    ///
+    /// The other ending, and the one that was silent. A manager cancelling left the
+    /// guest's phone showing a live timeline for food that was never coming, which is
+    /// worse than the settled case it mirrors: at least a paid bill ends happily.
+    ///
+    /// Deliberately last in the enum but not last in the journey. It is an ending
+    /// rather than a step, and the page treats it as one.
+    /// </summary>
+    Cancelled = 6,
 }
 
 /// <summary>
