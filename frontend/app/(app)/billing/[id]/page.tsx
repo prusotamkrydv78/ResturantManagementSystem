@@ -55,7 +55,7 @@ const METHOD_ICONS: Record<PaymentMethod, LucideIcon> = {
  */
 export default function BillingOrderPage() {
   return (
-    <RequireAuth roles={["RestaurantManager"]}>
+    <RequireAuth roles={["RestaurantManager", "Staff"]} staffRoles={["Waiter"]}>
       <BillingOrderDetail />
     </RequireAuth>
   );
@@ -70,6 +70,10 @@ function BillingOrderDetail() {
   const [reloadKey, setReloadKey] = useState(0);
 
   const [method, setMethod] = useState<PaymentMethod>("Cash");
+  // Blank means "the rest of it", which is the ordinary case. A figure is only
+  // typed when a table is splitting the bill, so the field starts empty rather than
+  // pre-filled with a number somebody then has to clear.
+  const [tendered, setTendered] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<Payment | null>(null);
@@ -114,11 +118,17 @@ function BillingOrderDetail() {
     setIsSaving(true);
 
     try {
-      // No amount is sent. The server takes it from the order it already stored.
-      const result = await recordPayment(order.id, { method });
+      // Sent only when somebody typed one. Left out, the server settles whatever is
+      // still outstanding - so the common case never names a figure the server
+      // already knows, and cannot disagree with it.
+      const part = Number.parseFloat(tendered);
+      const amount = tendered.trim() === "" || Number.isNaN(part) ? undefined : part;
+
+      const result = await recordPayment(order.id, { method, amount });
 
       setOrder(result.order);
       setReceipt(result.payment);
+      setTendered("");
     } catch (caught) {
       setSaveError(
         caught instanceof ApiError || caught instanceof Error
@@ -130,7 +140,7 @@ function BillingOrderDetail() {
     } finally {
       setIsSaving(false);
     }
-  }, [order, method, isSaving]);
+  }, [order, method, tendered, isSaving]);
 
   const callOff = useCallback(async () => {
     if (order === null || isCancelling) {
@@ -419,20 +429,34 @@ function BillingOrderDetail() {
                   </div>
                 </div>
 
-                {order.payment !== null && (
-                  <dl className="flex flex-col gap-2 rounded-md border border-border px-3 py-2.5">
-                    <Line label="Method" value={order.payment.method} />
-                    <Line
-                      label="Amount"
-                      value={order.payment.amount.toFixed(2)}
-                      strong
-                    />
-                    <Line label="Taken by" value={order.payment.recordedByName} />
-                    <Line
-                      label="Recorded"
-                      value={formatDateTime(order.payment.recordedAtUtc)}
-                    />
-                  </dl>
+                {order.payments.length > 0 && (
+                  <div className="flex flex-col gap-2">
+                    {order.payments.map((payment, index) => (
+                      <dl
+                        key={payment.id ?? index}
+                        className="flex flex-col gap-2 rounded-md border border-border px-3 py-2.5"
+                      >
+                        <Line label="Method" value={payment.method} />
+                        <Line
+                          label="Amount"
+                          value={payment.amount.toFixed(2)}
+                          strong
+                        />
+                        <Line label="Taken by" value={payment.recordedByName} />
+                        <Line
+                          label="Recorded"
+                          value={formatDateTime(payment.recordedAtUtc)}
+                        />
+                      </dl>
+                    ))}
+
+                    {order.payments.length > 1 && (
+                      <p className="text-2xs text-subtle">
+                        Settled over {order.payments.length} payments, totalling{" "}
+                        {order.amountPaid.toFixed(2)}.
+                      </p>
+                    )}
+                  </div>
                 )}
 
                 <LinkButton
@@ -541,23 +565,82 @@ function BillingOrderDetail() {
                   })}
                 </fieldset>
 
-                <div className="flex items-baseline justify-between border-t border-border pt-3">
-                  <span className="text-sm text-muted">Amount due</span>
-                  <span className="tabular text-xl font-semibold text-text">
-                    {order.subtotal.toFixed(2)}
-                  </span>
+                {/* The bill, itemised. This showed the subtotal under "Amount due",
+                    which is the food before tax and the service charge - the same
+                    figure the customer's own receipt was understating. */}
+                <div className="flex flex-col gap-1 border-t border-border pt-3">
+                  <Line label="Food" value={order.subtotal.toFixed(2)} />
+
+                  {order.discountAmount > 0 && (
+                    <Line
+                      label="Discount"
+                      value={`-${order.discountAmount.toFixed(2)}`}
+                    />
+                  )}
+
+                  {order.serviceChargeAmount > 0 && (
+                    <Line
+                      label="Service charge"
+                      value={order.serviceChargeAmount.toFixed(2)}
+                    />
+                  )}
+
+                  {order.vatAmount > 0 && (
+                    <Line label="VAT" value={order.vatAmount.toFixed(2)} />
+                  )}
+
+                  <Line label="Total" value={order.total.toFixed(2)} strong />
+
+                  {order.amountPaid > 0 && (
+                    <>
+                      <Line label="Paid so far" value={order.amountPaid.toFixed(2)} />
+                      <Line
+                        label="Still owed"
+                        value={order.amountOutstanding.toFixed(2)}
+                        strong
+                      />
+                    </>
+                  )}
                 </div>
+
+                {/* Empty settles the rest, which is what happens almost every time.
+                    A figure is typed only when a table is splitting the bill, and the
+                    server refuses anything above what is still owed - change handed
+                    back at a counter is not revenue. */}
+                <label className="flex flex-col gap-1">
+                  <span className="text-sm font-medium text-text">
+                    Amount taken
+                  </span>
+                  <Input
+                    type="number"
+                    inputMode="decimal"
+                    min={0.01}
+                    max={order.amountOutstanding}
+                    step={0.01}
+                    value={tendered}
+                    onChange={(event) => setTendered(event.target.value)}
+                    placeholder={order.amountOutstanding.toFixed(2)}
+                    disabled={!order.canSettle || isSaving}
+                  />
+                  <span className="text-2xs text-subtle">
+                    Leave empty to settle the whole {order.amountOutstanding.toFixed(2)}.
+                    Enter less to take part of it — the rest stays owed and the table
+                    stays open.
+                  </span>
+                </label>
 
                 <Button
                   onClick={() => void settle()}
-                  disabled={!order.canComplete || isSaving}
+                  disabled={!order.canSettle || isSaving}
                   className="h-11 w-full"
                 >
                   {isSaving
                     ? "Recording…"
                     : waiting > 0
                       ? "Waiting on the kitchen"
-                      : "Complete & record payment"}
+                      : tendered.trim() === ""
+                        ? "Complete & record payment"
+                        : "Record part payment"}
                 </Button>
 
                 <p className="text-2xs text-subtle">

@@ -8,6 +8,7 @@ import {
   HandPlatter,
   LayoutGrid,
   Plus,
+  Receipt,
   ReceiptText,
   ScrollText,
   Store,
@@ -185,6 +186,12 @@ const WAITER_NAV: NavGroup[] = [
         label: "Pass",
         href: "/pass",
         icon: HandPlatter,
+        status: "available",
+      },
+      {
+        label: "Bills",
+        href: "/billing",
+        icon: Receipt,
         status: "available",
       },
       {

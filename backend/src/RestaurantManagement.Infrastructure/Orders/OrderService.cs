@@ -328,7 +328,8 @@ public sealed class OrderService : IOrderService
             order.Items.Count,
             order.Subtotal);
 
-        return Result.Success(ToResponse(order, table.Name, waiter.Value.FullName));
+        return Result.Success(
+            ToResponse(order, table.Name, waiter.Value.FullName, waiter.Value.Currency));
     }
 
     /// <inheritdoc />
@@ -370,6 +371,7 @@ public sealed class OrderService : IOrderService
             order,
             order.Table.Name,
             OrderAttribution.PlacedBy(order, placedBy),
+            waiter.Value.Currency,
             confirmedBy));
     }
 
@@ -435,7 +437,8 @@ public sealed class OrderService : IOrderService
                 order.ConfirmedAtUtc == null &&
                     (order.Source == OrderSource.Website ||
                         order.Source == OrderSource.QrCode) &&
-                    !order.Items.Any(item => item.KitchenTicketItem != null)))
+                    !order.Items.Any(item => item.KitchenTicketItem != null),
+                order.BillRequestedAtUtc))
             .ToListAsync(cancellationToken);
 
         return Result.Success<IReadOnlyList<OrderSummaryResponse>>(orders);
@@ -695,6 +698,7 @@ public sealed class OrderService : IOrderService
             order,
             order.Table.Name,
             OrderAttribution.PlacedBy(order, placedBy),
+            waiter.Value.Currency,
             confirmedBy));
     }
 
@@ -906,6 +910,7 @@ public sealed class OrderService : IOrderService
             order,
             order.Table.Name,
             OrderAttribution.PlacedBy(order, placedBy),
+            waiter.Value.Currency,
             // Known without a lookup: this caller is the one who just confirmed it.
             waiter.Value.FullName));
     }
@@ -1058,6 +1063,7 @@ public sealed class OrderService : IOrderService
                 order,
                 order.Table.Name,
                 OrderAttribution.PlacedBy(order, placedBy),
+                waiter.Value.Currency,
                 confirmedBy)));
     }
 
@@ -1184,7 +1190,8 @@ public sealed class OrderService : IOrderService
                     restaurant.Id,
                     user.FullName,
                     restaurant.ServiceChargeRate,
-                    restaurant.VatRate))
+                    restaurant.VatRate,
+                    restaurant.Currency))
             .ToListAsync(cancellationToken);
 
         return rows.Count == 0 ? null : rows[0];
@@ -1197,13 +1204,15 @@ public sealed class OrderService : IOrderService
     /// <param name="FullName">Their name, for attribution on the order.</param>
     /// <param name="ServiceChargeRate">Snapshotted onto any order they open.</param>
     /// <param name="VatRate">Snapshotted onto any order they open.</param>
+    /// <param name="Currency">What their restaurant trades in, for the bill on screen.</param>
     /// A struct, so the nullable wrapper stays a Nullable&lt;T&gt; and every call site
     /// keeps reading it as .Value the way it did when this was a tuple.
     private readonly record struct WaiterContext(
         Guid RestaurantId,
         string FullName,
         decimal ServiceChargeRate,
-        decimal VatRate);
+        decimal VatRate,
+        string Currency);
 
     /// <summary>
     /// The display name of one staff account, or null when there is nobody to name.
@@ -1289,6 +1298,7 @@ public sealed class OrderService : IOrderService
         Order order,
         string tableName,
         string createdBy,
+        string currency,
         string? confirmedBy = null)
     {
         var unsubmitted = order.Items
@@ -1313,6 +1323,15 @@ public sealed class OrderService : IOrderService
             // actually waiting, and - for a customer's order - somebody has agreed it
             // with the table.
             order.IsEditable && unsubmitted > 0 && !order.NeedsConfirmation,
+            currency,
+            order.DiscountAmount,
+            order.ServiceChargeAmount,
+            order.VatAmount,
+            order.Total,
+            order.AmountPaid,
+            order.AmountOutstanding,
+            order.CanSettle,
+            order.BillRequestedAtUtc,
             order.IsCustomerPlaced,
             order.NeedsConfirmation,
             order.ConfirmedAtUtc,

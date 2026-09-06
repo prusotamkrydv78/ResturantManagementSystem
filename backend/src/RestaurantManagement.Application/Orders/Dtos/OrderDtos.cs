@@ -257,6 +257,31 @@ public sealed class UpdateOrderRequest
 /// How many units have not gone to the kitchen yet. What the submit action offers
 /// to send.
 /// </param>
+/// <param name="Currency">
+/// The ISO code the amounts on this order are in. Sent with the order because the
+/// screen showing it is about money, and a figure with no currency beside it is the
+/// one thing a bill must never be.
+/// </param>
+/// <param name="ServiceChargeAmount">The service charge, on the discounted food.</param>
+/// <param name="VatAmount">Tax, on the food plus the service charge.</param>
+/// <param name="DiscountAmount">Money taken off, in currency. Zero when there is none.</param>
+/// <param name="Total">
+/// What the table owes. The subtotal above is only what the food cost, and showing
+/// that to somebody about to take payment is how a restaurant undercharges.
+/// </param>
+/// <param name="AmountPaid">Taken so far, across every payment.</param>
+/// <param name="AmountOutstanding">Still owed. Zero once the bill is settled.</param>
+/// <param name="CanSettle">
+/// Whether money may be taken against it now: still open, not already paid, nothing
+/// left unsent, and the kitchen finished.
+/// </param>
+/// <param name="BillRequestedAtUtc">
+/// When the table asked to pay, or null.
+///
+/// The reason this whole block is here. A customer can now put their hand up from
+/// their phone, and the screen a waiter is standing on when they walk over is this
+/// one - not the billing queue.
+/// </param>
 /// <param name="CanSubmitToKitchen">
 /// Whether a submission would do anything right now. Server-decided, so the
 /// interface does not have to combine rules itself.
@@ -297,6 +322,15 @@ public sealed record OrderResponse(
     string RowVersion,
     int UnsubmittedItemCount,
     bool CanSubmitToKitchen,
+    string Currency,
+    decimal DiscountAmount,
+    decimal ServiceChargeAmount,
+    decimal VatAmount,
+    decimal Total,
+    decimal AmountPaid,
+    decimal AmountOutstanding,
+    bool CanSettle,
+    DateTimeOffset? BillRequestedAtUtc,
     bool IsCustomerPlaced,
     bool NeedsConfirmation,
     DateTimeOffset? ConfirmedAtUtc,
@@ -368,6 +402,11 @@ public sealed record SubmitToKitchenResponse(
 /// Whether somebody still has to check it with the table. This is the flag the list
 /// sorts and colours by: an unconfirmed order is a customer sitting there waiting.
 /// </param>
+/// <param name="BillRequestedAtUtc">
+/// When this table asked to pay, or null. On the list rather than only in a
+/// notification, because a waiter whose phone was in their pocket at that moment still
+/// has to find the table - and how long they have been waiting decides who is seen next.
+/// </param>
 public sealed record OrderSummaryResponse(
     Guid Id,
     int OrderNumber,
@@ -380,4 +419,5 @@ public sealed record OrderSummaryResponse(
     int KitchenTicketCount,
     DateTimeOffset CreatedAtUtc,
     bool IsCustomerPlaced,
-    bool NeedsConfirmation);
+    bool NeedsConfirmation,
+    DateTimeOffset? BillRequestedAtUtc);

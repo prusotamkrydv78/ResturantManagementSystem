@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RestaurantManagement.Application.Billing;
 using RestaurantManagement.Application.Billing.Dtos;
+using RestaurantManagement.Domain.Identity;
 using RestaurantManagement.Domain.Orders;
 using RestaurantManagement.Domain.Payments;
 using RestaurantManagement.Domain.Restaurants;
@@ -55,7 +56,8 @@ public sealed class BillingService : IBillingService
         bool includeCompleted,
         CancellationToken cancellationToken)
     {
-        var restaurantId = await ResolveRestaurantIdAsync(managerUserId, cancellationToken);
+        var caller = await ResolveSettlerAsync(managerUserId, cancellationToken);
+        var restaurantId = caller?.RestaurantId;
 
         if (restaurantId is null)
         {
@@ -99,7 +101,8 @@ public sealed class BillingService : IBillingService
         Guid orderId,
         CancellationToken cancellationToken)
     {
-        var restaurantId = await ResolveRestaurantIdAsync(managerUserId, cancellationToken);
+        var caller = await ResolveSettlerAsync(managerUserId, cancellationToken);
+        var restaurantId = caller?.RestaurantId;
 
         if (restaurantId is null)
         {
@@ -127,7 +130,9 @@ public sealed class BillingService : IBillingService
         RecordPaymentRequest request,
         CancellationToken cancellationToken)
     {
-        var manager = await ResolveManagerAsync(managerUserId, cancellationToken);
+        // A waiter or a manager. Whoever is standing at the table takes the money, and
+        // the name recorded against the payment is theirs.
+        var manager = await ResolveSettlerAsync(managerUserId, cancellationToken);
 
         if (manager is null)
         {
@@ -413,7 +418,8 @@ public sealed class BillingService : IBillingService
         Guid orderId,
         CancellationToken cancellationToken)
     {
-        var restaurantId = await ResolveRestaurantIdAsync(managerUserId, cancellationToken);
+        var caller = await ResolveSettlerAsync(managerUserId, cancellationToken);
+        var restaurantId = caller?.RestaurantId;
 
         if (restaurantId is null)
         {
@@ -623,6 +629,9 @@ public sealed class BillingService : IBillingService
     /// <summary>
     /// Confirms the caller manages a restaurant, and returns it. Ownership comes from
     /// the restaurant record rather than from anything the client sent.
+    ///
+    /// Manager only, and used by the two operations that stay theirs: calling an order
+    /// off, and the takings history.
     /// </summary>
     private async Task<Guid?> ResolveRestaurantIdAsync(
         Guid managerUserId,
@@ -635,6 +644,44 @@ public sealed class BillingService : IBillingService
             .ToListAsync(cancellationToken);
 
         return ids.Count == 0 ? null : ids[0];
+    }
+
+    /// <summary>
+    /// The restaurant of somebody who may settle a bill, and their name for the record.
+    ///
+    /// A manager or a waiter, because the person taking the money is whoever is standing
+    /// at the table. Two queries rather than one join over a union: the shapes are
+    /// genuinely different - a manager is named by the restaurant, a waiter carries it -
+    /// and the manager case answers first because they are the smaller set.
+    ///
+    /// The active check on the staff side matters. A token issued moments before an
+    /// account was switched off would otherwise still take payments.
+    /// </summary>
+    private async Task<(Guid RestaurantId, string FullName)?> ResolveSettlerAsync(
+        Guid userId,
+        CancellationToken cancellationToken)
+    {
+        var manager = await ResolveManagerAsync(userId, cancellationToken);
+
+        if (manager is not null)
+        {
+            return manager;
+        }
+
+        var waiters = await _dbContext.Users
+            .AsNoTracking()
+            .Where(user =>
+                user.Id == userId &&
+                user.IsActive &&
+                user.PlatformRole == PlatformRole.Staff &&
+                user.StaffRole == StaffRole.Waiter &&
+                user.RestaurantId != null)
+            .Select(user => new { RestaurantId = user.RestaurantId!.Value, user.FullName })
+            .ToListAsync(cancellationToken);
+
+        return waiters.Count == 0
+            ? null
+            : (waiters[0].RestaurantId, waiters[0].FullName);
     }
 
     /// <summary>
@@ -745,6 +792,7 @@ public sealed class BillingService : IBillingService
             order.UnfinishedKitchenTicketCount,
             order.UnsentItemCount,
             order.CanSettle,
+            order.BillRequestedAtUtc,
             order.Payments
                 .OrderBy(payment => payment.RecordedAtUtc)
                 .Select(payment => ToPayment(payment, names))
@@ -777,6 +825,7 @@ public sealed class BillingService : IBillingService
                 .Sum(item => item.Quantity),
             order.StartedKitchenTicketCount,
             order.CanSettle,
+            order.BillRequestedAtUtc,
             order.CanCancel,
             order.Payments
                 .OrderBy(payment => payment.RecordedAtUtc)

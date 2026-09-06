@@ -50,6 +50,7 @@ function Orders() {
   useRealtimeEvent("orderPlaced", reload);
   useRealtimeEvent("orderConfirmed", reload);
   useRealtimeEvent("ticketQueued", reload);
+  useRealtimeEvent("billRequested", reload);
 
   useEffect(() => {
     let cancelled = false;
@@ -80,6 +81,8 @@ function Orders() {
     orders?.filter((order) => order.unsubmittedItemCount > 0).length ?? 0;
   const toConfirm =
     orders?.filter((order) => order.needsConfirmation).length ?? 0;
+  const toBill =
+    orders?.filter((order) => order.billRequestedAtUtc !== null).length ?? 0;
 
   return (
     <>
@@ -136,6 +139,16 @@ function Orders() {
                     </span>
                   </>
                 )}
+                {/* Ahead of the kitchen count: a table that has asked to pay has
+                    already decided to leave, and is now just waiting on us. */}
+                {toBill > 0 && (
+                  <>
+                    {" · "}
+                    <span className="font-semibold text-warning">
+                      {toBill} asking to pay
+                    </span>
+                  </>
+                )}
                 {waiting > 0 && (
                   <>
                     {" · "}
@@ -164,7 +177,9 @@ function Orders() {
                       "flex h-full flex-col gap-3 rounded-lg border bg-surface p-4 transition-colors",
                       order.needsConfirmation
                         ? "border-danger-border hover:bg-danger-soft"
-                        : "border-border hover:border-primary-border hover:bg-primary-soft",
+                        : order.billRequestedAtUtc !== null
+                          ? "border-warning-border hover:bg-warning-soft"
+                          : "border-border hover:border-primary-border hover:bg-primary-soft",
                     )}
                   >
                     <div className="flex items-start justify-between gap-3">
@@ -184,6 +199,10 @@ function Orders() {
                         {order.needsConfirmation ? (
                           <Badge tone="danger" dot>
                             Confirm with table
+                          </Badge>
+                        ) : order.billRequestedAtUtc !== null ? (
+                          <Badge tone="warning" dot>
+                            Asking to pay
                           </Badge>
                         ) : (
                           <Badge tone="primary" dot>

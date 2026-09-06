@@ -23,7 +23,11 @@ namespace RestaurantManagement.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/billing")]
-[Authorize(Roles = PlatformRoles.RestaurantManager)]
+// Reading a bill and taking payment for it are floor work as much as counter work, so
+// the class admits both. The two actions that are not - calling an order off, and the
+// takings history - carry a second attribute of their own, and ASP.NET requires every
+// attribute on the path to pass.
+[Authorize(Policy = AuthorizationPolicies.Settles)]
 public sealed class BillingController : ControllerBase
 {
     private readonly IBillingService _billingService;
@@ -142,6 +146,7 @@ public sealed class BillingController : ControllerBase
     /// produced no money and carries no explanation is the gap this state exists to
     /// close.
     /// </summary>
+    [Authorize(Roles = PlatformRoles.RestaurantManager)]
     [HttpPost("orders/{id:guid}/cancellation")]
     [ProducesResponseType(typeof(BillingOrderResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -178,6 +183,7 @@ public sealed class BillingController : ControllerBase
     /// A history list rather than a report: one row per order, with no totals or
     /// groupings. The limit is capped by the service whatever is asked for.
     /// </summary>
+    [Authorize(Roles = PlatformRoles.RestaurantManager)]
     [HttpGet("history")]
     [ProducesResponseType(
         typeof(IReadOnlyList<OrderHistoryEntryResponse>),

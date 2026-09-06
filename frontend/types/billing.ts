@@ -73,6 +73,21 @@ export interface BillingOrderSummary {
   status: OrderStatus;
   tableName: string;
   subtotal: number;
+  /** Money taken off, in currency. Zero when there is none. */
+  discountAmount: number;
+  /** The service charge, calculated on the discounted food. */
+  serviceChargeAmount: number;
+  /** Tax, calculated on the food plus the service charge. */
+  vatAmount: number;
+  /**
+   * What the table owes. The figure to show and the figure a payment is checked
+   * against; the subtotal is only what the food cost.
+   */
+  total: number;
+  /** Taken so far, across every payment against this order. */
+  amountPaid: number;
+  /** Still owed. Zero once the bill is settled. */
+  amountOutstanding: number;
   itemCount: number;
   placedByName: string;
   createdAtUtc: string;
@@ -83,8 +98,17 @@ export interface BillingOrderSummary {
   /** Lines the kitchen was never told about. Must be zero before a bill can be settled. */
   unsentItemCount: number;
   /** Whether it may be paid for and closed now. Decided by the server. */
-  canComplete: boolean;
-  payment: Payment | null;
+  /** Whether money may be taken against it now. */
+  canSettle: boolean;
+  /**
+   * When the table asked to pay, or null.
+   *
+   * What the bill queue sorts and colours by: a table that has asked has already
+   * decided to leave, and is now only waiting on us.
+   */
+  billRequestedAtUtc: string | null;
+  /** Every payment taken against it, oldest first. A split bill has more than one. */
+  payments: Payment[];
   cancellation: Cancellation | null;
 }
 
@@ -97,6 +121,21 @@ export interface BillingOrder {
   tableCapacity: number;
   /** Sum of the lines, and the amount due. Calculated by the server. */
   subtotal: number;
+  /** Money taken off, in currency. Zero when there is none. */
+  discountAmount: number;
+  /** The service charge, calculated on the discounted food. */
+  serviceChargeAmount: number;
+  /** Tax, calculated on the food plus the service charge. */
+  vatAmount: number;
+  /**
+   * What the table owes. The figure to show and the figure a payment is checked
+   * against; the subtotal is only what the food cost.
+   */
+  total: number;
+  /** Taken so far, across every payment against this order. */
+  amountPaid: number;
+  /** Still owed. Zero once the bill is settled. */
+  amountOutstanding: number;
   itemCount: number;
   placedByName: string;
   createdAtUtc: string;
@@ -114,10 +153,19 @@ export interface BillingOrder {
    * away.
    */
   startedKitchenTicketCount: number;
-  canComplete: boolean;
+  /** Whether money may be taken against it now. */
+  canSettle: boolean;
+  /**
+   * When the table asked to pay, or null.
+   *
+   * What the bill queue sorts and colours by: a table that has asked has already
+   * decided to leave, and is now only waiting on us.
+   */
+  billRequestedAtUtc: string | null;
   /** Whether it may be called off now. Decided by the server. */
   canCancel: boolean;
-  payment: Payment | null;
+  /** Every payment taken against it, oldest first. A split bill has more than one. */
+  payments: Payment[];
   cancellation: Cancellation | null;
   items: BillingOrderItem[];
   kitchenTickets: BillingKitchenTicket[];
@@ -131,6 +179,13 @@ export interface BillingOrder {
  */
 export interface RecordPaymentPayload {
   method: PaymentMethod;
+  /**
+   * How much arrived, or omitted to settle whatever is still outstanding.
+   *
+   * The only amount a client may name, and the server bounds it on both sides: more
+   * than zero, and no more than the bill still owes. It cannot invent a total.
+   */
+  amount?: number;
 }
 
 /** The result of settling an order. */
@@ -169,12 +224,28 @@ export interface OrderHistoryEntry {
   tableName: string;
   /** What the order came to, whether or not it was ever paid. */
   subtotal: number;
+  /** Money taken off, in currency. Zero when there is none. */
+  discountAmount: number;
+  /** The service charge, calculated on the discounted food. */
+  serviceChargeAmount: number;
+  /** Tax, calculated on the food plus the service charge. */
+  vatAmount: number;
+  /**
+   * What the table owes. The figure to show and the figure a payment is checked
+   * against; the subtotal is only what the food cost.
+   */
+  total: number;
+  /** Taken so far, across every payment against this order. */
+  amountPaid: number;
+  /** Still owed. Zero once the bill is settled. */
+  amountOutstanding: number;
   itemCount: number;
   placedByName: string;
   createdAtUtc: string;
   /** When it ended, whichever way it ended, so one field sorts the history. */
   closedAtUtc: string;
   kitchenTicketCount: number;
-  payment: Payment | null;
+  /** Every payment taken against it, oldest first. A split bill has more than one. */
+  payments: Payment[];
   cancellation: Cancellation | null;
 }

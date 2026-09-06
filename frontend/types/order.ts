@@ -116,6 +116,27 @@ export interface Order {
   unsubmittedItemCount: number;
   /** Whether there is anything to send right now. Decided by the server. */
   canSubmitToKitchen: boolean;
+  /** The ISO code the amounts on this order are in. */
+  currency: string;
+  discountAmount: number;
+  serviceChargeAmount: number;
+  vatAmount: number;
+  /**
+   * What the table owes. The subtotal is only what the food cost, and showing that to
+   * somebody about to take payment is how a restaurant undercharges.
+   */
+  total: number;
+  amountPaid: number;
+  amountOutstanding: number;
+  /** Whether money may be taken against it now. */
+  canSettle: boolean;
+  /**
+   * When the table asked to pay, or null.
+   *
+   * A customer can put their hand up from their phone, and this is the screen a waiter
+   * is standing on when they walk over.
+   */
+  billRequestedAtUtc: string | null;
   /**
    * Whether a customer put this order in themselves, from the website or a scanned
    * code. What it changes for the waiter is that nobody has agreed it out loud yet.
@@ -154,6 +175,13 @@ export interface OrderSummary {
   createdAtUtc: string;
   /** Whether a customer placed it themselves rather than a waiter taking it. */
   isCustomerPlaced: boolean;
+  /**
+   * When this table asked to pay, or null.
+   *
+   * On the list rather than only in a notification, because a waiter whose phone was in
+   * their pocket at that moment still has to find the table.
+   */
+  billRequestedAtUtc: string | null;
   /**
    * Whether somebody still has to check it with the table. The server puts these
    * first in the list: an unconfirmed order is a customer sitting there waiting.

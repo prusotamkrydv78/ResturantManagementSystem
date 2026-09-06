@@ -30,4 +30,21 @@ public static class AuthorizationPolicies
     /// can stand next to it.
     /// </summary>
     public const string Chef = "Chef";
+
+    /// <summary>
+    /// Somebody who may take a payment: a restaurant manager, or a waiter.
+    ///
+    /// Both, because in a restaurant the person who takes the money is whoever is
+    /// standing at the table. Making a manager walk over for every bill is how a
+    /// product gets worked around rather than used.
+    ///
+    /// A chef is not included. They are Staff, and without this they would inherit the
+    /// billing screens simply for being staff - which is the same mistake the floor
+    /// screens made before they started asking what somebody actually does.
+    ///
+    /// Deliberately not everything a manager can do at a counter. Discounts,
+    /// cancellations and the takings history stay theirs, gated a second time on the
+    /// actions themselves.
+    /// </summary>
+    public const string Settles = "Settles";
 }

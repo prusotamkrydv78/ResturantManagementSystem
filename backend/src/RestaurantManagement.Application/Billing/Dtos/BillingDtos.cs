@@ -95,6 +95,12 @@ public sealed record PaymentResponse(
 /// of the two kitchen conditions is holding an order up: nothing sent, or nothing ready.
 /// </param>
 /// <param name="CanSettle">Whether money may be taken against it now.</param>
+/// <param name="BillRequestedAtUtc">
+/// When the table asked to pay, or null.
+///
+/// The customer can now put their hand up from their phone, and this is what a bill
+/// screen sorts and colours by. A table that has asked has already decided to leave.
+/// </param>
 /// <param name="Payments">Every payment taken against it, oldest first. A split bill has more than one.</param>
 /// <param name="Cancellation">Why it was called off, if it was.</param>
 public sealed record BillingOrderSummaryResponse(
@@ -117,6 +123,7 @@ public sealed record BillingOrderSummaryResponse(
     int UnfinishedKitchenTicketCount,
     int UnsentItemCount,
     bool CanSettle,
+    DateTimeOffset? BillRequestedAtUtc,
     IReadOnlyList<PaymentResponse> Payments,
     CancellationResponse? Cancellation);
 
@@ -150,6 +157,12 @@ public sealed record BillingOrderSummaryResponse(
 /// cancellation; it is what tells the manager what calling the order off throws away.
 /// </param>
 /// <param name="CanSettle">Whether money may be taken against it now.</param>
+/// <param name="BillRequestedAtUtc">
+/// When the table asked to pay, or null.
+///
+/// The customer can now put their hand up from their phone, and this is what a bill
+/// screen sorts and colours by. A table that has asked has already decided to leave.
+/// </param>
 /// <param name="CanCancel">Whether it may be called off now.</param>
 /// <param name="Payments">Every payment taken against it, oldest first. A split bill has more than one.</param>
 /// <param name="Cancellation">Why it was called off, if it was.</param>
@@ -176,6 +189,7 @@ public sealed record BillingOrderResponse(
     int UnsubmittedItemCount,
     int StartedKitchenTicketCount,
     bool CanSettle,
+    DateTimeOffset? BillRequestedAtUtc,
     bool CanCancel,
     IReadOnlyList<PaymentResponse> Payments,
     CancellationResponse? Cancellation,

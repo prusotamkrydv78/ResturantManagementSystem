@@ -309,13 +309,13 @@ describe("response shapes the frontend depends on", () => {
       for (const order of queue) {
         expectUnion(order.status, ORDER_STATUSES, "billing order status");
         expectNumber(order.subtotal, "billing order subtotal");
-        expectFlag(order.canComplete, "billing order canComplete");
+        expectFlag(order.canSettle, "billing order canSettle");
         expectNumber(order.unfinishedKitchenTicketCount, "unfinished ticket count");
         expectNullable(order.completedAtUtc, "completedAtUtc", expectInstant);
 
-        if (order.payment !== null) {
-          expectUnion(order.payment.method, PAYMENT_METHODS, "payment.method");
-          expectNumber(order.payment.amount, "payment.amount");
+        for (const payment of order.payments) {
+          expectUnion(payment.method, PAYMENT_METHODS, "payment.method");
+          expectNumber(payment.amount, "payment.amount");
         }
       }
     });
@@ -355,7 +355,7 @@ describe("response shapes the frontend depends on", () => {
         "bill",
       );
 
-      expectFlag(bill.canComplete, "bill.canComplete");
+      expectFlag(bill.canSettle, "bill.canSettle");
       expectFlag(bill.canCancel, "bill.canCancel");
       expectNumber(bill.tableCapacity, "bill.tableCapacity");
 

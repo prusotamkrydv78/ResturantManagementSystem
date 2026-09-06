@@ -214,7 +214,7 @@ describe("a table from seating to settled", () => {
       `/api/billing/orders/${orderId}`,
     );
 
-    expect(bill.canComplete).toBe(false);
+    expect(bill.canSettle).toBe(false);
     expect(bill.unfinishedKitchenTicketCount).toBe(1);
 
     const refused = await seeded.manager.attempt(
@@ -258,10 +258,10 @@ describe("a table from seating to settled", () => {
     );
 
     expectUnion(bill.status, ORDER_STATUSES, "bill.status");
-    expect(bill.canComplete).toBe(true);
+    expect(bill.canSettle).toBe(true);
     expect(bill.unfinishedKitchenTicketCount).toBe(0);
     expect(bill.subtotal).toBe(seeded.itemPrice * 3);
-    expect(bill.payment).toBeNull();
+    expect(bill.payments).toHaveLength(0);
     expect(bill.cancellation).toBeNull();
     expect(bill.items).toHaveLength(2);
     expect(first(bill.items, "bill lines").kitchenTicketNumber).toBe(ticketNumber);
@@ -280,7 +280,7 @@ describe("a table from seating to settled", () => {
     expectInstant(result.payment.recordedAtUtc, "payment.recordedAtUtc");
     expect(result.order.status).toBe("Completed");
     expectInstant(result.order.completedAtUtc, "order.completedAtUtc");
-    expect(result.order.canComplete).toBe(false);
+    expect(result.order.canSettle).toBe(false);
     expect(result.order.canCancel).toBe(false);
   });
 

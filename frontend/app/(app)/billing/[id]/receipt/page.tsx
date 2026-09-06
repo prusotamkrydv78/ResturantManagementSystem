@@ -25,7 +25,7 @@ import type { Receipt } from "@/types/receipt";
  */
 export default function ReceiptPage() {
   return (
-    <RequireAuth roles={["RestaurantManager"]}>
+    <RequireAuth roles={["RestaurantManager", "Staff"]} staffRoles={["Waiter"]}>
       <ReceiptView />
     </RequireAuth>
   );

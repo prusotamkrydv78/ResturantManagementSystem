@@ -31,7 +31,7 @@ import type { BillingOrderSummary } from "@/types/billing";
  */
 export default function BillingPage() {
   return (
-    <RequireAuth roles={["RestaurantManager"]}>
+    <RequireAuth roles={["RestaurantManager", "Staff"]} staffRoles={["Waiter"]}>
       <Billing />
     </RequireAuth>
   );
@@ -70,8 +70,11 @@ function Billing() {
 
   const open = orders?.filter((order) => order.status === "Open") ?? [];
   const settled = orders?.filter((order) => order.status === "Completed") ?? [];
-  const ready = open.filter((order) => order.canComplete);
-  const outstanding = open.reduce((sum, order) => sum + order.subtotal, 0);
+  const ready = open.filter((order) => order.canSettle);
+  // What the floor is actually owed, which is the total and not the food. The
+  // subtotal understates every open bill by the tax and the service charge.
+  const outstanding = open.reduce((sum, order) => sum + order.amountOutstanding, 0);
+  const asking = open.filter((order) => order.billRequestedAtUtc !== null).length;
 
   return (
     <>
@@ -81,6 +84,13 @@ function Billing() {
         crumbs={[{ label: "Workspace", href: "/dashboard" }, { label: "Billing" }]}
         actions={
           <div className="flex items-center gap-2">
+            {/* First, because a table that has asked to pay is a person waiting rather
+                than a bill that happens to be settleable. */}
+            {asking > 0 && (
+              <Badge tone="warning" dot>
+                {asking} asking to pay
+              </Badge>
+            )}
             <Badge tone={ready.length > 0 ? "success" : "neutral"} dot>
               {ready.length} ready to settle
             </Badge>
@@ -174,16 +184,21 @@ function Billing() {
                           </span>
                         </span>
                         <span className="text-2xs text-muted">
-                          {order.payment === null
+                          {order.payments.length === 0
                             ? "Closed"
-                            : `${order.payment.method} · ${order.payment.recordedByName}`}
+                            : order.payments.length === 1
+                              ? `${order.payments[0]!.method} · ${order.payments[0]!.recordedByName}`
+                              : `Split over ${order.payments.length} payments`}
                           {order.completedAtUtc !== null &&
                             ` · ${formatTime(order.completedAtUtc)}`}
                         </span>
                       </div>
                       <div className="flex items-center gap-3">
                         <span className="tabular text-sm font-semibold text-text">
-                          {(order.payment?.amount ?? order.subtotal).toFixed(2)}
+                          {(order.payments.length === 0
+                            ? order.total
+                            : order.amountPaid
+                          ).toFixed(2)}
                         </span>
                         <Badge tone="success" dot>
                           Paid
@@ -216,9 +231,11 @@ function OrderCard({ order }: { order: BillingOrderSummary }) {
       href={`/billing/${order.id}`}
       className={cn(
         "flex h-full flex-col gap-3 rounded-lg border bg-surface p-4 transition-colors",
-        order.canComplete
-          ? "border-success-border hover:bg-success-soft"
-          : "border-border hover:border-primary-border hover:bg-primary-soft",
+        order.billRequestedAtUtc !== null
+          ? "border-warning-border hover:bg-warning-soft"
+          : order.canSettle
+            ? "border-success-border hover:bg-success-soft"
+            : "border-border hover:border-primary-border hover:bg-primary-soft",
       )}
     >
       <div className="flex items-start justify-between gap-3">
@@ -233,7 +250,11 @@ function OrderCard({ order }: { order: BillingOrderSummary }) {
           kitchen is still cooking both fail to be settleable, but they need different
           people to act: the first needs a waiter, the second needs time.
         */}
-        {order.canComplete ? (
+        {order.billRequestedAtUtc !== null ? (
+          <Badge tone="warning" dot>
+            Asking to pay
+          </Badge>
+        ) : order.canSettle ? (
           <Badge tone="success" dot>
             Ready to settle
           </Badge>

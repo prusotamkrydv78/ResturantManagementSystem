@@ -8,6 +8,7 @@ import {
   Lock,
   Minus,
   Plus,
+  HandCoins,
   Send,
   StickyNote,
   Trash2,
@@ -844,6 +845,8 @@ function OrderDetail() {
                 </p>
               )}
 
+              <BillPanel order={order} />
+
               <SurfaceHeader
                 title="Kitchen"
                 description={
@@ -933,6 +936,127 @@ function OrderDetail() {
         </div>
       </PageBody>
     </>
+  );
+}
+
+/**
+ * What the table owes, and the way to take it.
+ *
+ * On the order screen rather than only in the billing queue, because this is where a
+ * waiter already is when a table calls them over - and until this existed, somebody
+ * who saw "Table 3 is asking to pay" had nowhere to go from here.
+ *
+ * Taking the payment is a link rather than a form. Settling is a screen of its own
+ * with a method to pick, part payments and a receipt at the end, and a second copy of
+ * that here would be a second place for the rules to drift.
+ */
+function BillPanel({ order }: { order: Order }) {
+  const asked = order.billRequestedAtUtc !== null;
+
+  return (
+    <div
+      className={cn(
+        "flex flex-col gap-3 border-b border-border p-4",
+        asked && "bg-warning-soft",
+      )}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 flex-col">
+          <span className="text-sm font-semibold text-text">The bill</span>
+          {asked && (
+            <span className="text-2xs font-medium text-warning">
+              This table asked to pay at {formatTime(order.billRequestedAtUtc!)}
+            </span>
+          )}
+        </div>
+
+        {asked && (
+          <Badge tone="warning" dot>
+            Asking to pay
+          </Badge>
+        )}
+      </div>
+
+      {/* Itemised, because the figure a waiter quotes has to match the one on the
+          customer's phone - and the subtotal alone understates it by the tax and
+          the service charge. */}
+      <dl className="flex flex-col gap-1">
+        <BillLine label="Food" amount={order.subtotal} currency={order.currency} />
+
+        {order.discountAmount > 0 && (
+          <BillLine
+            label="Discount"
+            amount={-order.discountAmount}
+            currency={order.currency}
+          />
+        )}
+
+        {order.serviceChargeAmount > 0 && (
+          <BillLine
+            label="Service charge"
+            amount={order.serviceChargeAmount}
+            currency={order.currency}
+          />
+        )}
+
+        {order.vatAmount > 0 && (
+          <BillLine label="VAT" amount={order.vatAmount} currency={order.currency} />
+        )}
+
+        <div className="flex items-baseline justify-between border-t border-border pt-1.5">
+          <dt className="text-sm font-medium text-text">Total</dt>
+          <dd className="tabular text-lg font-semibold text-text">
+            {order.currency} {order.total.toFixed(2)}
+          </dd>
+        </div>
+
+        {order.amountPaid > 0 && (
+          <BillLine
+            label="Still owed"
+            amount={order.amountOutstanding}
+            currency={order.currency}
+          />
+        )}
+      </dl>
+
+      {order.canSettle ? (
+        <LinkButton
+          href={`/billing/${order.id}`}
+          icon={<HandCoins />}
+          className="w-full"
+        >
+          Take payment
+        </LinkButton>
+      ) : (
+        // Said plainly rather than shown as a disabled button. There is something to
+        // do about each of these, and it is not pressing this.
+        <p className="text-2xs text-subtle">
+          {order.unsubmittedItemCount > 0
+            ? "Send everything to the kitchen before taking payment."
+            : "The kitchen is still working on this order."}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** One line of the bill. */
+function BillLine({
+  label,
+  amount,
+  currency,
+}: {
+  label: string;
+  amount: number;
+  currency: string;
+}) {
+  return (
+    <div className="flex items-baseline justify-between gap-3">
+      <dt className="text-sm text-muted">{label}</dt>
+      <dd className="tabular text-sm text-text">
+        {currency} {amount.toFixed(2)}
+      </dd>
+    </div>
   );
 }
 

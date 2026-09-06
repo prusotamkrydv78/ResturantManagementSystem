@@ -69,8 +69,8 @@ describe("calling an order off", () => {
 
     // One ending, not both.
     expect(cancelled.completedAtUtc).toBeNull();
-    expect(cancelled.payment).toBeNull();
-    expect(cancelled.canComplete).toBe(false);
+    expect(cancelled.payments).toHaveLength(0);
+    expect(cancelled.canSettle).toBe(false);
     expect(cancelled.canCancel).toBe(false);
   });
 

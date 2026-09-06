@@ -208,11 +208,13 @@ function HistoryRow({ entry }: { entry: OrderHistoryEntry }) {
                 isCancelled ? "text-muted line-through" : "text-text",
               )}
             >
-              {(entry.payment?.amount ?? entry.subtotal).toFixed(2)}
+              {(entry.payments.length === 0 ? entry.total : entry.amountPaid).toFixed(2)}
             </span>
-            {entry.payment !== null && (
+            {entry.payments.length > 0 && (
               <span className="text-2xs text-subtle">
-                {entry.payment.method} · {entry.payment.recordedByName}
+                {entry.payments.length === 1
+                  ? `${entry.payments[0]!.method} · ${entry.payments[0]!.recordedByName}`
+                  : `Split over ${entry.payments.length} payments`}
               </span>
             )}
           </div>

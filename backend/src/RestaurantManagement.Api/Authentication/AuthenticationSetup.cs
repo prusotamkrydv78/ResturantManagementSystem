@@ -107,6 +107,20 @@ public static class AuthenticationSetup
                     .RequireAuthenticatedUser()
                     .RequireRole(PlatformRoles.Staff)
                     .RequireClaim(JwtClaimNames.StaffRole, StaffRoleNames.Chef));
+
+            // Two different accounts satisfy this one, so it is an assertion rather than
+            // a list of claims: a manager is recognised by their platform role alone,
+            // and a waiter by the pairing of Staff with the job they do.
+            options.AddPolicy(
+                AuthorizationPolicies.Settles,
+                policy => policy
+                    .RequireAuthenticatedUser()
+                    .RequireAssertion(context =>
+                        context.User.IsInRole(PlatformRoles.RestaurantManager) ||
+                        (context.User.IsInRole(PlatformRoles.Staff) &&
+                            context.User.HasClaim(
+                                JwtClaimNames.StaffRole,
+                                StaffRoleNames.Waiter))));
         });
 
         return services;
