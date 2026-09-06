@@ -31,7 +31,9 @@ export function buttonClasses(
 ): string {
   return cn(
     "inline-flex shrink-0 items-center justify-center rounded-md font-medium",
-    "transition-colors duration-100",
+    // `pressable` gives every button in the product the same give under a finger,
+    // from one place. See the block in globals.css for why it is CSS and not Motion.
+    "pressable transition-colors duration-100",
     "disabled:pointer-events-none disabled:opacity-50",
     VARIANTS[variant],
     SIZES[size],

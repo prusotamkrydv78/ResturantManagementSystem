@@ -610,6 +610,56 @@ h4 {
   animation: wisp 2.1s ease-out infinite;
 }
 
+/* ---------------------------------------------------------------------------
+   Answering a press.
+   --------------------------------------------------------------------------- */
+
+/* Every control in the product gives under a finger.
+
+   Done in CSS rather than with the animation library, deliberately. `Button` is on
+   every screen including the signed-in ones, and pulling a runtime in there to
+   shrink something by four percent would put thirty kilobytes into every page in
+   the product to do what one declaration does. The library earns its place where
+   there is state to track or an exit to animate; this is neither.
+
+   :active covers mouse, touch and the space bar, so there is nothing to wire up
+   and nothing to forget on the next control somebody writes. */
+.pressable {
+  transition: transform 120ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.pressable:active {
+  transform: scale(0.96);
+}
+
+/* Held still for anything disabled. A control that gives way and then does nothing
+   is worse than one that does not move: it says the press was taken. */
+.pressable:disabled:active,
+.pressable[aria-disabled="true"]:active {
+  transform: none;
+}
+
+/* The ring that opens where the finger actually landed.
+
+   Grows and fades at once, so it reads as a single event rather than as something
+   arriving. See `TapPulse` for why this is the only feedback that answers "did my
+   tap land where I meant" rather than "did the control notice". */
+@keyframes tap-pulse {
+  from {
+    opacity: 0.3;
+    transform: scale(0.35);
+  }
+
+  to {
+    opacity: 0;
+    transform: scale(1.9);
+  }
+}
+
+.tap-pulse {
+  animation: tap-pulse 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
 /* A row that scrolls sideways, without saying so in a scrollbar.
 
    A native horizontal scrollbar under a row of cards is the wrong tool twice over:

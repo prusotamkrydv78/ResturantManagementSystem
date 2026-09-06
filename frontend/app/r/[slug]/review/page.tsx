@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { motion, MotionConfig } from "motion/react";
 import { ArrowLeft, Check, UtensilsCrossed } from "lucide-react";
 import { Button, LinkButton } from "@/components/ui/button";
+import { TapPulse } from "@/components/ui/tap-pulse";
 import { Surface } from "@/components/ui/surface";
 import { EmptyState, Spinner } from "@/components/ui/states";
 import { getPublicRestaurant, lookupWebsiteOrder } from "@/features/public/api";
@@ -368,6 +369,7 @@ export default function ReviewPage() {
 function Shell({ children }: { children: React.ReactNode }) {
   return (
     <MotionConfig reducedMotion="user">
+      <TapPulse />
       <main className="mx-auto flex w-full max-w-lg flex-col gap-5 px-4 py-10">
         {children}
       </main>

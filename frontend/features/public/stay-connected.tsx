@@ -109,7 +109,7 @@ export function StayConnected({ orderNumber }: { orderNumber: number }) {
           <button
             type="button"
             onClick={dismiss}
-            className="rounded-md px-2 py-1 text-2xs text-muted transition-colors hover:bg-surface-3 hover:text-text"
+            className="pressable rounded-md px-2 py-1 text-2xs text-muted transition-colors hover:bg-surface-3 hover:text-text"
           >
             No thanks
           </button>
@@ -120,7 +120,7 @@ export function StayConnected({ orderNumber }: { orderNumber: number }) {
         type="button"
         onClick={dismiss}
         aria-label="Dismiss"
-        className="-m-1 shrink-0 rounded-md p-1 text-subtle transition-colors hover:text-text"
+        className="pressable -m-1 shrink-0 rounded-md p-1 text-subtle transition-colors hover:text-text"
       >
         <X className="size-4" aria-hidden="true" />
       </button>

@@ -360,7 +360,7 @@ function ToastCard({
         type="button"
         onClick={() => onDismiss(toast.id)}
         aria-label="Dismiss"
-        className="-m-1 shrink-0 rounded-md p-1 text-subtle transition-colors hover:bg-surface-3 hover:text-text"
+        className="pressable -m-1 shrink-0 rounded-md p-1 text-subtle transition-colors hover:bg-surface-3 hover:text-text"
       >
         <X className="size-4" aria-hidden="true" />
       </button>
@@ -388,7 +388,7 @@ export function ToastSoundToggle({ className }: { className?: string }) {
         soundOn ? "Turn notification sounds off" : "Turn notification sounds on"
       }
       className={cn(
-        "rounded-md p-2 transition-colors hover:bg-surface-3",
+        "pressable rounded-md p-2 transition-colors hover:bg-surface-3",
         soundOn ? "text-text" : "text-subtle",
         className,
       )}
