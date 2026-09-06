@@ -93,9 +93,21 @@ export function useOrderUpdates({
         .build();
 
       built.on("customerOrderUpdate", (update: CustomerOrderUpdate) => {
-        // Only ever forwards. Events can arrive out of order after a reconnection, and
-        // a progress bar that goes backwards makes a guest think something broke.
-        setStage((current) => furthest(current, update.stage));
+        // A cancellation is an ending rather than a step, so it closes the order
+        // instead of advancing the rail. Pushing it onto the timeline would draw a
+        // line down to steps that are never coming.
+        // Bound to a const first: narrowing a property does not survive into the
+        // updater closure below, and the compiler is right to say so.
+        const next = update.stage;
+
+        if (next === "Cancelled") {
+          setClosed(true);
+        } else {
+          // Only ever forwards. Events can arrive out of order after a reconnection,
+          // and a progress bar that goes backwards makes a guest think something broke.
+          setStage((current) => furthest(current, next));
+        }
+
         latest.current?.(update);
       });
 

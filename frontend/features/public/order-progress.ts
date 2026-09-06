@@ -20,17 +20,27 @@ export const ORDER_STAGES = [
   "Settled",
 ] as const;
 
+/**
+ * A step on the timeline.
+ *
+ * Cancelling is not one. The rail lists what is going to happen, and an order called
+ * off is the absence of the rest of it rather than another rung - putting it there
+ * would draw a line down to steps that will never come.
+ */
 export type OrderStage = (typeof ORDER_STAGES)[number];
+
+/** Everything the hub can say, including the endings that are not steps. */
+export type CustomerStage = OrderStage | "Cancelled";
 
 /** One step forward on a customer's order, as it arrives from the hub. */
 export interface CustomerOrderUpdate {
   orderNumber: number;
-  stage: OrderStage;
+  stage: CustomerStage;
 }
 
 /** How each stage reads on a phone. */
 export const STAGE_COPY: Record<
-  OrderStage,
+  CustomerStage,
   { title: string; detail: string; done: string }
 > = {
   Confirmed: {
@@ -62,6 +72,11 @@ export const STAGE_COPY: Record<
     title: "Your bill is settled",
     detail: "Thank you for visiting. Nothing left to pay.",
     done: "Paid",
+  },
+  Cancelled: {
+    title: "Your order was cancelled",
+    detail: "The restaurant called it off. Please speak to a member of staff.",
+    done: "Cancelled",
   },
 };
 
