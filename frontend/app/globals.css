@@ -414,6 +414,334 @@ h4 {
   }
 }
 
+/* ---------------------------------------------------------------------------
+   The customer's side, in motion.
+
+   A guest watches this page for twenty minutes, so the parts that change have to
+   announce that they changed. A step that flips from grey to green between two
+   glances tells somebody nothing about what just happened, and "what just
+   happened" is the only question this page exists to answer.
+
+   Everything here is short. Motion that outlasts the moment it describes stops
+   being feedback and turns into decoration, and decoration on a screen somebody
+   is waiting at is just something else to ignore.
+
+   Nothing here needs its own reduced-motion rule. The blanket further down clamps
+   every animation in the product to effectively nothing, so each of these arrives
+   complete and instant rather than never arriving at all.
+   --------------------------------------------------------------------------- */
+
+/* A marker landing as its step completes. Overshoots and settles, because a disc
+   that stops dead at its final size looks placed rather than arrived. */
+@keyframes step-land {
+  0% {
+    transform: scale(0.4);
+  }
+
+  55% {
+    transform: scale(1.25);
+  }
+
+  100% {
+    transform: scale(1);
+  }
+}
+
+.step-land {
+  animation: step-land 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+/* A ring thrown off that marker at the moment it lands, so the eye is pulled to
+   the one step that changed rather than to the list as a whole. */
+@keyframes step-halo {
+  from {
+    opacity: 0.5;
+    transform: scale(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: scale(2.6);
+  }
+}
+
+.step-halo {
+  animation: step-halo 0.85s ease-out both;
+}
+
+/* The rail travelling downward to the next step. Scaled from the top rather than
+   animated by height, which keeps it on the compositor and out of layout. */
+@keyframes rail-fill {
+  from {
+    transform: scaleY(0);
+  }
+
+  to {
+    transform: scaleY(1);
+  }
+}
+
+.rail-fill {
+  transform-origin: top;
+  animation: rail-fill 0.55s 0.15s ease-out both;
+}
+
+/* The words for a step, arriving with its marker. Also does the staggered cascade
+   when the timeline first appears - one delay per row, set inline. */
+@keyframes step-say {
+  from {
+    opacity: 0;
+    transform: translateX(-0.4rem);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.step-say {
+  animation: step-say 0.4s ease-out both;
+}
+
+/* A toast's own countdown, draining left to right.
+
+   The honest way to show that a notification is about to leave. Without it a card
+   simply vanishes mid-sentence, which is why people distrust toasts. It pauses
+   along with the dismiss timer while somebody is reading, so the bar and the
+   behaviour can never disagree. */
+@keyframes toast-drain {
+  from {
+    transform: scaleX(1);
+  }
+
+  to {
+    transform: scaleX(0);
+  }
+}
+
+.toast-drain {
+  transform-origin: left;
+  animation-name: toast-drain;
+  animation-timing-function: linear;
+  animation-fill-mode: both;
+}
+
+/* The icon on a toast, landing a beat after the card so the two read as one
+   gesture instead of everything appearing at once. */
+@keyframes toast-badge {
+  0% {
+    opacity: 0;
+    transform: scale(0.3) rotate(-25deg);
+  }
+
+  60% {
+    opacity: 1;
+    transform: scale(1.15) rotate(4deg);
+  }
+
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.toast-badge {
+  animation: toast-badge 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) 0.08s both;
+}
+
+/* A star being chosen. Springy and brief: this is the one real interaction on the
+   review form, and it should feel like pressing something. */
+@keyframes star-pick {
+  0% {
+    transform: scale(1);
+  }
+
+  45% {
+    transform: scale(1.4);
+  }
+
+  100% {
+    transform: scale(1);
+  }
+}
+
+.star-pick {
+  animation: star-pick 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+/* Anything arriving in place rather than travelling: the permission card, the
+   review form opening, the thanks that replaces it. */
+@keyframes settle-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.5rem) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.settle-in {
+  animation: settle-in 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Steam off the plate on the food-is-ready moment. Two wisps on different delays,
+   because a single one reads as a rendering fault rather than as steam. */
+@keyframes wisp {
+  0% {
+    opacity: 0;
+    transform: translateY(0.4rem) scaleX(0.7);
+  }
+
+  30% {
+    opacity: 0.7;
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateY(-1.75rem) scaleX(1.3);
+  }
+}
+
+.wisp {
+  animation: wisp 2.1s ease-out infinite;
+}
+
+/* A row that scrolls sideways, without saying so in a scrollbar.
+
+   A native horizontal scrollbar under a row of cards is the wrong tool twice over:
+   on a phone it is invisible until a finger is already moving, and on a desktop it
+   is a grey trough drawn across the middle of a panel that was otherwise made of
+   cards and space. Neither one tells somebody there is more to see before they try.
+
+   What does tell them is content running off the edge and fading as it goes, which
+   is what these two do together. Everything stays reachable by keyboard and by
+   wheel; only the trough is gone.
+   --------------------------------------------------------------------------- */
+
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Fades the last stretch of a scroller, so the row reads as continuing rather than
+   as ending in a hard cut. Sized to match the trailing padding on the scroller, so
+   that once it is scrolled to the end the final card sits clear of the fade rather
+   than dimmed by it. */
+.fade-edge-r {
+  -webkit-mask-image: linear-gradient(
+    to right,
+    #000 calc(100% - 1.5rem),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to right,
+    #000 calc(100% - 1.5rem),
+    transparent 100%
+  );
+}
+
+/* A whole-screen moment arriving, and leaving.
+
+   The pair matters more than either half. A full-screen panel that appears between
+   two frames and vanishes the same way reads as a fault in the page - the eye
+   registers that something went missing a good beat before it works out what, and
+   by then the message is gone. Fading it in and easing it out costs half a second
+   and is the difference between an announcement and a glitch.
+
+   The exit is slightly slower than the entrance and scales up rather than down, so
+   it reads as the screen being handed back rather than as something retreating. */
+@keyframes moment-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+.moment-in {
+  animation: moment-in 0.22s ease-out both;
+}
+
+@keyframes moment-out {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: scale(1.04);
+  }
+}
+
+.moment-out {
+  animation: moment-out 0.28s ease-in both;
+}
+
+/* A bell that actually rings, for the card offering to buzz somebody's phone.
+   Shows the thing being offered rather than describing it. */
+@keyframes ring-bell {
+  0%,
+  55%,
+  100% {
+    transform: rotate(0deg);
+  }
+
+  60% {
+    transform: rotate(14deg);
+  }
+
+  70% {
+    transform: rotate(-11deg);
+  }
+
+  80% {
+    transform: rotate(7deg);
+  }
+
+  90% {
+    transform: rotate(-4deg);
+  }
+}
+
+.ring-bell {
+  transform-origin: top center;
+  animation: ring-bell 3.5s ease-in-out infinite;
+}
+
+/* The step in progress, breathing. Slow and shallow on purpose: a page left open on
+   a table should look alive without drawing the eye back every few seconds. */
+@keyframes stage-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 var(--primary-soft);
+  }
+
+  50% {
+    box-shadow: 0 0 0 4px var(--primary-soft);
+  }
+}
+
+.stage-pulse {
+  animation: stage-pulse 2.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stage-pulse {
+    animation: none;
+  }
+}
+
 @keyframes toast-in {
   from {
     opacity: 0;

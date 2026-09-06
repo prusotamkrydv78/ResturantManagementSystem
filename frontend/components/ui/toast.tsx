@@ -227,21 +227,24 @@ function ToastViewport({
 
 const TONE_STYLES: Record<
   ToastTone,
-  { card: string; badge: string; icon: React.ReactNode }
+  { card: string; badge: string; bar: string; icon: React.ReactNode }
 > = {
   info: {
     card: "border-border-strong",
     badge: "bg-surface-3 text-muted",
+    bar: "bg-border-strong",
     icon: <ChefHat className="size-4" aria-hidden="true" />,
   },
   alert: {
     card: "border-danger-border",
     badge: "bg-danger-soft text-danger",
+    bar: "bg-danger",
     icon: <UserRoundCheck className="size-4" aria-hidden="true" />,
   },
   success: {
     card: "border-success-border",
     badge: "bg-success-soft text-success",
+    bar: "bg-success",
     icon: <Check className="size-4" aria-hidden="true" />,
   },
 };
@@ -277,7 +280,9 @@ function ToastCard({
       <span
         aria-hidden="true"
         className={cn(
-          "flex size-8 shrink-0 items-center justify-center rounded-full",
+          // Lands just after the card, so the two read as one gesture rather
+          // than as a finished thing appearing all at once.
+          "toast-badge flex size-8 shrink-0 items-center justify-center rounded-full",
           styles.badge,
         )}
       >
@@ -307,10 +312,36 @@ function ToastCard({
       onFocus={() => setHeld(true)}
       onBlur={() => setHeld(false)}
       className={cn(
-        "toast-in pointer-events-auto flex w-[min(24rem,calc(100vw-1.5rem))] items-start gap-3 rounded-xl border bg-surface p-3 shadow-lg",
+        "toast-in pointer-events-auto relative flex w-[min(24rem,calc(100vw-1.5rem))] items-start gap-3 overflow-hidden rounded-xl border bg-surface p-3 shadow-lg",
+        // Rises very slightly under a finger or a cursor, which is the cheapest
+        // way to say the whole card is the tap target rather than the link in it.
+        "transition-transform duration-200 hover:-translate-y-0.5",
         styles.card,
       )}
     >
+      {/* How long is left, draining away.
+
+          Toasts get distrusted because they vanish mid-sentence with no warning;
+          this is the warning. It is driven by the same duration the dismiss timer
+          uses and paused by the same `held` flag, so the bar and the behaviour
+          cannot drift apart - a countdown that lies is worse than none. */}
+      <span
+        aria-hidden="true"
+        // Remounted whenever the hold changes, which is what keeps it truthful.
+        // Letting go restarts the dismiss timer at its full duration, so the bar
+        // has to start over too; a bar that resumed from a third full while the
+        // timer had gone back to the top would empty long before the toast left.
+        key={held ? "held" : "running"}
+        className={cn(
+          "toast-drain absolute inset-x-0 bottom-0 h-0.5 opacity-60",
+          styles.bar,
+        )}
+        style={{
+          animationDuration: `${toast.duration ?? DEFAULT_DURATION}ms`,
+          animationPlayState: held ? "paused" : "running",
+        }}
+      />
+
       {toast.href === undefined ? (
         <span className="flex min-w-0 flex-1 items-start gap-3">{body}</span>
       ) : (
