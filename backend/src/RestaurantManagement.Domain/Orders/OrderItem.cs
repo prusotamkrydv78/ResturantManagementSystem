@@ -55,6 +55,21 @@ public class OrderItem
     public decimal LineTotal { get; set; }
 
     /// <summary>When the line was created.</summary>
+    /// <summary>
+    /// Whether a customer added this line themselves, rather than a member of staff.
+    ///
+    /// On the line rather than on the order, because one order can have both. A waiter
+    /// takes a table's food, and then somebody at that table adds a dessert from their
+    /// own phone - and the question "has anybody at the restaurant agreed to this?" has
+    /// different answers for the two halves.
+    ///
+    /// This is what the confirmation gate reads. Asking the order where it came from was
+    /// enough while a customer could only ever start their own; the moment they can add
+    /// to one a waiter opened, the origin of the order stops describing the lines on it,
+    /// and lines nobody agreed to would have gone to the kitchen unchallenged.
+    /// </summary>
+    public bool AddedByCustomer { get; set; }
+
     public DateTimeOffset CreatedAtUtc { get; set; }
 
     /// <summary>

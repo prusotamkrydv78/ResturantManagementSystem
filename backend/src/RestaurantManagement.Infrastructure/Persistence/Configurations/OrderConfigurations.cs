@@ -126,6 +126,7 @@ public sealed class OrderConfiguration : IEntityTypeConfiguration<Order>
         // field rather than a way to find somebody's order.
         builder.Property(order => order.PlacedFromIp).HasMaxLength(45);
 
+
         // What the floor asks for constantly once this exists: which tables are waiting
         // to pay. Filtered, because at any moment that is a handful of rows.
         builder.HasIndex(order => new { order.RestaurantId, order.BillRequestedAtUtc })

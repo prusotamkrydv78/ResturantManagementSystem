@@ -11,6 +11,7 @@ using RestaurantManagement.Application.Inventory;
 using RestaurantManagement.Application.Kitchen;
 using RestaurantManagement.Application.Managers;
 using RestaurantManagement.Application.Realtime;
+using RestaurantManagement.Application.Reviews;
 using RestaurantManagement.Application.Menu;
 using RestaurantManagement.Application.Orders;
 using RestaurantManagement.Application.Platform;
@@ -24,6 +25,7 @@ using RestaurantManagement.Application.Tables;
 using RestaurantManagement.Domain.Identity;
 using RestaurantManagement.Infrastructure.Authentication;
 using RestaurantManagement.Infrastructure.Realtime;
+using RestaurantManagement.Infrastructure.Reviews;
 using RestaurantManagement.Infrastructure.Billing;
 using RestaurantManagement.Infrastructure.Customers;
 using RestaurantManagement.Infrastructure.Dashboard;
@@ -89,6 +91,7 @@ public static class DependencyInjection
         services.AddScoped<IInventoryService, InventoryService>();
         services.AddScoped<ICustomerService, CustomerService>();
         services.AddScoped<IReservationService, ReservationService>();
+        services.AddScoped<IReviewService, ReviewService>();
         // Serves a manager editing their restaurant page and a visitor reading it.
         // One service because both read the same row; the audiences are separated at
         // the controllers, not here.

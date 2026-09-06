@@ -128,6 +128,13 @@ public sealed class CreateOrderRequest
 /// kitchen calls out rather than an identifier, so the interface has nothing to
 /// infer.
 /// </param>
+/// <param name="AddedByCustomer">
+/// Whether the table added this line themselves.
+///
+/// What a waiter is being asked to check. An order can hold both - a waiter took the
+/// food and somebody at the table added a dessert from their phone - and only the
+/// second half needs reading back.
+/// </param>
 /// <param name="IsEditable">
 /// Whether a waiter may still change this particular line. Decided by the server
 /// from both the order state and the submission state, so the client never has to
@@ -143,7 +150,8 @@ public sealed record OrderItemResponse(
     decimal LineTotal,
     bool IsSubmittedToKitchen,
     int? KitchenTicketNumber,
-    bool IsEditable);
+    bool IsEditable,
+    bool AddedByCustomer);
 
 /// <summary>One line on a kitchen ticket, as the kitchen was told it.</summary>
 /// <param name="ItemName">Item name at submission.</param>

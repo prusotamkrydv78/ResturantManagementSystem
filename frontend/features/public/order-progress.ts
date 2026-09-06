@@ -17,6 +17,7 @@ export const ORDER_STAGES = [
   "BeingPrepared",
   "Ready",
   "Served",
+  "Settled",
 ] as const;
 
 export type OrderStage = (typeof ORDER_STAGES)[number];
@@ -56,6 +57,11 @@ export const STAGE_COPY: Record<
     title: "Enjoy your meal",
     detail: "Everything you ordered has been brought over.",
     done: "Brought to your table",
+  },
+  Settled: {
+    title: "Your bill is settled",
+    detail: "Thank you for visiting. Nothing left to pay.",
+    done: "Paid",
   },
 };
 

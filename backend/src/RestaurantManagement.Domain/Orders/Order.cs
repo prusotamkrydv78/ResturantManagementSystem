@@ -346,9 +346,14 @@ public class Order
     /// Whether this order is still waiting for somebody at the restaurant to check it
     /// with the table.
     ///
-    /// True for a customer-placed order nobody has confirmed yet, and the reason such an
-    /// order reaches the waiter rather than the kitchen. A waiter's own order is never
-    /// waiting: they were standing there.
+    /// True while the order holds lines a customer added that nobody has agreed to yet,
+    /// and the reason such an order reaches the waiter rather than the kitchen. A
+    /// waiter's own order is never waiting: they were standing there.
+    ///
+    /// Read off the lines rather than off the order's origin, and that distinction is
+    /// load bearing now that a customer can add to an order a waiter opened. Asking
+    /// where the order came from would answer "a waiter" and wave the customer's new
+    /// lines straight through to the kitchen with nobody having read them back.
     ///
     /// This is the one condition standing between a customer's order and a pan, and it
     /// closes when a person says so - or when somebody already sent the order to the
@@ -366,9 +371,8 @@ public class Order
     /// </summary>
     public bool NeedsConfirmation =>
         Status == OrderStatus.Open
-        && IsCustomerPlaced
         && ConfirmedAtUtc is null
-        && !Items.Any(item => item.IsSubmittedToKitchen);
+        && Items.Any(item => item.AddedByCustomer && !item.IsSubmittedToKitchen);
 
     /// <summary>
     /// What has been taken so far, across every payment against this order.

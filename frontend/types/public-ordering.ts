@@ -57,6 +57,20 @@ export interface PublicOrder {
   billRequestedAtUtc: string | null;
   /** Whether asking for the bill would do anything now. */
   canRequestBill: boolean;
+  /**
+   * Whether the bill has been paid and the visit is over.
+   *
+   * Told apart from an order that was called off, because both stop the timeline and
+   * only one of them is worth thanking somebody for.
+   */
+  isSettled: boolean;
+  /**
+   * Whether they can still say what they thought.
+   *
+   * Decided by the restaurant, so a phone that has been shut since the meal does not
+   * offer a form that would be refused.
+   */
+  canReview: boolean;
   awaitingKitchenCount: number;
   placedAtUtc: string;
   /**
@@ -116,6 +130,32 @@ export interface ScannedTableRestaurant {
   tableId: string;
   /** What that table is called in the room. */
   tableName: string;
+}
+
+/**
+ * What a customer thought of their visit.
+ *
+ * Anonymous, like everything else on this side: it carries scores and words, and
+ * nothing about who left them.
+ */
+export interface CustomerReview {
+  /** How the visit was overall, one to five. */
+  rating: number;
+  /** The food, or null if they did not say. */
+  foodRating: number | null;
+  /** The service, or null if they did not say. */
+  serviceRating: number | null;
+  comment: string | null;
+  submittedAtUtc: string;
+}
+
+/** What a customer is submitting. */
+export interface SubmitReviewPayload {
+  orderKey: string;
+  rating: number;
+  foodRating?: number;
+  serviceRating?: number;
+  comment?: string;
 }
 
 /** A table a customer may say they are sitting at. */

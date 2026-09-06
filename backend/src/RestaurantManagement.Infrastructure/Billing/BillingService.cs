@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RestaurantManagement.Application.Billing;
 using RestaurantManagement.Application.Billing.Dtos;
+using RestaurantManagement.Application.Realtime;
 using RestaurantManagement.Domain.Identity;
 using RestaurantManagement.Domain.Orders;
 using RestaurantManagement.Domain.Payments;
@@ -41,12 +42,17 @@ public sealed class BillingService : IBillingService
     private const int MaxHistory = 200;
 
     private readonly ApplicationDbContext _dbContext;
+    private readonly IRealtimeNotifier _realtime;
     private readonly ILogger<BillingService> _logger;
 
     /// <summary>Creates the service.</summary>
-    public BillingService(ApplicationDbContext dbContext, ILogger<BillingService> logger)
+    public BillingService(
+        ApplicationDbContext dbContext,
+        IRealtimeNotifier realtime,
+        ILogger<BillingService> logger)
     {
         _dbContext = dbContext;
+        _realtime = realtime;
         _logger = logger;
     }
 
@@ -262,6 +268,17 @@ public sealed class BillingService : IBillingService
             payment.Method,
             payment.Amount,
             order.AmountOutstanding);
+
+        // Only once the bill is actually covered. A part payment leaves the visit
+        // running, and telling a phone it is over while the table still owes money
+        // would end the page on a meal that has not finished.
+        if (settled)
+        {
+            await _realtime.OrderSettledAsync(
+                order.Id,
+                order.OrderNumber,
+                cancellationToken);
+        }
 
         var names = new Dictionary<Guid, string>
         {

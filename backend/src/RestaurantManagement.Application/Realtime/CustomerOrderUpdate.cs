@@ -25,6 +25,16 @@ public enum CustomerOrderStage
 
     /// <summary>It has been brought to the table.</summary>
     Served = 4,
+
+    /// <summary>
+    /// The bill has been paid and the visit is over.
+    ///
+    /// The last thing a customer's phone is told, and the only stage that is not about
+    /// food. Without it a guest who has just handed over a card sits looking at a page
+    /// that still says their meal is in progress, and only finds out by reloading -
+    /// which nobody does at the moment they are standing up to leave.
+    /// </summary>
+    Settled = 5,
 }
 
 /// <summary>

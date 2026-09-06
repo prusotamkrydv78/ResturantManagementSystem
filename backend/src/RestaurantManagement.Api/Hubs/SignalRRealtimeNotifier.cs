@@ -127,6 +127,16 @@ public sealed class SignalRRealtimeNotifier : IRealtimeNotifier
     }
 
     /// <inheritdoc />
+    public Task OrderSettledAsync(
+        Guid orderId,
+        int orderNumber,
+        CancellationToken cancellationToken) =>
+        TellCustomerAsync(
+            orderId,
+            new CustomerOrderUpdate(orderNumber, CustomerOrderStage.Settled),
+            cancellationToken);
+
+    /// <inheritdoc />
     public Task BillRequestedAsync(
         Guid restaurantId,
         BillRequestedEvent payload,

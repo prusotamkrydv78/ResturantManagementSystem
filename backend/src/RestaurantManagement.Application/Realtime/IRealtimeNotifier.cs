@@ -63,6 +63,17 @@ public interface IRealtimeNotifier
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Tells the customer their bill has been settled and the visit is over.
+    ///
+    /// Only the customer. The floor took the payment and watched it happen, so telling
+    /// them would be reporting their own action back to them.
+    /// </summary>
+    Task OrderSettledAsync(
+        Guid orderId,
+        int orderNumber,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Tells the floor that a table wants to pay.
     ///
     /// The floor only. A kitchen has nothing to do about a bill, and the whole point of

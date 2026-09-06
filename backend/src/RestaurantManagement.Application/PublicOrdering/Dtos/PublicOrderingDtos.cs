@@ -100,6 +100,19 @@ public sealed record PublicOrderLineResponse(
 /// somebody has been told, rather than offering to ask all over again.
 /// </param>
 /// <param name="CanRequestBill">Whether asking for the bill would do anything now.</param>
+/// <param name="IsSettled">
+/// Whether the bill has been paid and the visit is over.
+///
+/// The page needs to tell that apart from an order that was called off, because both
+/// stop the timeline and only one of them is worth thanking somebody for.
+/// </param>
+/// <param name="CanReview">
+/// Whether they can still say what they thought.
+///
+/// True once the bill is settled and nobody has reviewed this visit yet. Decided by
+/// the restaurant rather than by the page, so a phone that has been closed since the
+/// meal does not offer a form that will be refused.
+/// </param>
 /// <param name="CanAddMore">
 /// Whether the customer may still add to this order themselves. True until any part of
 /// it goes to the kitchen, and false the moment it does - from then on a second round is
@@ -125,6 +138,8 @@ public sealed record PublicOrderResponse(
     DateTimeOffset PlacedAtUtc,
     DateTimeOffset? BillRequestedAtUtc,
     bool CanRequestBill,
+    bool IsSettled,
+    bool CanReview,
     bool CanAddMore,
     string? OrderKey);
 

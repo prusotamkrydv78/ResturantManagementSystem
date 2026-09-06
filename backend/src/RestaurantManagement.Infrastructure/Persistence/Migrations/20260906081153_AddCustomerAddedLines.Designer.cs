@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using RestaurantManagement.Infrastructure.Persistence;
 
@@ -11,9 +12,11 @@ using RestaurantManagement.Infrastructure.Persistence;
 namespace RestaurantManagement.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260906081153_AddCustomerAddedLines")]
+    partial class AddCustomerAddedLines
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1238,49 +1241,6 @@ namespace RestaurantManagement.Infrastructure.Persistence.Migrations
                         });
                 });
 
-            modelBuilder.Entity("RestaurantManagement.Domain.Reviews.Review", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("Comment")
-                        .HasMaxLength(1000)
-                        .HasColumnType("nvarchar(1000)");
-
-                    b.Property<int?>("FoodRating")
-                        .HasColumnType("int");
-
-                    b.Property<Guid>("OrderId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<int>("Rating")
-                        .HasColumnType("int");
-
-                    b.Property<Guid>("RestaurantId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<int?>("ServiceRating")
-                        .HasColumnType("int");
-
-                    b.Property<DateTimeOffset>("SubmittedAtUtc")
-                        .HasColumnType("datetimeoffset");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("OrderId")
-                        .IsUnique();
-
-                    b.HasIndex("OrderId", "RestaurantId");
-
-                    b.HasIndex("RestaurantId", "SubmittedAtUtc");
-
-                    b.ToTable("Reviews", t =>
-                        {
-                            t.HasCheckConstraint("CK_Reviews_Ratings", "[Rating] BETWEEN 1 AND 5 AND ([FoodRating] IS NULL OR [FoodRating] BETWEEN 1 AND 5) AND ([ServiceRating] IS NULL OR [ServiceRating] BETWEEN 1 AND 5)");
-                        });
-                });
-
             modelBuilder.Entity("RestaurantManagement.Domain.Sites.RestaurantSite", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1657,26 +1617,6 @@ namespace RestaurantManagement.Infrastructure.Persistence.Migrations
                         .HasForeignKey("RestaurantId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-
-                    b.Navigation("Restaurant");
-                });
-
-            modelBuilder.Entity("RestaurantManagement.Domain.Reviews.Review", b =>
-                {
-                    b.HasOne("RestaurantManagement.Domain.Restaurants.Restaurant", "Restaurant")
-                        .WithMany()
-                        .HasForeignKey("RestaurantId")
-                        .OnDelete(DeleteBehavior.NoAction)
-                        .IsRequired();
-
-                    b.HasOne("RestaurantManagement.Domain.Orders.Order", "Order")
-                        .WithMany()
-                        .HasForeignKey("OrderId", "RestaurantId")
-                        .HasPrincipalKey("Id", "RestaurantId")
-                        .OnDelete(DeleteBehavior.NoAction)
-                        .IsRequired();
-
-                    b.Navigation("Order");
 
                     b.Navigation("Restaurant");
                 });

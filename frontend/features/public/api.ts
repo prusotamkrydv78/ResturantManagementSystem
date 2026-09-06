@@ -1,11 +1,13 @@
 import { apiFetch } from "@/lib/api/client";
 import type {
+  CustomerReview,
   PlacePublicOrderPayload,
   ScannedTableRestaurant,
   PlaceWebsiteOrderPayload,
   PublicOrder,
   PublicRestaurant,
   PublicTable,
+  SubmitReviewPayload,
 } from "@/types/public-ordering";
 
 /**
@@ -113,6 +115,26 @@ export function requestBill(
     {
       method: "POST",
       body: JSON.stringify({ orderKey }),
+      auth: false,
+    },
+  );
+}
+
+/**
+ * Leave a review for a visit that has been paid for.
+ *
+ * Authorised by the key from that order, which is what makes the review evidence of a
+ * meal rather than an opinion from nowhere - and why there is no sign-in behind it.
+ */
+export function submitReview(
+  slug: string,
+  payload: SubmitReviewPayload,
+): Promise<CustomerReview> {
+  return apiFetch<CustomerReview>(
+    `/api/public/restaurants/${encodeURIComponent(slug)}/reviews`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
       auth: false,
     },
   );

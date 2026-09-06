@@ -76,6 +76,13 @@ export interface OrderItem {
    * history. The server refuses either way; this only keeps the screen honest.
    */
   isEditable: boolean;
+  /**
+   * Whether the table added this line themselves.
+   *
+   * What a waiter is being asked to check. One order can hold both, and only the
+   * half the table added needs reading back to them.
+   */
+  addedByCustomer: boolean;
 }
 
 /** One line on a kitchen ticket, as the kitchen was told it. */
@@ -249,6 +256,14 @@ export interface EditableLine {
   isSubmitted: boolean;
   /** The ticket it went out on, so the screen can name it. Null while pending. */
   kitchenTicketNumber: number | null;
+  /**
+   * Whether the table added this line themselves.
+   *
+   * Carried through the working copy so the marker survives an edit. A waiter who
+   * changes a quantity should not lose sight of which lines they still have to read
+   * back to the table.
+   */
+  addedByCustomer: boolean;
 }
 
 /**

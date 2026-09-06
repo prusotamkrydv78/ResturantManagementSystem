@@ -32,10 +32,15 @@ import {
   rememberInUrl,
 } from "@/features/public/order-handle";
 import { clearReceipt, writeReceipt } from "@/features/public/receipt-store";
+import { ReviewPanel, ReviewThanks } from "@/features/public/review-panel";
 import { useOrderUpdates } from "@/features/public/use-order-updates";
 import { ApiError } from "@/lib/api/client";
 import { cn } from "@/lib/utils/cn";
-import type { PublicOrder, PublicRestaurant } from "@/types/public-ordering";
+import type {
+  CustomerReview,
+  PublicOrder,
+  PublicRestaurant,
+} from "@/types/public-ordering";
 
 /**
  * Ordering from the restaurant's own website.
@@ -100,6 +105,13 @@ function WebsiteOrder() {
   // "we have told them" state survives a reload without being tracked separately.
   const [asking, setAsking] = useState(false);
   const [askError, setAskError] = useState<string | null>(null);
+  // Held only for the moment between sending a review and the page being reloaded.
+  // What survives a reload is the order's own canReview, which the restaurant decides.
+  const [review, setReview] = useState<CustomerReview | null>(null);
+  // Bumped when the restaurant says something changed that this page cannot derive -
+  // today only the bill being settled. Kept apart from the reload that refetches the
+  // menu, because that one also resets the table picker.
+  const [reloadOrderKey, setReloadOrderKey] = useState(0);
 
   const { notify } = useToast();
 
@@ -223,9 +235,12 @@ function WebsiteOrder() {
         const copy = STAGE_COPY[update.stage];
 
         notify({
-          // The last step is the happy ending; everything before it is progress the
-          // guest is waiting on.
-          tone: update.stage === "Served" ? "success" : "alert",
+          // The last two are endings; everything before them is progress the guest is
+          // waiting on.
+          tone:
+            update.stage === "Served" || update.stage === "Settled"
+              ? "success"
+              : "alert",
           title: copy.title,
           description: copy.detail,
           duration: 9000,
@@ -233,6 +248,14 @@ function WebsiteOrder() {
           // end up with a stack of four telling them the story so far.
           dedupeKey: "order-progress",
         });
+
+        // The bill just closed at the counter. Re-read the order rather than guessing
+        // at the new state: whether they may leave a review is the restaurant's answer,
+        // not something this page can work out, and it is what turns the receipt into
+        // the review card without anybody reloading.
+        if (update.stage === "Settled") {
+          setReloadOrderKey((key) => key + 1);
+        }
       },
       [notify],
     ),
@@ -333,6 +356,43 @@ function WebsiteOrder() {
       setAsking(false);
     }
   }, [slug, placed]);
+
+  /**
+   * Re-reads the order after the restaurant has changed it under us.
+   *
+   * Skipped on the first render, where the recovery effect above has already done it.
+   * Failures are swallowed: what is on screen is still true, and the next event or
+   * reload will catch up.
+   */
+  useEffect(() => {
+    if (reloadOrderKey === 0 || placed?.orderKey === null || placed?.orderKey === undefined) {
+      return;
+    }
+
+    let cancelled = false;
+    const key = placed.orderKey;
+
+    async function refresh() {
+      try {
+        const fresh = await lookupWebsiteOrder(slug, key);
+
+        if (!cancelled) {
+          setPlaced(fresh);
+        }
+      } catch {
+        // Nothing to tell them. The receipt on screen is still the one they had.
+      }
+    }
+
+    void refresh();
+
+    return () => {
+      cancelled = true;
+    };
+    // Deliberately not depending on `placed`: this reads it, and depending on it would
+    // re-run the moment its own result arrived.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slug, reloadOrderKey]);
 
   /** Forgets this order and goes back to an empty page. */
   const startOver = useCallback(() => {
@@ -506,7 +566,35 @@ function WebsiteOrder() {
           {!closed && <OrderTimeline stage={stage} live={live} />}
 
           <div className="flex flex-col gap-2 border-t border-border pt-3">
-            {closed ? (
+            {placed.isSettled ? (
+              <>
+                <p
+                  role="status"
+                  className="flex items-start gap-2 text-sm font-medium text-success"
+                >
+                  <Check className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+                  Your bill has been settled. Thank you for visiting{" "}
+                  {restaurant.restaurantName}.
+                </p>
+
+                {/* Asked here rather than on a page of its own. Somebody who has just
+                    paid is standing up to leave, and sending them somewhere else is
+                    how a review form gets abandoned. */}
+                {review !== null ? (
+                  <ReviewThanks review={review} />
+                ) : placed.canReview && placed.orderKey !== null ? (
+                  <ReviewPanel
+                    slug={slug}
+                    orderKey={placed.orderKey}
+                    onSubmitted={setReview}
+                  />
+                ) : null}
+
+                <Button variant="secondary" onClick={startOver}>
+                  Done
+                </Button>
+              </>
+            ) : closed ? (
               <>
                 <p className="flex items-start gap-2 text-sm text-muted">
                   <Info className="mt-0.5 size-4 shrink-0" aria-hidden="true" />

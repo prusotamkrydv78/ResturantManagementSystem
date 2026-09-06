@@ -8,6 +8,7 @@ using RestaurantManagement.Domain.Menu;
 using RestaurantManagement.Domain.Orders;
 using RestaurantManagement.Domain.Payments;
 using RestaurantManagement.Domain.Restaurants;
+using RestaurantManagement.Domain.Reviews;
 using RestaurantManagement.Domain.Sites;
 
 namespace RestaurantManagement.Infrastructure.Persistence;
@@ -84,6 +85,9 @@ public class ApplicationDbContext : IdentityUserContext<ApplicationUser, Guid>
 
     /// <summary>Tables held for somebody at a time.</summary>
     public DbSet<Reservation> Reservations => Set<Reservation>();
+
+    /// <summary>What a table thought, left after they had paid.</summary>
+    public DbSet<Review> Reviews => Set<Review>();
 
     /// <summary>The public one-page website belonging to each restaurant.</summary>
     public DbSet<RestaurantSite> RestaurantSites => Set<RestaurantSite>();

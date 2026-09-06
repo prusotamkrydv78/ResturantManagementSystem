@@ -47,5 +47,5 @@ internal static class Services
         new KitchenService(context, Realtime(), NullLogger<KitchenService>.Instance);
 
     public static IBillingService Billing(ApplicationDbContext context) =>
-        new BillingService(context, NullLogger<BillingService>.Instance);
+        new BillingService(context, Realtime(), NullLogger<BillingService>.Instance);
 }

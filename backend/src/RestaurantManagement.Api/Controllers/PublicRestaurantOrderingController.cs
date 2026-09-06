@@ -4,6 +4,8 @@ using Microsoft.AspNetCore.RateLimiting;
 using RestaurantManagement.Api.RateLimiting;
 using RestaurantManagement.Application.PublicOrdering;
 using RestaurantManagement.Application.PublicOrdering.Dtos;
+using RestaurantManagement.Application.Reviews;
+using RestaurantManagement.Application.Reviews.Dtos;
 using RestaurantManagement.Shared.Results;
 
 namespace RestaurantManagement.Api.Controllers;
@@ -135,6 +137,57 @@ public sealed class PublicRestaurantOrderingController : ControllerBase
         return result.IsFailure
             ? ProblemFrom(result.Error!, StatusFor(result.Error!))
             : Ok(result.Value);
+    }
+
+    /// <summary>
+    /// Records what a customer thought of their visit.
+    /// </summary>
+    /// <remarks>
+    /// Offered once the bill has been settled, which is the moment a visit becomes a
+    /// thing that can be described rather than one still happening.
+    ///
+    /// Authorised by the key from their own order, like everything else on this side.
+    /// That is what makes a review here evidence of a meal rather than an opinion from
+    /// nowhere, without asking a guest to sign in or hand over a name - and it is why
+    /// there is no moderation queue behind it.
+    ///
+    /// One per visit. A second submission is somebody changing their mind, and it is
+    /// refused rather than quietly replacing the first.
+    /// </remarks>
+    /// <param name="slug">The restaurant's public slug.</param>
+    /// <param name="request">Their key, their scores, and anything they wrote.</param>
+    /// <param name="reviews">
+    /// Resolved per action rather than injected into the controller, because this is the
+    /// one route here that is not about ordering and the class should not carry a
+    /// dependency five other actions never touch.
+    /// </param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    [HttpPost("{slug}/reviews")]
+    [EnableRateLimiting(PublicRateLimiting.PublicWrite)]
+    [ProducesResponseType(typeof(ReviewResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<ReviewResponse>> SubmitReview(
+        string slug,
+        SubmitReviewRequest request,
+        [FromServices] IReviewService reviews,
+        CancellationToken cancellationToken)
+    {
+        var result = await reviews.SubmitAsync(slug, request, cancellationToken);
+
+        if (!result.IsFailure)
+        {
+            return Ok(result.Value);
+        }
+
+        // A key that names nothing is a 404; everything else here is a conflict with
+        // the state of the visit - too early, called off, or already reviewed - all of
+        // which were well formed requests that would have worked at another moment.
+        var status = result.Error! == ReviewErrors.OrderNotFound
+            ? StatusCodes.Status404NotFound
+            : StatusCodes.Status409Conflict;
+
+        return ProblemFrom(result.Error!, status);
     }
 
     /// <summary>

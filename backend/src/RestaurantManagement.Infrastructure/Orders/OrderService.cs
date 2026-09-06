@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RestaurantManagement.Application.Inventory;
@@ -271,6 +272,12 @@ public sealed class OrderService : IOrderService
             TableId = table.Id,
             Status = OrderStatus.Open,
             CreatedByStaffId = staffUserId,
+            // The handle the code printed on the table hands back.
+            //
+            // A waiter takes the order and the guest then scans their own table: same
+            // person, same order. Without a key that scan found nothing and showed them
+            // a menu with their table marked in use, which is the dead end this closes.
+            PublicOrderKey = NewOrderKey(),
             CreatedAtUtc = now,
             UpdatedAtUtc = now,
         };
@@ -1294,6 +1301,17 @@ public sealed class OrderService : IOrderService
     /// to. Each line reports whether it went to the kitchen, on which ticket, and
     /// whether it may still be changed.
     /// </summary>
+    /// <summary>
+    /// A fresh handle for the table to hold.
+    ///
+    /// Hex of 16 cryptographic bytes: 32 characters, which is what the column allows,
+    /// and 128 bits of entropy. The same shape the public ordering path mints, because
+    /// it is the same key doing the same job - which of the two opened the order is not
+    /// something the printed code on the table can know.
+    /// </summary>
+    private static string NewOrderKey() =>
+        Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(16));
+
     private static OrderResponse ToResponse(
         Order order,
         string tableName,
@@ -1352,7 +1370,8 @@ public sealed class OrderService : IOrderService
                     item.KitchenTicketItem?.KitchenTicket?.TicketNumber,
                     // Editable needs both: the order still open, and this line not
                     // yet gone to the kitchen.
-                    order.IsEditable && !item.IsSubmittedToKitchen))
+                    order.IsEditable && !item.IsSubmittedToKitchen,
+                    item.AddedByCustomer))
                 .ToList(),
             order.KitchenTickets
                 .OrderByDescending(ticket => ticket.TicketNumber)

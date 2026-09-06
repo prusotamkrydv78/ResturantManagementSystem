@@ -345,10 +345,17 @@ public sealed class PublicOrderingService : IPublicOrderingService
             return Result.Failure<PublicOrderResponse>(PublicOrderingErrors.NotFound);
         }
 
+        // Only for a finished visit. An order still being eaten cannot have been
+        // reviewed, so asking would be a query whose answer is always no.
+        var reviewed = order.Status == OrderStatus.Completed &&
+            await _dbContext.Reviews.AnyAsync(
+                review => review.OrderId == order.Id,
+                cancellationToken);
+
         // The key goes back with it. They already hold it - that is how they got here -
         // and returning it means the page can carry on treating the response as the one
         // source of what it knows, rather than stitching it together from two places.
-        return Result.Success(ToResponse(order, order.PublicOrderKey));
+        return Result.Success(ToResponse(order, order.PublicOrderKey, reviewed));
     }
 
     /// <inheritdoc />
@@ -542,10 +549,18 @@ public sealed class PublicOrderingService : IPublicOrderingService
             VatRate = table.Restaurant.VatRate,
             // Audit only. Never read back to identify anybody - see the property.
             PlacedFromIp = placedFromIp,
-            // Only a website order gets one. A member of staff cancels through billing,
-            // as themselves, and minting a key nobody is ever given would be a live
-            // capability sitting in a column for no reason.
-            PublicOrderKey = source == OrderSource.Website ? NewOrderKey() : null,
+            // Every order gets one, not only the ones a customer started.
+            //
+            // A guest who sits down, orders through a waiter and then scans the code on
+            // their table is the same person with the same order, and before this they
+            // were shown a menu with their own table marked "in use" - told to scan the
+            // code they had just scanned. The key is what the printed code hands back,
+            // so an order without one is an order the table cannot reach.
+            //
+            // It grants no more than it did: following the order, and adding to it while
+            // the kitchen has not been told. Anything a customer adds now needs agreeing
+            // whoever opened the order - see Order.NeedsConfirmation.
+            PublicOrderKey = NewOrderKey(),
             CreatedAtUtc = now,
             UpdatedAtUtc = now,
         };
@@ -572,6 +587,9 @@ public sealed class PublicOrderingService : IPublicOrderingService
                 Quantity = line.Quantity,
                 Note = line.Note,
                 LineTotal = menuItem.Price * line.Quantity,
+                // Nobody at the restaurant is holding the device on this path unless a
+                // member of staff scanned the table, which is what placedByStaffId says.
+                AddedByCustomer = placedByStaffId is null,
                 CreatedAtUtc = now,
             };
 
@@ -604,7 +622,11 @@ public sealed class PublicOrderingService : IPublicOrderingService
         //
         // Only for a customer's own addition. A member of staff adding to an order is
         // themselves the agreement.
-        if (!isNew && order.IsCustomerPlaced && placedByStaffId is null)
+        //
+        // No longer asks whether the order was customer-placed. A dessert added from a
+        // phone to an order a waiter took still needs somebody to read it back, and
+        // checking the order's origin let exactly that case through.
+        if (!isNew && placedByStaffId is null)
         {
             order.ConfirmedAtUtc = null;
             order.ConfirmedByStaffId = null;
@@ -896,7 +918,17 @@ public sealed class PublicOrderingService : IPublicOrderingService
     /// The key to hand back, or null on every read. Passed in rather than read off the
     /// order, so a route has to decide to give it away and cannot do so by forgetting.
     /// </param>
-    private static PublicOrderResponse ToResponse(Order order, string? orderKey = null)
+    /// <param name="hasReview">
+    /// Whether this visit has already been reviewed.
+    ///
+    /// Passed in rather than read off a navigation, because only the one path that
+    /// serves a finished order needs to ask - and making every place path run that
+    /// query to answer "no" about an order still being eaten would be waste.
+    /// </param>
+    private static PublicOrderResponse ToResponse(
+        Order order,
+        string? orderKey = null,
+        bool hasReview = false)
     {
         var lines = order.Items
             .OrderBy(item => item.CreatedAtUtc)
@@ -923,6 +955,8 @@ public sealed class PublicOrderingService : IPublicOrderingService
             order.CreatedAtUtc,
             order.BillRequestedAtUtc,
             order.CanRequestBill,
+            order.Status == OrderStatus.Completed,
+            order.Status == OrderStatus.Completed && !hasReview,
             order.CanCustomerAddTo,
             orderKey);
     }

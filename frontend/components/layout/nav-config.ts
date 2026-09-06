@@ -7,6 +7,7 @@ import {
   Gauge,
   HandPlatter,
   LayoutGrid,
+  MessageSquareQuote,
   Plus,
   Receipt,
   ReceiptText,
@@ -135,6 +136,12 @@ const MANAGER_NAV: NavGroup[] = [
         label: "Menu",
         href: "/menu",
         icon: ScrollText,
+        status: "available",
+      },
+      {
+        label: "Reviews",
+        href: "/reviews",
+        icon: MessageSquareQuote,
         status: "available",
       },
       {

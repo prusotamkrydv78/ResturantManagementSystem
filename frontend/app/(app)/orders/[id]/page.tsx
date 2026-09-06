@@ -102,6 +102,7 @@ function OrderDetail() {
         note: item.note ?? "",
         isSubmitted: item.isSubmittedToKitchen,
         kitchenTicketNumber: item.kitchenTicketNumber,
+        addedByCustomer: item.addedByCustomer,
       })),
     );
   }, []);
@@ -168,6 +169,8 @@ function OrderDetail() {
               note: "",
               isSubmitted: false,
               kitchenTicketNumber: null,
+              // A waiter is adding this one, so it needs no reading back.
+              addedByCustomer: false,
             },
           ];
         }
@@ -730,6 +733,11 @@ function OrderDetail() {
                                   {isNew && (
                                     <span className="ml-1.5 text-2xs font-normal text-primary">
                                       new
+                                    </span>
+                                  )}
+                                  {line.addedByCustomer && !line.isSubmitted && (
+                                    <span className="ml-1.5 text-2xs font-normal text-warning">
+                                      from the table
                                     </span>
                                   )}
                                 </span>
