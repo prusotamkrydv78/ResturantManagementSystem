@@ -2,8 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { AnimatePresence, motion, MotionConfig } from "motion/react";
 import {
+  ArrowLeft,
   ChefHat,
+  MessageSquarePlus,
   Minus,
   Plus,
   List,
@@ -14,7 +17,7 @@ import {
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input, Textarea } from "@/components/ui/input";
+import { Input } from "@/components/ui/input";
 import { Surface } from "@/components/ui/surface";
 import { EmptyState, FormError } from "@/components/ui/states";
 import { apiAssetSrc } from "@/lib/api/asset-url";
@@ -53,6 +56,41 @@ import type {
  * every control big enough to hit without looking.
  */
 
+/**
+ * How things move here, in two constants.
+ *
+ * Both are short, and that is the whole judgement. This component is the staff pad as
+ * well as the customer's menu, and a waiter works it for a whole shift - anything that
+ * reads as a flourish the first time is an obstruction by the fortieth. So nothing here
+ * celebrates. What it does is stop things teleporting: a sheet that appears between two
+ * frames, a bar that pops into existence under a thumb, and a row that vanishes out of a
+ * list all read as glitches, and each one costs a beat of working out what happened.
+ *
+ * Reduced motion is honoured once, by the MotionConfig around the whole component.
+ */
+const SLIDE = { type: "spring", stiffness: 420, damping: 36 } as const;
+
+/** For anything that responds to a finger. Faster and firmer than the slide. */
+const PRESS = { type: "spring", stiffness: 520, damping: 26 } as const;
+
+/**
+ * Moving between the steps of the customer flow.
+ *
+ * Eased rather than sprung, and short. A spring overshoots, and a whole screen of menu
+ * overshooting reads as the page having been knocked rather than as a step having been
+ * taken.
+ *
+ * Which way each step slides is not tracked anywhere, because it does not need to be:
+ * every step has a fixed place in the order, so the menu is always to the left of the
+ * basket and the basket always to the right of the menu. A pane entering from its own
+ * side and leaving towards it is correct going forwards and going back, with no notion
+ * of direction held in state.
+ */
+const SWAP = { duration: 0.26, ease: [0.16, 1, 0.3, 1] } as const;
+
+/** How far a pane travels. Enough to read as movement, not as a journey. */
+const TRAVEL = 24;
+
 export interface OrderDraftLine {
   menuItemId: string;
   quantity: number;
@@ -61,25 +99,87 @@ export interface OrderDraftLine {
 
 export function OrderComposer({
   menu,
+  currency,
   onPlace,
   placing,
   error,
   disabledReason,
+  flow = "sheet",
+  onStageChange,
+  paused = false,
 }: {
   menu: PublicMenuSection[];
-  onPlace: (items: OrderDraftLine[], note: string) => Promise<void> | void;
+  /**
+   * The ISO code every amount here is in.
+   *
+   * Threaded all the way down to the dish tile rather than shown once at the top. Every
+   * price on this component was a bare number - a menu of "450" and a bar reading
+   * "1,118.70" - and a single note somewhere saying which currency scrolls away, which
+   * makes it a note about the part of the menu you are not looking at.
+   */
+  currency: string;
+  onPlace: (items: OrderDraftLine[]) => Promise<void> | void;
   placing: boolean;
   error: string | null;
   /** Set to explain why nothing can be ordered yet. Blocks the whole composer. */
   disabledReason?: string;
+  /**
+   * How the basket and the course list are presented.
+   *
+   * `sheet` slides them up over the menu, which is what a member of staff wants: they
+   * know this flow, they run it forty times a shift, and they want the basket and the
+   * menu at once rather than a wizard telling them where they are.
+   *
+   * `steps` gives each one the screen in turn, as a step of a numbered flow. A guest
+   * does this once, has no idea how long it is, and had the most important part of it -
+   * what they are about to pay for - living in a panel a stray tap could dismiss.
+   *
+   * Only the presentation differs. What is on the menu, what is in the basket and what
+   * gets sent are the same code either way, which is the whole reason this is a prop
+   * rather than a second component.
+   */
+  flow?: "sheet" | "steps";
+  /**
+   * Says which of the two the guest is looking at, so the page around it can act on
+   * it. Only meaningful under `steps`.
+   */
+  onStageChange?: (stage: "menu" | "check") => void;
+  /**
+   * Renders nothing at all, while staying mounted.
+   *
+   * Which is the whole point: the basket lives in this component's state, so a page
+   * showing an earlier step cannot afford to take it off the tree - going back to
+   * correct a table would throw away everything chosen. Returning null keeps every
+   * quantity and the note exactly where they were, and takes the floating basket bar
+   * off the screen with it, which `display: none` on a wrapper could not do now that
+   * the bar is portalled.
+   */
+  paused?: boolean;
 }) {
   const [quantities, setQuantities] = useState<Record<string, number>>({});
-  const [note, setNote] = useState("");
+  /**
+   * What was asked for, dish by dish.
+   *
+   * There was one box for the whole order, and its contents were copied onto every
+   * line - so a table ordering a biryani and a curry and typing "extra spicy" sent
+   * "extra spicy" to the kitchen against *both*, and had no way of saying which they
+   * meant. The wrong dish arriving altered is worse than the right one arriving plain,
+   * and there was no way for a guest to tell it was going to happen.
+   *
+   * Keyed by menu item, which is how a line is identified everywhere else here. Two of
+   * the same dish are one line and share one note, which the data model has always
+   * said: an order item carries a quantity and a single instruction.
+   */
+  const [notes, setNotes] = useState<Record<string, string>>({});
   const [search, setSearch] = useState("");
   const [isBasketOpen, setIsBasketOpen] = useState(false);
   const [activeSection, setActiveSection] = useState<string | null>(null);
 
   const sectionRefs = useRef(new Map<string, HTMLElement>());
+  // Measured rather than assumed. What counts as "reached" is the line just under this
+  // strip, and the strip is a different height on each page that uses it - the website
+  // has a sticky bar above it and the scanned pad does not.
+  const stickyRef = useRef<HTMLDivElement>(null);
 
   const byId = useMemo(() => {
     const map = new Map<string, PublicMenuItem>();
@@ -92,6 +192,15 @@ export function OrderComposer({
 
     return map;
   }, [menu]);
+
+  const stepped = flow === "steps";
+
+  // Told rather than asked, because the basket lives in here - the quantities are held
+  // in this component and lifting them out to answer one question about presentation
+  // would be the tail wagging the dog.
+  useEffect(() => {
+    onStageChange?.(isBasketOpen ? "check" : "menu");
+  }, [isBasketOpen, onStageChange]);
 
   const term = search.trim().toLowerCase();
 
@@ -157,7 +266,11 @@ export function OrderComposer({
 
       // Just below the sticky bar, so a heading counts as reached when it arrives
       // where the eye already is.
-      const line = 140;
+      //
+      // Read off the bar itself. It was a hardcoded 140, which had to be re-guessed
+      // every time anything above it changed height - and silently drifted the moment
+      // the website page grew a sticky header of its own.
+      const line = (stickyRef.current?.getBoundingClientRect().bottom ?? 96) + 8;
       let current = ordered[0]![0];
 
       for (const [name, element] of ordered) {
@@ -199,10 +312,36 @@ export function OrderComposer({
   );
 
   function adjust(id: string, by: number) {
-    setQuantities((current) => ({
-      ...current,
-      [id]: Math.max(0, Math.min(99, (current[id] ?? 0) + by)),
-    }));
+    setQuantities((current) => {
+      const next = Math.max(0, Math.min(99, (current[id] ?? 0) + by));
+
+      // A dish taken back off the order takes its note with it. Left behind, it would
+      // come back the moment somebody re-added the dish - a stale instruction nobody
+      // typed this time, quietly attached to a line they thought was fresh.
+      if (next === 0) {
+        setNotes((kept) => {
+          const { [id]: gone, ...rest } = kept;
+
+          return gone === undefined ? kept : rest;
+        });
+      }
+
+      return { ...current, [id]: next };
+    });
+  }
+
+  /** Takes a line off entirely, note and all. */
+  function remove(id: string) {
+    setQuantities((current) => ({ ...current, [id]: 0 }));
+    setNotes((current) => {
+      const { [id]: gone, ...rest } = current;
+
+      return gone === undefined ? current : rest;
+    });
+  }
+
+  function noteFor(id: string, value: string) {
+    setNotes((current) => ({ ...current, [id]: value }));
   }
 
   function jumpTo(name: string) {
@@ -217,15 +356,13 @@ export function OrderComposer({
         chosen.map(([menuItemId, quantity]) => ({
           menuItemId,
           quantity,
-          // One note for the whole order, copied onto each line. Nobody on a phone
-          // fills in six separate boxes, and the kitchen reads it per line anyway.
-          note: note.trim() === "" ? null : note.trim(),
+          // Whatever was asked for against this dish, and nothing from any other.
+          note: (notes[menuItemId] ?? "").trim() || null,
         })),
-        note.trim(),
       );
 
       setQuantities({});
-      setNote("");
+      setNotes({});
       setIsBasketOpen(false);
     } catch {
       // Swallowed on purpose. The page above has already turned this into a message
@@ -233,6 +370,12 @@ export function OrderComposer({
       // basket stays open and keeps everything, because losing an assembled order to
       // a blink of network is the worst thing this screen could do to somebody.
     }
+  }
+
+  // After every hook, deliberately. Bailing out earlier would change how many hooks
+  // run between renders, which React forbids and which would take the basket with it.
+  if (paused) {
+    return null;
   }
 
   if (disabledReason !== undefined) {
@@ -255,12 +398,44 @@ export function OrderComposer({
     );
   }
 
-  return (
+  // The check step, with the menu out of the way entirely rather than behind it. This
+  // is the difference the `steps` flow is for: a guest reading their order back should
+  // not be reading it through a hole in the thing they were just doing.
+  //
+  // Held as a value rather than returned early, so it and the menu can be the two sides
+  // of one transition instead of two unrelated renders.
+  const checkPane = (
+    <Basket
+      presentation="step"
+          currency={currency}
+          lines={chosen.map(([id, quantity]) => ({
+            item: byId.get(id),
+            quantity,
+          }))}
+          total={total}
+          notes={notes}
+          onNote={noteFor}
+          onAdjust={adjust}
+          onRemove={remove}
+      onClose={() => setIsBasketOpen(false)}
+      onPlace={() => void place()}
+      placing={placing}
+      error={error}
+    />
+  );
+
+  const menuPane = (
     <>
       {/* Sticky, because on a menu this long the way back to another course is the
           control you reach for most. Search sits with it rather than at the top of
           the page, where it would scroll away exactly when it became useful. */}
-      <div className="sticky top-0 z-20 -mx-4 border-b border-border bg-canvas/95 px-4 py-2 backdrop-blur">
+      {/* Held below whatever the page puts above it. `--bar-h` is set by any page with
+          a sticky bar of its own; without one it resolves to nothing and this sits at
+          the top, which is what the scanned pad wants. */}
+      <div
+        ref={stickyRef}
+        className="sticky top-[var(--bar-h,0px)] z-20 -mx-4 border-b border-border bg-canvas/95 px-4 py-2 backdrop-blur"
+      >
         <div className="relative">
           <Search
             className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-subtle"
@@ -277,7 +452,12 @@ export function OrderComposer({
         </div>
 
         {term === "" && menu.length > 1 && (
-          <CourseNav menu={menu} active={activeSection} onJump={jumpTo} />
+          <CourseNav
+            menu={menu}
+            active={activeSection}
+            onJump={jumpTo}
+            inline={stepped}
+          />
         )}
       </div>
 
@@ -299,6 +479,7 @@ export function OrderComposer({
           <MenuSection
             key={section.name}
             section={section}
+            currency={currency}
             quantities={quantities}
             onAdjust={adjust}
             register={(element) => {
@@ -312,46 +493,178 @@ export function OrderComposer({
         ))
       )}
 
-      {/* The bar is a way in to the basket, not a substitute for it. It says how much
-          and how many; pressing it shows what. */}
-      {count > 0 && (
-        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-surface">
-          <div className="mx-auto max-w-2xl px-4 py-3">
-            <Button
-              size="md"
-              className="h-12 w-full justify-between text-base"
-              onClick={() => setIsBasketOpen(true)}
-            >
-              <span className="flex items-center gap-2">
-                <ShoppingBag className="size-4" aria-hidden="true" />
-                {count} {count === 1 ? "item" : "items"}
-              </span>
-              <span className="tabular">{total.toFixed(2)}</span>
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {isBasketOpen && (
+      {/* Wrapped so that closing is animated too. Without this the sheet is torn out
+          of the tree the moment the flag flips and the slide down never happens - the
+          one thing a class on an unmounting element cannot do. */}
+      <AnimatePresence>
+        {isBasketOpen && !stepped && (
         <Basket
+          presentation="sheet"
+          currency={currency}
           lines={chosen.map(([id, quantity]) => ({
             item: byId.get(id),
             quantity,
           }))}
           total={total}
-          note={note}
-          onNote={setNote}
+          notes={notes}
+          onNote={noteFor}
           onAdjust={adjust}
-          onRemove={(id) =>
-            setQuantities((current) => ({ ...current, [id]: 0 }))
-          }
+          onRemove={remove}
           onClose={() => setIsBasketOpen(false)}
           onPlace={() => void place()}
           placing={placing}
           error={error}
         />
-      )}
+        )}
+      </AnimatePresence>
     </>
+  );
+
+  return (
+    <MotionConfig reducedMotion="user">
+      {stepped ? (
+        // One at a time, and the outgoing pane leaves before the incoming one arrives.
+        // `wait` rather than an overlap on purpose: these two are whole screens of
+        // different heights, and crossfading them makes the page grow and shrink under
+        // a thumb mid-transition.
+        <AnimatePresence mode="wait" initial={false}>
+          {isBasketOpen ? (
+            <motion.div
+              key="check"
+              initial={{ opacity: 0, x: TRAVEL }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: TRAVEL }}
+              transition={SWAP}
+            >
+              {checkPane}
+            </motion.div>
+          ) : (
+            <motion.div
+              key="menu"
+              initial={{ opacity: 0, x: -TRAVEL }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -TRAVEL }}
+              transition={SWAP}
+              // The gaps the page used to provide, now that these children sit inside
+              // a wrapper rather than directly in its column.
+              className="flex flex-col gap-4"
+            >
+              {menuPane}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      ) : (
+        menuPane
+      )}
+
+      {/* Outside both panes, and portalled.
+
+          It is `position: fixed`, and a transform on any ancestor makes that ancestor
+          its containing block instead of the screen - so left inside the sliding pane
+          it would travel with the menu and then sit at the bottom of the menu's box
+          rather than the bottom of the phone. The same hazard the sheet documents.
+
+          Not shown on the check step: the order is on screen there, in full, with its
+          own send button. A bar inviting somebody to review what they are already
+          reviewing is a second door into the same room. */}
+      <BasketBar
+        show={count > 0 && !(stepped && isBasketOpen)}
+        count={count}
+        total={total}
+        currency={currency}
+        stepped={stepped}
+        onOpen={() => setIsBasketOpen(true)}
+      />
+    </MotionConfig>
+  );
+}
+
+/**
+ * The strip across the bottom that says what is in the basket.
+ *
+ * Its own component only so that it can be portalled without the rest of the composer
+ * caring. See where it is used for why that matters.
+ */
+function BasketBar({
+  show,
+  count,
+  total,
+  currency,
+  stepped,
+  onOpen,
+}: {
+  show: boolean;
+  count: number;
+  total: number;
+  currency: string;
+  stepped: boolean;
+  onOpen: () => void;
+}) {
+  return (
+    <AnimatePresence>
+      {show && <BasketBarBody
+        count={count}
+        total={total}
+        currency={currency}
+        stepped={stepped}
+        onOpen={onOpen}
+      />}
+    </AnimatePresence>
+  );
+}
+
+/**
+ * The bar itself.
+ *
+ * Split from the presence wrapper above because `createPortal` needs `document`, and
+ * this half only ever renders once something has been added - which cannot happen on a
+ * server. The wrapper stays outside so it can hold this on screen long enough to slide
+ * away.
+ */
+function BasketBarBody({
+  count,
+  total,
+  currency,
+  stepped,
+  onOpen,
+}: {
+  count: number;
+  total: number;
+  currency: string;
+  stepped: boolean;
+  onOpen: () => void;
+}) {
+  return createPortal(
+    // It slides in from under the screen on the first dish and back out on the last.
+    // It used to appear and disappear between two frames, directly under the thumb that
+    // had just pressed something forty pixels above - which reads as the page having
+    // jumped rather than as a bar having arrived.
+    <motion.div
+      initial={{ y: "100%" }}
+      animate={{ y: 0 }}
+      exit={{ y: "100%" }}
+      transition={SLIDE}
+      className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-surface"
+    >
+      <div className="mx-auto max-w-2xl px-4 py-3">
+        <Button
+          size="md"
+          className="h-12 w-full justify-between text-base"
+          onClick={onOpen}
+        >
+          <span className="flex items-center gap-2">
+            <ShoppingBag className="size-4" aria-hidden="true" />
+            {stepped
+              ? `Review ${count} ${count === 1 ? "item" : "items"}`
+              : `${count} ${count === 1 ? "item" : "items"}`}
+          </span>
+          <span className="tabular">
+            {currency} {total.toFixed(2)}
+          </span>
+        </Button>
+      </div>
+    </motion.div>,
+    document.body,
   );
 }
 
@@ -379,10 +692,19 @@ export function OrderComposer({
  * for a menu long enough that hunting sideways stops being reasonable.
  */
 function CourseNav({
+  inline = false,
   menu,
   active,
   onJump,
 }: {
+  /**
+   * Whether the full course list opens in place instead of as a drawer.
+   *
+   * The customer flow has no drawers in it - see `flow` on OrderComposer - so there
+   * the strip swaps itself for the whole list and swaps back, which is a state rather
+   * than a panel over the top of one.
+   */
+  inline?: boolean;
   menu: PublicMenuSection[];
   active: string | null;
   onJump: (name: string) => void;
@@ -444,11 +766,65 @@ function CourseNav({
       });
   }, [active]);
 
+  // Every course at once, in place of the strip rather than over the top of it.
+  //
+  // Same information as the drawer it replaces on the customer side, and one fewer
+  // thing floating: the strip is what you were reading, so the list of everything in
+  // it belongs where the strip was.
+  if (inline && isOpen) {
+    return (
+      <div className="mt-2 flex flex-col gap-2">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-2xs font-medium tracking-wide text-muted uppercase">
+            Every course
+          </p>
+
+          <button
+            type="button"
+            onClick={() => setIsOpen(false)}
+            className="pressable rounded-md px-2 py-1 text-2xs font-medium text-primary"
+          >
+            Done
+          </button>
+        </div>
+
+        <div className="flex flex-wrap gap-1.5">
+          {menu.map((section) => (
+            <button
+              key={section.name}
+              type="button"
+              onClick={() => {
+                onJump(section.name);
+                setIsOpen(false);
+              }}
+              className={cn(
+                "pressable flex items-baseline gap-1.5 rounded-full border px-3 py-1.5 text-sm transition-colors",
+                active === section.name
+                  ? "border-primary bg-primary-soft font-medium text-primary"
+                  : "border-border-strong text-text hover:bg-surface-3",
+              )}
+            >
+              {section.name}
+              <span className="text-2xs tabular text-muted">
+                {section.items.length}
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="mt-2 flex items-center gap-1">
       <div className="relative min-w-0 flex-1">
-        <div
+        {/* layoutScroll tells Motion this thing scrolls, so the pill below measures
+            against the strip's current scroll position rather than where it was when
+            the page loaded. Without it the highlight lands somewhere else entirely
+            once the strip has been scrolled. */}
+        <motion.div
           ref={stripRef}
+          layoutScroll
           className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
           {menu.map((section) => (
@@ -459,16 +835,30 @@ function CourseNav({
               onClick={() => onJump(section.name)}
               aria-current={active === section.name ? "true" : undefined}
               className={cn(
-                "shrink-0 rounded-full px-3 py-1.5 text-sm whitespace-nowrap transition-colors",
+                "pressable relative shrink-0 rounded-full px-3 py-1.5 text-sm whitespace-nowrap transition-colors",
                 active === section.name
-                  ? "bg-primary-soft font-medium text-primary"
+                  ? "font-medium text-primary"
                   : "text-muted hover:bg-surface-3 hover:text-text",
               )}
             >
-              {section.name}
+              {/* One element that moves between the courses rather than a background
+                  that switches off here and on there. Scrolling a long menu now shows
+                  the highlight travelling with you, which is the thing the strip is
+                  for - saying where you are - and a highlight that teleports says it
+                  a good deal less well. */}
+              {active === section.name && (
+                <motion.span
+                  layoutId="course-pill"
+                  aria-hidden="true"
+                  transition={SLIDE}
+                  className="absolute inset-0 rounded-full bg-primary-soft"
+                />
+              )}
+
+              <span className="relative">{section.name}</span>
             </button>
           ))}
-        </div>
+        </motion.div>
 
         {/* Painted over the strip rather than inside it, so they never take a name's
             place. Pointer events off, or they would swallow a tap on the pill under
@@ -491,12 +881,13 @@ function CourseNav({
         type="button"
         onClick={() => setIsOpen(true)}
         aria-label="Show every course"
-        className="flex size-9 shrink-0 items-center justify-center rounded-full text-muted transition-colors hover:bg-surface-3 hover:text-text"
+        className="pressable flex size-9 shrink-0 items-center justify-center rounded-full text-muted transition-colors hover:bg-surface-3 hover:text-text"
       >
         <List className="size-4" aria-hidden="true" />
       </button>
 
-      {isOpen && (
+      <AnimatePresence>
+        {isOpen && !inline && (
         <Sheet title="Jump to a course" onClose={() => setIsOpen(false)}>
           <ul className="flex flex-col divide-y divide-border">
             {menu.map((section) => (
@@ -508,7 +899,7 @@ function CourseNav({
                     setIsOpen(false);
                   }}
                   className={cn(
-                    "flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-surface-3",
+                    "pressable flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-surface-3",
                     active === section.name && "bg-primary-soft/50",
                   )}
                 >
@@ -523,7 +914,8 @@ function CourseNav({
             ))}
           </ul>
         </Sheet>
-      )}
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -534,11 +926,14 @@ function CourseNav({
 
 function MenuSection({
   section,
+  currency,
   quantities,
   onAdjust,
   register,
 }: {
   section: PublicMenuSection;
+  /** The ISO code, so a tile can print it next to the price. */
+  currency: string;
   quantities: Record<string, number>;
   onAdjust: (id: string, by: number) => void;
   register: (element: HTMLElement | null) => void;
@@ -547,7 +942,9 @@ function MenuSection({
     <section
       ref={register}
       data-section={section.name}
-      className="scroll-mt-28"
+      // Cleared of both bars, so jumping to a course does not park its heading
+      // underneath them.
+      className="scroll-mt-[calc(var(--bar-h,0px)+7rem)]"
     >
       <Surface className="overflow-hidden">
         {section.imageUrl === null ? (
@@ -643,8 +1040,18 @@ function MenuSection({
                       </p>
                     )}
 
-                    <p className="mt-auto pt-1.5 tabular font-semibold text-text">
-                      {item.price.toFixed(2)}
+                    {/* The code sits small and grey in front of the number, so the
+                        price stays one thing to read rather than two.
+
+                        Sized down to text-sm as well. It carried no size class at all,
+                        so it fell back to the 16px body default and printed a pound
+                        heavier than the dish name above it - the money shouting over
+                        the food on every tile of the menu. */}
+                    <p className="mt-auto flex items-baseline gap-1 pt-1.5">
+                      <span className="text-2xs text-muted">{currency}</span>
+                      <span className="text-sm tabular font-semibold text-text">
+                        {item.price.toFixed(2)}
+                      </span>
                     </p>
                   </div>
                 </article>
@@ -670,9 +1077,11 @@ function MenuSection({
  * the menu to find the dish again.
  */
 function Basket({
+  presentation,
+  currency,
   lines,
   total,
-  note,
+  notes,
   onNote,
   onAdjust,
   onRemove,
@@ -681,10 +1090,19 @@ function Basket({
   placing,
   error,
 }: {
+  /**
+   * A drawer over the menu, or a step with the menu out of the way.
+   *
+   * The content is identical either way, which is the point of doing it here rather
+   * than writing a second basket. See `flow` on OrderComposer for which gets which.
+   */
+  presentation: "sheet" | "step";
+  currency: string;
   lines: { item: PublicMenuItem | undefined; quantity: number }[];
   total: number;
-  note: string;
-  onNote: (value: string) => void;
+  /** What has been asked for against each dish, by menu item id. */
+  notes: Record<string, string>;
+  onNote: (id: string, value: string) => void;
   onAdjust: (id: string, by: number) => void;
   onRemove: (id: string) => void;
   onClose: () => void;
@@ -692,74 +1110,243 @@ function Basket({
   placing: boolean;
   error: string | null;
 }) {
-  return (
-    <Sheet title="Your order" onClose={onClose}>
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <ul className="flex flex-col divide-y divide-border">
+  // Written once and shelled twice. Everything below is the same list, the same note
+  // box and the same send button whichever way it is presented; only what it sits in
+  // changes, and that is the whole reason this is one component.
+  const written = (
+    <>
+      <ul className="flex flex-col divide-y divide-border">
+          {/* Rows fold shut instead of blinking out. Removing the middle of three
+              things used to snap the two below it upwards, and the eye reads that as
+              the list having changed by some unknown amount rather than as one line
+              having gone - which on a bill is the wrong doubt to plant. */}
+          <AnimatePresence initial={false}>
           {lines.map(({ item, quantity }) =>
             item === undefined ? null : (
-              <li key={item.id} className="flex items-center gap-3 px-4 py-3">
-                <div className="flex min-w-0 flex-1 flex-col">
-                  <p className="font-medium text-text">{item.name}</p>
-                  <p className="text-xs tabular text-muted">
-                    {quantity} × {item.price.toFixed(2)}
-                  </p>
-                </div>
-
-                <span className="shrink-0 tabular font-medium text-text">
-                  {(item.price * quantity).toFixed(2)}
-                </span>
-
-                <Stepper
-                  quantity={quantity}
-                  label={item.name}
-                  onAdjust={(by) => onAdjust(item.id, by)}
-                />
-
-                <button
-                  type="button"
-                  onClick={() => onRemove(item.id)}
-                  aria-label={`Remove ${item.name}`}
-                  className="shrink-0 rounded-md p-1.5 text-muted transition-colors hover:bg-danger-soft hover:text-danger"
-                >
-                  <Trash2 className="size-4" aria-hidden="true" />
-                </button>
-              </li>
+              <BasketLine
+                key={item.id}
+                item={item}
+                quantity={quantity}
+                currency={currency}
+                note={notes[item.id] ?? ""}
+                onNote={(value) => onNote(item.id, value)}
+                onAdjust={(by) => onAdjust(item.id, by)}
+                onRemove={() => onRemove(item.id)}
+              />
             ),
           )}
+          </AnimatePresence>
         </ul>
 
-        <div className="px-4 py-3">
-          <Textarea
-            rows={2}
-            maxLength={200}
-            aria-label="Anything we should know"
-            placeholder="Anything we should know? No ice, no nuts, extra spicy…"
-            value={note}
-            onChange={(event) => onNote(event.target.value)}
-          />
-        </div>
+    </>
+  );
+
+  const send = (
+    <>
+      {error !== null && <FormError message={error} />}
+
+      <p className="flex items-center gap-1.5 text-xs text-muted">
+        <ChefHat className="size-3.5 shrink-0" aria-hidden="true" />
+        Staff send this to the kitchen. Pay with them at the end.
+      </p>
+
+      <Button
+        size="md"
+        className="h-12 w-full justify-between text-base"
+        disabled={placing || lines.length === 0}
+        onClick={onPlace}
+      >
+        <span>{placing ? "Sending…" : "Send the order"}</span>
+        <span className="tabular">
+          {currency} {total.toFixed(2)}
+        </span>
+      </Button>
+    </>
+  );
+
+  // The step. Nothing floats, nothing is dismissible by a tap in the wrong place, and
+  // the page scrolls normally - so the send button is at the end of the thing being
+  // read rather than pinned over the middle of it.
+  if (presentation === "step") {
+    return (
+      <div className="flex flex-col gap-3">
+        <Surface className="overflow-hidden">
+          <div className="flex items-start justify-between gap-3 border-b border-border px-4 py-3">
+            <div className="flex min-w-0 flex-col">
+              <h2 className="text-base font-semibold text-text">Your order</h2>
+              {/* Said once at the top, because a control nobody has met yet cannot
+                  explain itself. Between this and the box on each row, somebody who
+                  wants their curry a particular way has two chances to notice. */}
+              <p className="text-2xs text-muted">
+                Want something changed? Add a note on any dish.
+              </p>
+            </div>
+
+            {/* A labelled way back rather than a cross. A cross on a step reads as
+                "cancel this", and going back to the menu abandons nothing. */}
+            <button
+              type="button"
+              onClick={onClose}
+              className="pressable flex shrink-0 items-center gap-1.5 rounded-md border border-border-strong px-2.5 py-1.5 text-2xs font-medium text-text transition-colors hover:bg-surface-3"
+            >
+              <ArrowLeft className="size-3.5" aria-hidden="true" />
+              Add more
+            </button>
+          </div>
+
+          {written}
+        </Surface>
+
+        <Surface className="flex flex-col gap-3 p-4">{send}</Surface>
       </div>
+    );
+  }
+
+  return (
+    <Sheet title="Your order" onClose={onClose}>
+      <div className="min-h-0 flex-1 overflow-y-auto">{written}</div>
 
       <div className="flex shrink-0 flex-col gap-3 border-t border-border px-4 py-3">
-        {error !== null && <FormError message={error} />}
-
-        <p className="flex items-center gap-1.5 text-xs text-muted">
-          <ChefHat className="size-3.5 shrink-0" aria-hidden="true" />
-          Staff send this to the kitchen. Pay with them at the end.
-        </p>
-
-        <Button
-          size="md"
-          className="h-12 w-full justify-between text-base"
-          disabled={placing || lines.length === 0}
-          onClick={onPlace}
-        >
-          <span>{placing ? "Sending…" : "Send the order"}</span>
-          <span className="tabular">{total.toFixed(2)}</span>
-        </Button>
+        {send}
       </div>
     </Sheet>
+  );
+}
+
+/**
+ * One line of the basket, and what was asked for against it.
+ *
+ * Its own component for the note, which needs a piece of state - whether the box is
+ * open - that belongs to this row and nothing else. Held here rather than in the
+ * basket so that opening one does not re-render the rest.
+ *
+ * The box starts open when there is already something in it, so a note survives being
+ * scrolled past and comes back visible rather than hidden behind a button that gives no
+ * sign of holding anything.
+ */
+function BasketLine({
+  item,
+  quantity,
+  currency,
+  note,
+  onNote,
+  onAdjust,
+  onRemove,
+}: {
+  item: PublicMenuItem;
+  quantity: number;
+  currency: string;
+  note: string;
+  onNote: (value: string) => void;
+  onAdjust: (by: number) => void;
+  onRemove: () => void;
+}) {
+  const [open, setOpen] = useState(note !== "");
+
+  return (
+    <motion.li
+      layout
+      exit={{ opacity: 0, height: 0, paddingTop: 0, paddingBottom: 0 }}
+      transition={{ duration: 0.22, ease: [0.4, 0, 1, 1] }}
+      className="flex flex-col gap-2 overflow-hidden px-4 py-3"
+    >
+      <div className="flex items-center gap-3">
+        <div className="flex min-w-0 flex-1 flex-col">
+          <p className="font-medium text-text">{item.name}</p>
+          <p className="text-xs tabular text-muted">
+            {quantity} × {item.price.toFixed(2)}
+          </p>
+        </div>
+
+        <span className="flex shrink-0 items-baseline gap-1">
+          <span className="text-2xs text-muted">{currency}</span>
+          <span className="tabular font-medium text-text">
+            {(item.price * quantity).toFixed(2)}
+          </span>
+        </span>
+
+        <Stepper
+          quantity={quantity}
+          label={item.name}
+          onAdjust={onAdjust}
+        />
+
+        <motion.button
+          type="button"
+          onClick={onRemove}
+          aria-label={`Remove ${item.name}`}
+          whileTap={{ scale: 0.86 }}
+          className="pressable shrink-0 rounded-md p-1.5 text-muted transition-colors hover:bg-danger-soft hover:text-danger"
+        >
+          <Trash2 className="size-4" aria-hidden="true" />
+        </motion.button>
+      </div>
+
+      {/* Against the dish it belongs to, which is the whole fix. A note typed here
+          reaches the kitchen on this line and no other.
+
+          The two states are deliberately the same height, and that is what makes the
+          swap look like anything. It used to grow the box from nothing while the
+          button faded out on top of it and the row's own `layout` animated the height
+          it was changing - three animations describing one event, arriving at slightly
+          different times, so the row lurched taller and settled back. Matching the
+          heights leaves nothing to animate but the crossfade, and `wait` keeps the two
+          from occupying the same space while they do it. */}
+      <AnimatePresence mode="wait" initial={false}>
+        {open ? (
+          <motion.div
+            key="box"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.12 }}
+          >
+            <Input
+              autoFocus={note === ""}
+              maxLength={200}
+              value={note}
+              onChange={(event) => onNote(event.target.value)}
+              onBlur={() => {
+                // Folds away again only if nothing was typed, so an empty box does
+                // not sit open on every line for the rest of the order.
+                if (note.trim() === "") {
+                  setOpen(false);
+                }
+              }}
+              aria-label={`Anything to say about the ${item.name}`}
+              placeholder="Extra spicy, no onions, well done…"
+              className="w-full text-sm"
+            />
+          </motion.div>
+        ) : (
+          // Shaped like the empty field it becomes, rather than written as a link.
+          //
+          // It was a line of small green text under the price, and on a card carrying
+          // a dish name, a price, a stepper and a bin it was the smallest thing on the
+          // screen - so nobody found it, and the one thing this fix existed to offer
+          // went unoffered. A dashed box the width of the row reads as somewhere to
+          // type before a word of it is read, which is the only way an optional field
+          // gets noticed on a screen somebody is trying to leave.
+          <motion.button
+            key="add"
+            type="button"
+            onClick={() => setOpen(true)}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.12 }}
+            // h-9 to the pixel, because that is what Input renders at. Any difference
+            // here and the row resizes mid-crossfade, which is the whole fault.
+            className="pressable flex h-9 w-full items-center gap-2 rounded-md border border-dashed border-border-strong px-2.5 text-left text-xs text-subtle transition-colors hover:border-primary-border hover:bg-primary-soft hover:text-primary"
+          >
+            <MessageSquarePlus className="size-4 shrink-0" aria-hidden="true" />
+            <span className="min-w-0 truncate">
+              Add a note — extra spicy, no onions…
+            </span>
+          </motion.button>
+        )}
+      </AnimatePresence>
+    </motion.li>
   );
 }
 
@@ -810,28 +1397,46 @@ function Sheet({
   // Going through the body means no ancestor can ever do that to it again.
   return createPortal(
     <div className="fixed inset-0 z-40 flex flex-col justify-end">
-      <button
+      {/* The dark ground fades rather than snapping on. Half the reason a sheet feels
+          like it belongs to the page underneath is that the page is seen dimming. */}
+      <motion.button
         type="button"
         aria-label={`Close ${title.toLowerCase()}`}
         onClick={onClose}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.2 }}
         className="absolute inset-0 bg-black/50"
       />
 
-      <div className="relative mx-auto flex max-h-[85vh] w-full max-w-2xl flex-col rounded-t-xl border-t border-border bg-surface">
+      {/* Up from the edge it is anchored to, and back down the same way.
+
+          The way out matters more than the way in. A panel that is simply removed
+          leaves a thumb hovering over whatever was behind it with no sense of having
+          dismissed anything - and closing this is something a guest does repeatedly,
+          checking the basket between courses. */}
+      <motion.div
+        initial={{ y: "100%" }}
+        animate={{ y: 0 }}
+        exit={{ y: "100%" }}
+        transition={SLIDE}
+        className="relative mx-auto flex max-h-[85vh] w-full max-w-2xl flex-col rounded-t-xl border-t border-border bg-surface"
+      >
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-4 py-3">
           <h2 className="text-base font-semibold text-text">{title}</h2>
           <button
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="rounded-md p-1.5 text-muted transition-colors hover:bg-surface-3 hover:text-text"
+            className="pressable rounded-md p-1.5 text-muted transition-colors hover:bg-surface-3 hover:text-text"
           >
             <X className="size-5" aria-hidden="true" />
           </button>
         </div>
 
         {children}
-      </div>
+      </motion.div>
     </div>,
     document.body,
   );
@@ -871,7 +1476,11 @@ function Stepper({
   const button = compact ? "size-8 rounded-full" : "size-9 rounded-md border";
 
   return (
-    <div
+    <motion.div
+      // The pill grows as the minus and the count arrive, rather than the plus jumping
+      // sideways to make room for them.
+      layout
+      transition={PRESS}
       className={cn(
         "flex shrink-0 items-center",
         compact
@@ -879,36 +1488,69 @@ function Stepper({
           : "gap-1",
       )}
     >
-      {quantity > 0 && (
-        <>
-          <button
-            type="button"
-            aria-label={`One fewer ${label}`}
-            className={cn(
-              "flex items-center justify-center text-text transition-colors hover:bg-surface-3",
-              button,
-              !compact && "border-border-strong bg-surface",
-            )}
-            onClick={() => onAdjust(-1)}
-          >
-            <Minus className="size-4" aria-hidden="true" />
-          </button>
+      {/* Said out loud separately from the number that is drawn.
 
-          <span
-            aria-live="polite"
-            className={cn(
-              "text-center font-semibold text-text tabular",
-              compact ? "w-5 text-sm" : "w-6 text-base",
-            )}
-          >
-            {quantity}
-          </span>
-        </>
-      )}
+          The count used to carry the live region itself, which meant animating it would
+          have replaced the announcing element on every tap - and a live region that is
+          removed and recreated is not reliably read out at all. Split, the spoken half
+          holds still and can afford to say something useful: the dish, not just a
+          digit, which on a screen of twenty tiles is the difference between "three" and
+          knowing three of what. */}
+      <span aria-live="polite" className="sr-only">
+        {quantity === 0 ? `No ${label}` : `${quantity} × ${label}`}
+      </span>
 
-      <button
+      <AnimatePresence initial={false}>
+        {quantity > 0 && (
+          <motion.div
+            key="less"
+            initial={{ opacity: 0, width: 0 }}
+            animate={{ opacity: 1, width: "auto" }}
+            exit={{ opacity: 0, width: 0 }}
+            transition={PRESS}
+            className="flex shrink-0 items-center overflow-hidden"
+          >
+            <motion.button
+              type="button"
+              aria-label={`One fewer ${label}`}
+              whileTap={{ scale: 0.86 }}
+              className={cn(
+                "flex items-center justify-center text-text transition-colors hover:bg-surface-3",
+                button,
+                !compact && "border-border-strong bg-surface",
+              )}
+              onClick={() => onAdjust(-1)}
+            >
+              <Minus className="size-4" aria-hidden="true" />
+            </motion.button>
+
+            {/* Re-keyed on the value so each tap replays the bump. Purely drawn - the
+                live region above is what gets spoken - so remounting it costs nothing
+                anybody can hear. */}
+            <span
+              className={cn(
+                "text-center font-semibold text-text tabular",
+                compact ? "w-5 text-sm" : "w-6 text-base",
+              )}
+            >
+              <motion.span
+                key={quantity}
+                initial={{ scale: 0.55, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={PRESS}
+                className="block"
+              >
+                {quantity}
+              </motion.span>
+            </span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <motion.button
         type="button"
         aria-label={`One more ${label}`}
+        whileTap={{ scale: 0.86 }}
         className={cn(
           "flex items-center justify-center bg-primary-solid text-primary-fg transition-colors hover:bg-primary-hover",
           button,
@@ -917,7 +1559,7 @@ function Stepper({
         onClick={() => onAdjust(1)}
       >
         <Plus className="size-4" aria-hidden="true" />
-      </button>
-    </div>
+      </motion.button>
+    </motion.div>
   );
 }

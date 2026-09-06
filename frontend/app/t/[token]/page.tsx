@@ -6,6 +6,7 @@ import { Check, ChefHat, ChevronDown, UtensilsCrossed } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Surface } from "@/components/ui/surface";
+import { TapPulse } from "@/components/ui/tap-pulse";
 import { EmptyState, Spinner } from "@/components/ui/states";
 import { useAuth } from "@/features/auth/auth-context";
 import {
@@ -214,6 +215,12 @@ export default function PublicOrderingPage() {
         />
       )}
 
+      {/* Mounted once for the pad, so every control answers a finger without having
+          to be wired up individually. It earns its place here more than anywhere: a
+          waiter taps this screen fast, at arm's length, while talking to somebody, and
+          a tap that quietly missed costs a line off the order. */}
+      <TapPulse />
+
       <header className="border-b border-border bg-surface">
         <div className="mx-auto flex max-w-2xl flex-col gap-0.5 px-4 py-4">
           <p className="text-xs font-medium tracking-wide text-muted uppercase">
@@ -265,7 +272,7 @@ export default function PublicOrderingPage() {
 
               <span className="flex shrink-0 items-center gap-2">
                 <span className="font-semibold text-text tabular">
-                  {table.currentOrder.subtotal.toFixed(2)}
+                  {table.currency} {table.currentOrder.subtotal.toFixed(2)}
                 </span>
                 <ChevronDown
                   className="size-4 text-muted transition-transform group-open:rotate-180"
@@ -290,7 +297,7 @@ export default function PublicOrderingPage() {
                     )}
                   </span>
                   <span className="shrink-0 tabular text-text">
-                    {line.lineTotal.toFixed(2)}
+                    {table.currency} {line.lineTotal.toFixed(2)}
                   </span>
                 </li>
               ))}
@@ -300,6 +307,7 @@ export default function PublicOrderingPage() {
 
         <OrderComposer
           menu={table.menu}
+          currency={table.currency}
           onPlace={place}
           placing={placing}
           error={placeError}

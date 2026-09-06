@@ -93,6 +93,8 @@ export interface PublicOrder {
 /** Everything the scanned page needs, in one response. */
 export interface PublicTable {
   restaurantName: string;
+  /** The ISO code every amount on this pad is in. One per restaurant. */
+  currency: string;
   tableName: string;
   /** False while a member of staff is running an order on this table. */
   canOrder: boolean;
