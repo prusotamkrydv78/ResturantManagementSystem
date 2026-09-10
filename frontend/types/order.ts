@@ -87,9 +87,15 @@ export interface OrderItem {
 
 /** One line on a kitchen ticket, as the kitchen was told it. */
 export interface KitchenTicketItem {
+  /** Identifier, so the pass can mark this one dish delivered. */
+  id: string;
   itemName: string;
   quantity: number;
   note: string | null;
+  /** When it was cooked, or null while it still is not. */
+  readyAtUtc: string | null;
+  /** When it was carried to the table, or null while it waits at the pass. */
+  servedAtUtc: string | null;
 }
 
 /** One submission of order lines to the kitchen. */

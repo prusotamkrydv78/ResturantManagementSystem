@@ -103,15 +103,35 @@ export function ServiceToasts() {
   });
 
   useRealtimeEvent<TicketPayload>("ticketReady", (event) => {
+    // Counted off what is actually at the pass, not off the whole slip. This fires
+    // each time one dish is ticked off, so the two numbers differ for as long as the
+    // slow dish takes - and the one a waiter is about to act on is the small one.
+    const waiting = event.waitingAtPassCount;
+
     notify({
       tone: "alert",
-      title: `${event.tableName} is ready to go out`,
-      description: `KOT #${event.ticketNumber} · ${event.itemCount} ${
-        event.itemCount === 1 ? "item" : "items"
+      title: event.isFullyReady
+        ? `${event.tableName} is ready to go out`
+        : `Part of ${event.tableName} is ready`,
+      description: `KOT #${event.ticketNumber} · ${waiting} ${
+        waiting === 1 ? "plate" : "plates"
       } waiting at the pass`,
       href: "/pass",
       actionLabel: "Open the pass",
       duration: 12000,
+      // One toast per slip, replaced as more of it comes up, rather than a new one
+      // for every dish.
+      dedupeKey: `ticket:${event.ticketId}`,
+    });
+  });
+
+  useRealtimeEvent<TicketPayload>("ticketRecalled", (event) => {
+    notify({
+      tone: "info",
+      title: `KOT #${event.ticketNumber} came back off the pass`,
+      description: `${event.tableName} is being cooked again. Nothing to fetch.`,
+      // Worth a sound on the floor: somebody may already be walking over for it.
+      duration: 8000,
       dedupeKey: `ticket:${event.ticketId}`,
     });
   });

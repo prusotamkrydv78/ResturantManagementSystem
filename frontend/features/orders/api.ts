@@ -97,6 +97,23 @@ export function markTicketServed(ticketId: string): Promise<PassTicket> {
 }
 
 /**
+ * Record that one dish off a ticket has been carried to the table.
+ *
+ * A waiter handed one finished plate can carry one finished plate. The ticket counts
+ * as served on its own once nothing is left at the pass, so a table's momo and samosa
+ * no longer have to travel together because the software says so.
+ */
+export function markTicketItemServed(
+  ticketId: string,
+  itemId: string,
+): Promise<PassTicket> {
+  return apiFetch<PassTicket>(
+    `/api/waiter/pass/${ticketId}/items/${itemId}/served`,
+    { method: "POST" },
+  );
+}
+
+/**
  * Confirm a customer's order after checking it with the table.
  *
  * Takes no body: there is nothing to say beyond who confirmed it, and the server

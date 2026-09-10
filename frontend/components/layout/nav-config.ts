@@ -121,6 +121,23 @@ const MANAGER_NAV: NavGroup[] = [
         status: "available",
       },
       {
+        // Both of the service screens, because the person answerable for a room in
+        // which the food is late has to be able to look at why. Neither is a manager
+        // tool - the rail belongs to the kitchen and the pass to the floor - but a
+        // manager who could not open either had no way to see the state of service,
+        // and the API refused them outright rather than merely hiding the link.
+        label: "Kitchen",
+        href: "/kitchen",
+        icon: ChefHat,
+        status: "available",
+      },
+      {
+        label: "Pass",
+        href: "/pass",
+        icon: HandPlatter,
+        status: "available",
+      },
+      {
         label: "Billing",
         href: "/billing",
         icon: ReceiptText,

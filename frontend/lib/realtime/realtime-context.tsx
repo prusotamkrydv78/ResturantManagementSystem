@@ -98,6 +98,17 @@ export interface TicketPayload {
   orderNumber: number;
   tableName: string;
   itemCount: number;
+  /**
+   * How many units are cooked and still sitting at the pass.
+   *
+   * Not the same as `itemCount`, and the difference is what per-dish progress is for.
+   * A slip of momo and samosa announces itself when the samosa is done, and saying
+   * "3 items waiting" when one of them is would send a waiter looking for food that
+   * is still on the stove.
+   */
+  waitingAtPassCount: number;
+  /** Whether every dish on the ticket is cooked. */
+  isFullyReady: boolean;
 }
 
 /**
