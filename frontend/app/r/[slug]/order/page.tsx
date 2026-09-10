@@ -7,6 +7,7 @@ import Link from "next/link";
 import {
   ArrowLeft,
   Check,
+  ChefHat,
   HandCoins,
   Info,
   Plus,
@@ -25,6 +26,7 @@ import {
   lookupWebsiteOrder,
   placeWebsiteOrder,
   requestBill,
+  resolveScannedRestaurant,
 } from "@/features/public/api";
 import { OrderComposer, type OrderDraftLine } from "@/features/public/order-composer";
 import { isAtLeast, STAGE_COPY } from "@/features/public/order-progress";
@@ -113,6 +115,23 @@ function WebsiteOrder() {
    * Written from whichever source actually had one and never cleared by a read.
    */
   const [orderKey, setOrderKey] = useState<string | null>(null);
+  /**
+   * The code printed on the table they scanned, held for the whole visit.
+   *
+   * The difference between this and the order key is what fixes the two-phones
+   * problem. A key names one order: whoever holds it is in, and anybody else at the
+   * same table is out, including the same person on a second device or after a flat
+   * battery. This names the *table*, and resolving it returns whatever order is open
+   * there right now - so it keeps answering after the order it first fetched has been
+   * settled, and it answers for an order somebody else at the table started.
+   *
+   * Deliberately not the table's identifier, which would be the easy version of the
+   * same idea and an open door: those are listed in the public menu response so the
+   * picker can draw them, so anyone loading the site could pick an occupied table and
+   * walk into a stranger's bill. The printed code is the part that means "I am sitting
+   * here".
+   */
+  const [tableToken, setTableToken] = useState<string | null>(null);
   // Whether the menu is open on top of an existing order, for a second round. Distinct
   // from having no order at all: the table is already settled and must not be asked
   // again, and the basket adds to what is there rather than starting something new.
@@ -204,7 +223,19 @@ function WebsiteOrder() {
         setTableId(handle.tableId);
       }
 
-      if (handle.orderKey === null) {
+      if (handle.tableToken !== null && !cancelled) {
+        setTableToken(handle.tableToken);
+      }
+
+      // No key of their own, but they scanned the table - so ask the table. This is
+      // the case that used to be a dead end: a second phone, or a first one that
+      // scanned before anybody had ordered, or a guest whose waiter opened the order
+      // after they arrived. All three end up here holding a printed code and nothing
+      // else, and all three are entitled to the order running on that table.
+      const key =
+        handle.orderKey ?? (await keyFromTable(slug, handle.tableToken));
+
+      if (key === null) {
         if (!cancelled) {
           setRecovering(false);
         }
@@ -213,12 +244,12 @@ function WebsiteOrder() {
       }
 
       try {
-        const found = await lookupWebsiteOrder(slug, handle.orderKey);
+        const found = await lookupWebsiteOrder(slug, key);
 
         if (!cancelled) {
           setPlaced(found);
           // From the handle rather than from the response, which never carries one.
-          setOrderKey(handle.orderKey);
+          setOrderKey(key);
         }
       } catch (caught) {
         // Only a definite answer from the restaurant is allowed to throw the key away.
@@ -338,17 +369,25 @@ function WebsiteOrder() {
         // The cheapest one, needing nobody's permission: a glance at the tab.
         setUnseen(`${awaited ? "🍽" : "•"} ${copy.title}`);
 
-        // The bill just closed at the counter. Re-read the order rather than guessing
-        // at the new state: whether they may leave a review is the restaurant's answer,
-        // not something this page can work out, and it is what turns the receipt into
-        // the review card without anybody reloading.
+        // The bill just closed at the counter. Whether they may leave a review is the
+        // restaurant's answer rather than something this page can work out, and the
+        // re-read that `onChanged` does is what turns the receipt into the review card
+        // without anybody reloading.
         if (update.stage === "Settled") {
-          setReloadOrderKey((key) => key + 1);
           setHeadingToReview(true);
         }
       },
       [showMoment],
     ),
+    // Every message, including the ones that leave the order at the same stage.
+    //
+    // The stage arrives on the socket; the per-dish progress on the receipt lives on
+    // the lines, and only a lookup brings those back. Without this a guest would watch
+    // the samosa be cooked and delivered while their receipt still said the kitchen
+    // had it.
+    onChanged: useCallback(() => {
+      setReloadOrderKey((key) => key + 1);
+    }, []),
   });
 
   /**
@@ -398,14 +437,14 @@ function WebsiteOrder() {
     // The key is put back in on the way to storage. `placed` is whatever the last
     // response said, and a response to a read says null - saving that verbatim is what
     // used to empty the stored copy on every refresh.
-    writeReceipt(slug, { ...placed, orderKey }, tableId);
+    writeReceipt(slug, { ...placed, orderKey }, tableId, tableToken);
 
     // Mirrored into the address, which is the copy that survives the tab being closed
     // and the only one that can be sent to somebody else at the same table.
     if (orderKey !== null && tableId !== "") {
-      rememberInUrl(orderKey, tableId);
+      rememberInUrl(orderKey, tableId, tableToken);
     }
-  }, [slug, placed, orderKey, tableId, recovering]);
+  }, [slug, placed, orderKey, tableId, tableToken, recovering]);
 
   const place = useCallback(
     async (items: OrderDraftLine[]) => {
@@ -428,6 +467,27 @@ function WebsiteOrder() {
         setAdding(false);
         setCelebrating(true);
       } catch (caught) {
+        // Somebody else at this table got there first - the other phone, or a waiter
+        // taking the order in person while this basket was being built. The table is
+        // refusing a *second* order, which is correct, but there is now an order on it
+        // that this guest is entitled to, and the code they scanned proves it.
+        //
+        // So rather than reporting a refusal and stranding an assembled basket, take
+        // the order that exists. What they chose is still in the composer, and adding
+        // it to the running order is one press away.
+        const joined = await keyFromTable(slug, tableToken);
+
+        if (joined !== null && orderKey === null) {
+          setOrderKey(joined);
+          setReloadOrderKey((current) => current + 1);
+          setPlaceError(
+            "Somebody at your table had already started an order, so we opened that one instead. Add what you chose to it.",
+          );
+          setReloadKey((current) => current + 1);
+
+          throw caught;
+        }
+
         setPlaceError(
           caught instanceof ApiError
             ? caught.message
@@ -444,7 +504,7 @@ function WebsiteOrder() {
         setPlacing(false);
       }
     },
-    [slug, tableId, orderKey],
+    [slug, tableId, orderKey, tableToken],
   );
 
   /** Asks a waiter to bring the bill over. */
@@ -523,21 +583,45 @@ function WebsiteOrder() {
    * they had chosen - a far worse outcome than a slightly stale list.
    */
   useEffect(() => {
+    let cancelled = false;
+
     function recheck() {
-      if (!document.hidden && placed === null && tableId === "") {
-        setReloadKey((key) => key + 1);
+      if (document.hidden || placed !== null) {
+        return;
       }
+
+      if (tableId === "") {
+        setReloadKey((current) => current + 1);
+
+        return;
+      }
+
+      // Sitting at a scanned table with no order of their own. Somebody else at the
+      // table may have started one while this phone was in a pocket - a waiter taking
+      // it at the table is the ordinary case - so ask the code again rather than
+      // leaving them looking at a menu they can no longer order from.
+      void keyFromTable(slug, tableToken).then((key) => {
+        if (!cancelled && key !== null) {
+          setOrderKey(key);
+          setReloadOrderKey((current) => current + 1);
+        }
+      });
     }
 
     document.addEventListener("visibilitychange", recheck);
 
-    return () => document.removeEventListener("visibilitychange", recheck);
-  }, [placed, tableId]);
+    return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", recheck);
+    };
+  }, [placed, tableId, tableToken, slug]);
 
   /** Forgets this order and goes back to an empty page. */
   const startOver = useCallback(() => {
     setPlaced(null);
     setOrderKey(null);
+    // The code is not forgotten. It belongs to the table rather than to the order, and
+    // the next order on that table is theirs to reach as well.
     setFlowStage("table");
     setChecking(false);
     setAdding(false);
@@ -696,7 +780,7 @@ function WebsiteOrder() {
                 key={`${line.itemName}-${index}`}
                 className="flex items-baseline justify-between gap-3 py-2"
               >
-                <span className="flex min-w-0 flex-col">
+                <span className="flex min-w-0 flex-col gap-1">
                   <span>
                     <span className="tabular text-muted">{line.quantity}×</span>{" "}
                     <span className="text-text">{line.itemName}</span>
@@ -710,6 +794,15 @@ function WebsiteOrder() {
                       “{line.note}”
                     </span>
                   )}
+
+                  {/* Where this dish has got to, rather than where the order has.
+
+                      A table ordering momo and samosa was told one thing about both,
+                      and for the fifteen minutes between them that one thing was wrong
+                      about half the order - either the samosa was still described as
+                      cooking or the momo was described as ready. The timeline above
+                      still answers "is my food coming"; this answers "which of it". */}
+                  <DishProgress line={line} />
                 </span>
 
                 <span className="shrink-0 tabular text-text">
@@ -1161,6 +1254,48 @@ function WebsiteOrder() {
   );
 }
 
+/**
+ * How far along one dish is.
+ *
+ * Only ever four words, and only when there is something to say. A guest reading a
+ * receipt of five lines does not want five sentences - they want to find the one that
+ * has arrived, which is why this is a coloured chip rather than prose.
+ *
+ * Silent for a line nobody has sent yet: "waiting to be sent" is already what the
+ * receipt as a whole is saying at that point, and repeating it per line would put a
+ * label on every row that carries no information.
+ */
+function DishProgress({ line }: { line: PublicOrder["lines"][number] }) {
+  if (line.isServed) {
+    return (
+      <span className="flex items-center gap-1 text-2xs font-medium text-success">
+        <Check className="size-3 shrink-0" strokeWidth={3} aria-hidden="true" />
+        At your table
+      </span>
+    );
+  }
+
+  if (line.isReady) {
+    return (
+      <span className="flex items-center gap-1 text-2xs font-medium text-warning">
+        <UtensilsCrossed className="size-3 shrink-0" aria-hidden="true" />
+        Ready — coming over
+      </span>
+    );
+  }
+
+  if (line.isSentToKitchen) {
+    return (
+      <span className="flex items-center gap-1 text-2xs text-muted">
+        <ChefHat className="size-3 shrink-0" aria-hidden="true" />
+        With the kitchen
+      </span>
+    );
+  }
+
+  return null;
+}
+
 /** One line of the bill: what it is, and what it comes to. */
 function Money({
   label,
@@ -1179,6 +1314,33 @@ function Money({
       </span>
     </div>
   );
+}
+
+/**
+ * Asks a table's printed code what is running on it.
+ *
+ * Null for anything that is not a workable answer - no code, no order on that table,
+ * or a restaurant that cannot be reached. Every caller treats null as "carry on
+ * without one", because none of them can do anything useful about it and a guest is
+ * better served by a menu than by an error about a scan.
+ */
+async function keyFromTable(
+  slug: string,
+  token: string | null,
+): Promise<string | null> {
+  if (token === null) {
+    return null;
+  }
+
+  try {
+    const where = await resolveScannedRestaurant(token);
+
+    // A code from another restaurant is somebody scanning the wrong thing, or an
+    // address that has been edited. It names an order, but not one on this page.
+    return where.slug === slug ? where.runningOrderKey : null;
+  } catch {
+    return null;
+  }
 }
 
 /**

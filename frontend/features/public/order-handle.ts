@@ -33,6 +33,16 @@ export const ORDER_KEY_PARAM = "k";
 export const TABLE_PARAM = "table";
 
 /**
+ * The query parameter carrying the code printed on the table.
+ *
+ * Kept for the life of the visit rather than spent once at the scan. Resolving it
+ * returns whatever order is open on that table right now, so a page holding it can ask
+ * again later - which is the whole difference between a scan that worked and a scan
+ * that happened to be early.
+ */
+export const TABLE_TOKEN_PARAM = "t";
+
+/**
  * Everything the page can work out about which order belongs to this visitor, before
  * it has spoken to the server.
  */
@@ -41,6 +51,14 @@ export interface OrderHandle {
   orderKey: string | null;
   /** The table, when the address named one. */
   tableId: string | null;
+  /**
+   * The code printed on the table, when they got here by scanning it.
+   *
+   * Evidence of being at the table, which the table's identifier is not. It is what
+   * lets a second phone - or the same phone after a flat battery - pick up an order
+   * somebody else at the table started, including one a waiter took.
+   */
+  tableToken: string | null;
 }
 
 /**
@@ -53,12 +71,14 @@ export interface OrderHandle {
 export function readHandle(slug: string): OrderHandle {
   let fromUrl: string | null = null;
   let table: string | null = null;
+  let token: string | null = null;
 
   try {
     const params = new URLSearchParams(window.location.search);
 
     fromUrl = params.get(ORDER_KEY_PARAM);
     table = params.get(TABLE_PARAM);
+    token = params.get(TABLE_TOKEN_PARAM);
   } catch {
     // No window, or an address the URL parser refuses. Storage still works.
   }
@@ -68,6 +88,7 @@ export function readHandle(slug: string): OrderHandle {
   return {
     orderKey: fromUrl ?? saved?.order.orderKey ?? null,
     tableId: table ?? saved?.tableId ?? null,
+    tableToken: token ?? saved?.tableToken ?? null,
   };
 }
 
@@ -78,12 +99,20 @@ export function readHandle(slug: string): OrderHandle {
  * than stepping through one entry per order. The address is the copy that survives a
  * tab being closed, which is the failure this is here for.
  */
-export function rememberInUrl(orderKey: string, tableId: string): void {
+export function rememberInUrl(
+  orderKey: string,
+  tableId: string,
+  tableToken: string | null,
+): void {
   try {
     const url = new URL(window.location.href);
 
     url.searchParams.set(ORDER_KEY_PARAM, orderKey);
     url.searchParams.set(TABLE_PARAM, tableId);
+
+    if (tableToken !== null) {
+      url.searchParams.set(TABLE_TOKEN_PARAM, tableToken);
+    }
 
     window.history.replaceState(null, "", url.toString());
   } catch {
@@ -98,6 +127,7 @@ export function forgetInUrl(): void {
 
     url.searchParams.delete(ORDER_KEY_PARAM);
     url.searchParams.delete(TABLE_PARAM);
+    url.searchParams.delete(TABLE_TOKEN_PARAM);
 
     window.history.replaceState(null, "", url.toString());
   } catch {
@@ -110,11 +140,17 @@ export function remember(
   slug: string,
   order: { orderKey: string | null },
   tableId: string,
+  tableToken: string | null,
 ): void {
   // The store takes the whole order; this module only ever cares about the key.
-  writeReceipt(slug, order as Parameters<typeof writeReceipt>[1], tableId);
+  writeReceipt(
+    slug,
+    order as Parameters<typeof writeReceipt>[1],
+    tableId,
+    tableToken,
+  );
 
   if (order.orderKey !== null && tableId !== "") {
-    rememberInUrl(order.orderKey, tableId);
+    rememberInUrl(order.orderKey, tableId, tableToken);
   }
 }

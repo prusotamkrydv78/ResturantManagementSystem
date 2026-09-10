@@ -34,6 +34,21 @@ export interface StoredReceipt {
    * it.
    */
   tableId: string;
+  /**
+   * The code printed on that table, when they arrived by scanning it.
+   *
+   * The one credential that outlives everything else on this phone. A key names one
+   * order and dies with it; this names the table, so it still answers after the order
+   * it was fetched for has been settled, and it answers again for whatever order is
+   * running there next.
+   *
+   * That is what makes a second phone at the same table work at all - and why it has
+   * to be the printed code rather than the table's identifier, which is listed in the
+   * public menu response for the picker and so is no evidence of sitting anywhere.
+   *
+   * Null for somebody who reached the site by typing its address.
+   */
+  tableToken: string | null;
   /** When this was written, so a stale one can be ignored rather than shown. */
   savedAtMs: number;
 }
@@ -96,11 +111,12 @@ export function writeReceipt(
   slug: string,
   order: PublicOrder,
   tableId: string,
+  tableToken: string | null,
 ): void {
   try {
     window.localStorage.setItem(
       keyFor(slug),
-      JSON.stringify({ order, tableId, savedAtMs: Date.now() }),
+      JSON.stringify({ order, tableId, tableToken, savedAtMs: Date.now() }),
     );
   } catch {
     // Nothing to do and nothing worth telling the customer. Failing to remember an

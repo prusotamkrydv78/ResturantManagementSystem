@@ -40,6 +40,7 @@ export function useOrderUpdates({
   slug,
   orderKey,
   onUpdate,
+  onChanged,
 }: {
   slug: string;
   /** The key from placing the order, or null when there is nothing to follow. */
@@ -54,6 +55,19 @@ export function useOrderUpdates({
    * notification about the past.
    */
   onUpdate?: (update: CustomerOrderUpdate) => void;
+  /**
+   * Called for every message, whether or not it moved the order along.
+   *
+   * The two are separate because per-dish progress made them separate. A five dish
+   * order now sends a message each time the kitchen ticks one off, and all but the
+   * last of those leave the order at the same stage - so treating every message as a
+   * step forward would take the screen over five times to say "being cooked", and
+   * treating none of them as anything would leave the receipt's own per-dish lines
+   * stale until somebody reloaded.
+   *
+   * This one refetches. `onUpdate` announces.
+   */
+  onChanged?: () => void;
 }): {
   /** The furthest stage reached, or null while nothing has happened yet. */
   stage: OrderStage | null;
@@ -72,10 +86,12 @@ export function useOrderUpdates({
   const [live, setLive] = useState(false);
   const [closed, setClosed] = useState(false);
   const latest = useRef(onUpdate);
+  const changed = useRef(onChanged);
 
   useEffect(() => {
     latest.current = onUpdate;
-  }, [onUpdate]);
+    changed.current = onChanged;
+  }, [onUpdate, onChanged]);
 
   useEffect(() => {
     if (orderKey === null) {
@@ -100,15 +116,31 @@ export function useOrderUpdates({
         // updater closure below, and the compiler is right to say so.
         const next = update.stage;
 
+        // Always, because something about the order has changed even when the stage
+        // it reports has not - a single dish being cooked is exactly that case.
+        changed.current?.();
+
         if (next === "Cancelled") {
           setClosed(true);
-        } else {
-          // Only ever forwards. Events can arrive out of order after a reconnection,
-          // and a progress bar that goes backwards makes a guest think something broke.
-          setStage((current) => furthest(current, next));
+          latest.current?.(update);
+
+          return;
         }
 
-        latest.current?.(update);
+        // Only ever forwards. Events can arrive out of order after a reconnection,
+        // and a progress bar that goes backwards makes a guest think something broke.
+        setStage((current) => {
+          const moved = furthest(current, next);
+
+          // Announced only when the story actually moved on. Repeats arrive whenever
+          // part of an order finishes, and a full-screen moment for each of them is
+          // how a guest learns to ignore all of them.
+          if (moved !== current) {
+            latest.current?.(update);
+          }
+
+          return moved;
+        });
       });
 
       // The group is joined by the connection, not by the account, so a reconnection

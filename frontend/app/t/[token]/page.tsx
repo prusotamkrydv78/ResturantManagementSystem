@@ -110,7 +110,20 @@ export default function PublicOrderingPage() {
           // should not be asked which table they are at, and if their phone lost the
           // order they placed twenty minutes ago, the code they are holding is what
           // hands it back.
-          const query = new URLSearchParams({ table: where.tableId });
+          // The code goes with them, not just what it resolved to today.
+          //
+          // This used to pass the table and, if one happened to be running at that
+          // instant, its key - and then the code was gone. Two people scanning an
+          // empty table both arrived with no key, both built a basket, and the second
+          // one to press send was refused because the table was no longer free. Same
+          // dead end when a waiter opened the order after the guest had scanned.
+          //
+          // Carried instead, the page can ask again whenever it needs to, and pick up
+          // whatever is running on that table by then.
+          const query = new URLSearchParams({
+            table: where.tableId,
+            t: token,
+          });
 
           if (where.runningOrderKey !== null) {
             query.set("k", where.runningOrderKey);

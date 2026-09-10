@@ -34,6 +34,16 @@ export interface PublicOrderLine {
   lineTotal: number;
   /** Whether the kitchen has been told about this line yet. */
   isSentToKitchen: boolean;
+  /**
+   * Whether this dish is cooked and waiting to come over.
+   *
+   * Per dish, because that is how food arrives. One stage for a whole order is wrong
+   * about half of it for as long as the slow dish takes: either the samosa is
+   * described as still cooking or the momo is described as ready.
+   */
+  isReady: boolean;
+  /** Whether it has been brought to the table. */
+  isServed: boolean;
 }
 
 /** A guest own order at the table. */

@@ -9,10 +9,10 @@ import {
   Minus,
   Plus,
   HandCoins,
+  Search,
   Send,
   StickyNote,
   Trash2,
-  TriangleAlert,
   UserRoundCheck,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -36,6 +36,10 @@ import {
   updateOrder,
 } from "@/features/orders/api";
 import { ApiError } from "@/lib/api/client";
+import {
+  useRealtimeEvent,
+  type TicketPayload,
+} from "@/lib/realtime/realtime-context";
 import { cn } from "@/lib/utils/cn";
 import { ORDER_LIMITS } from "@/types/order";
 import type { EditableLine, Order, WaiterMenuCategory } from "@/types/order";
@@ -73,9 +77,33 @@ function OrderDetail() {
   const [menu, setMenu] = useState<WaiterMenuCategory[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  /**
+   * The kitchen changed this order while there were unsaved edits on screen.
+   *
+   * Held rather than acted on, because refetching would call `adopt` and replace the
+   * working copy - throwing away lines a waiter had added and not yet saved. Losing
+   * somebody's typing to a chef ticking off a dish would be a far worse bug than a
+   * stale panel, so the screen says so and waits.
+   */
+  const [kitchenMoved, setKitchenMoved] = useState(false);
 
   const [lines, setLines] = useState<EditableLine[]>([]);
+  /**
+   * Lines the waiter has taken off but the server still has.
+   *
+   * Kept rather than dropped, because a removal was the one edit with nothing left on
+   * screen to show it happened. A waiter who mis-taps at a table had no way of seeing
+   * what went, no way of putting it back, and nothing to read out to check - the dish
+   * simply stopped existing and the total moved.
+   *
+   * Cleared by adopt, since after a save the server's copy is the truth.
+   */
+  const [removed, setRemoved] = useState<EditableLine[]>([]);
   const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
+  // Searched across every course rather than within the open tab. A waiter being
+  // told a dish name at a table knows the name and not the course it is filed under,
+  // and hunting five tabs for it in front of a guest is the slow part of the job.
+  const [menuSearch, setMenuSearch] = useState("");
   const [noteFor, setNoteFor] = useState<number | null>(null);
 
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -92,6 +120,8 @@ function OrderDetail() {
   /** Turns a loaded order into the editable working copy. */
   const adopt = useCallback((loaded: Order) => {
     setOrder(loaded);
+    setKitchenMoved(false);
+    setRemoved([]);
     setLines(
       loaded.items.map((item) => ({
         id: item.id,
@@ -208,12 +238,26 @@ function OrderDetail() {
     );
   }, []);
 
-  const removeLine = useCallback((index: number) => {
+  const removeLine = useCallback((index: number, line: EditableLine) => {
     setSavedAt(null);
     setSentTicketNumber(null);
+
+    // Only one the server has. A line added and removed in the same sitting was never
+    // anywhere but this screen, so there is nothing to undo and nothing to read back.
+    if (line.id !== undefined) {
+      setRemoved((kept) => [...kept, line]);
+    }
+
     setLines((current) =>
-      current.filter((line, position) => line.isSubmitted || position !== index),
+      current.filter((existing, position) => existing.isSubmitted || position !== index),
     );
+  }, []);
+
+  const putBack = useCallback((line: EditableLine) => {
+    setSavedAt(null);
+    setSentTicketNumber(null);
+    setRemoved((kept) => kept.filter((held) => held.id !== line.id));
+    setLines((current) => [...current, line]);
   }, []);
 
   const setNote = useCallback((index: number, note: string) => {
@@ -257,6 +301,76 @@ function OrderDetail() {
   // Positions travel with the lines because every edit addresses a line by its
   // index in the single working array. The two groups below are views over that
   // array rather than arrays of their own.
+  /**
+   * Which lines have moved since the server last saw them, and how many.
+   *
+   * The screen could only tell a waiter that *something* was unsaved. A line added
+   * showed a word in small type; a line whose quantity or note had been edited showed
+   * nothing at all, so it sat among untouched lines looking exactly like them. Reading
+   * an order back to a table and checking your own corrections is the whole job on
+   * this screen, and it was the one thing the screen would not help with.
+   *
+   * Indexed to match `lines`, so a row can ask about itself by position.
+   */
+  const { marks, changes } = useMemo(() => {
+    const before = new Map<string, { quantity: number; note: string }>();
+
+    for (const item of order?.items ?? []) {
+      before.set(item.id, {
+        quantity: item.quantity,
+        note: item.note ?? "",
+      });
+    }
+
+    const marks = lines.map((line): "sent" | "new" | "changed" | "same" => {
+      if (line.isSubmitted) {
+        return "sent";
+      }
+
+      const was = line.id === undefined ? undefined : before.get(line.id);
+
+      if (was === undefined) {
+        return "new";
+      }
+
+      return was.quantity !== line.quantity || was.note !== line.note
+        ? "changed"
+        : "same";
+    });
+
+    // Counted off the marks rather than tallied while building them. Mutating a
+    // running total inside the map is the sort of thing that reads fine and that the
+    // compiler is right to refuse: nothing in a memo should be reassigned once the
+    // render it belongs to is over.
+    return {
+      marks,
+      changes: {
+        added: marks.filter((mark) => mark === "new").length,
+        changed: marks.filter((mark) => mark === "changed").length,
+        removed: removed.length,
+      },
+    };
+  }, [lines, order, removed.length]);
+
+  /** The edits, in words, so a waiter can check them before saving. */
+  const changeSummary = useMemo(() => {
+    const parts: string[] = [];
+
+    if (changes.added > 0) {
+      parts.push(`${changes.added} added`);
+    }
+
+    if (changes.changed > 0) {
+      parts.push(`${changes.changed} changed`);
+    }
+
+    if (changes.removed > 0) {
+      parts.push(`${changes.removed} removed`);
+    }
+
+    return parts.join(" · ");
+  }, [changes]);
+
   const placed = useMemo(
     () =>
       lines
@@ -282,6 +396,79 @@ function OrderDetail() {
     () => lines.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0),
     [lines],
   );
+
+  /**
+   * Keeps this screen level with the kitchen.
+   *
+   * It had no live connection at all - it read the order once and then believed it
+   * until something on this page caused a reload. So a chef ticking off a dish, or
+   * pulling a slip back off the pass, changed nothing here: the waiter standing at
+   * the table read a panel that had been true when they opened it. The per-dish
+   * progress on that panel is worth very little if it is only as fresh as the last
+   * page load.
+   *
+   * Filtered to this order. Every ticket in the restaurant comes down the same wire,
+   * and refetching one order because another table's food is ready would be a request
+   * per ticket per open screen for nothing.
+   *
+   * The handler is re-read from a ref on every render by `useRealtimeEvent`, so
+   * closing over `isDirty` here is safe and always current.
+   */
+  const onKitchenEvent = (event: TicketPayload) => {
+    if (event.orderId !== orderId) {
+      return;
+    }
+
+    if (isDirty) {
+      setKitchenMoved(true);
+
+      return;
+    }
+
+    setReloadKey((key) => key + 1);
+  };
+
+  useRealtimeEvent<TicketPayload>("ticketQueued", onKitchenEvent);
+  useRealtimeEvent<TicketPayload>("ticketStarted", onKitchenEvent);
+  useRealtimeEvent<TicketPayload>("ticketReady", onKitchenEvent);
+  useRealtimeEvent<TicketPayload>("ticketRecalled", onKitchenEvent);
+  useRealtimeEvent<TicketPayload>("ticketServed", onKitchenEvent);
+
+/**
+   * How many of each dish are on this order, split by whether the kitchen has them.
+   *
+   * One number could not answer the question a waiter actually has. A badge reading
+   * "1" on a dish already cooking looks identical to one on a dish still in the
+   * basket, so somebody adding a second biryani could not tell whether the first was
+   * theirs to change or already gone.
+   */
+  const onOrder = useMemo(() => {
+    const counts = new Map<string, { sent: number; pending: number }>();
+
+    for (const line of lines) {
+      const seen = counts.get(line.menuItemId) ?? { sent: 0, pending: 0 };
+
+      counts.set(line.menuItemId, {
+        sent: seen.sent + (line.isSubmitted ? line.quantity : 0),
+        pending: seen.pending + (line.isSubmitted ? 0 : line.quantity),
+      });
+    }
+
+    return counts;
+  }, [lines]);
+
+  /** Every dish matching a search, flattened - the course stops mattering here. */
+  const found = useMemo(() => {
+    const term = menuSearch.trim().toLowerCase();
+
+    if (term === "" || menu === null) {
+      return null;
+    }
+
+    return menu
+      .flatMap((category) => category.items)
+      .filter((item) => item.name.toLowerCase().includes(term));
+  }, [menu, menuSearch]);
 
   /**
    * Saves the working copy, and hands back what the server stored.
@@ -445,7 +632,7 @@ function OrderDetail() {
       <>
         <PageHeader
           title={`Order #${order.orderNumber}`}
-          description={`Table ${order.tableName}`}
+          description={order.tableName}
         />
         <PageBody>
           <Surface>
@@ -478,10 +665,82 @@ function OrderDetail() {
     !isSending &&
     !order.needsConfirmation;
 
+  /**
+   * The single next thing to do, worked out once.
+   *
+   * There were four things on this screen telling a waiter to act: a card at the top
+   * about confirming, a banner about items the kitchen had not been told about, a Save
+   * button inside the items panel, and a Send button in a panel below that. All four
+   * could be on screen together, only one of them was ever the next move, and a waiter
+   * standing at a table had to work out which. Now the screen says it.
+   *
+   * The order of the checks is the order of the job: nothing can be sent before it is
+   * confirmed, and nothing can be confirmed or sent while there are edits the server
+   * has not seen.
+   */
+  const step: {
+    label: string;
+    hint: string;
+    tone: "danger" | "warning" | "primary" | "neutral";
+    disabled: boolean;
+    act: (() => void) | null;
+  } = order.needsConfirmation
+    ? {
+        label: isConfirming
+          ? "Confirming…"
+          : isDirty
+            ? "Save & confirm"
+            : "Confirm order",
+        hint: isEmpty
+          ? "An order needs at least one item before it can be confirmed."
+          : `Read it back to ${order.tableName} first. Nothing reaches the kitchen until you confirm, and they can still cancel it themselves until then.`,
+        tone: "danger",
+        disabled: isConfirming || isSaving || isEmpty,
+        act: () => void confirm(),
+      }
+    : isDirty
+      ? {
+          label: isSaving ? "Saving…" : "Save changes",
+          hint: isEmpty
+            ? "An order needs at least one item. Add something, or leave without saving."
+            : `${
+                changeSummary === "" ? "Your edits" : changeSummary
+              } — check it against the table, then save. The kitchen can only be sent what the server has stored.`,
+          tone: "warning",
+          disabled: isEmpty || isSaving,
+          act: () => void save(),
+        }
+      : pendingUnits > 0
+        ? {
+            label: isSending
+              ? "Sending…"
+              : `Send ${pendingUnits} to the kitchen`,
+            hint: `${
+              pendingUnits === 1 ? "1 item is" : `${pendingUnits} items are`
+            } waiting. Until they go through the food will not be made and the bill cannot be settled. Sent items cannot be changed.`,
+            tone: "primary",
+            disabled: !canSend,
+            act: () => void sendToKitchen(),
+          }
+        : {
+            label: "Everything is with the kitchen",
+            hint:
+              order.kitchenTickets.length === 0
+                ? "Add something to send a ticket."
+                : "Add another round, or take payment below when they are ready.",
+            tone: "neutral",
+            disabled: true,
+            act: null,
+          };
+
+  const stepError = confirmError ?? saveError ?? sendError;
+
   return (
     <>
       <PageHeader
-        title={`Table ${order.tableName}`}
+        // The name already says "Table 5". Prefixing it printed "Table Table 5" at
+        // the top of every order in the product.
+        title={order.tableName}
         description={`Order #${order.orderNumber} · opened ${formatTime(order.createdAtUtc)} by ${order.createdByName}`}
         crumbs={[
           { label: "Workspace", href: "/dashboard" },
@@ -510,135 +769,46 @@ function OrderDetail() {
         }
       />
 
-      <PageBody>
-        {/* Above the menu and the order, because until this is done nothing else on
-            this screen can go anywhere. A customer is sitting at the table. */}
-        {order.needsConfirmation && (
-          <Surface className="border-danger-border">
-            <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-start sm:gap-5">
-              <span
-                aria-hidden="true"
-                className="flex size-10 shrink-0 items-center justify-center rounded-full bg-danger-soft text-danger"
-              >
-                <UserRoundCheck className="size-5" />
-              </span>
-
-              <div className="flex min-w-0 flex-col gap-1">
-                <h2 className="text-base font-semibold text-text">
-                  {order.tableName} ordered this themselves
-                </h2>
-                <p className="text-sm text-muted">
-                  Nothing has been sent to the kitchen and nothing will be until you
-                  confirm it. Go to the table, read the order back, change whatever
-                  they did not mean below, then confirm — that sends your changes too.
-                </p>
-                <p className="text-2xs text-subtle">
-                  They can still cancel it themselves until you confirm.
-                </p>
-              </div>
-
-              <div className="flex shrink-0 flex-col gap-2 sm:w-52">
-                {confirmError !== null && <FormError message={confirmError} />}
-
-                <Button
-                  onClick={() => void confirm()}
-                  disabled={isConfirming || isSaving || isEmpty}
-                  className="w-full"
-                  icon={<UserRoundCheck />}
-                >
-                  {isConfirming
-                    ? "Confirming…"
-                    : isDirty
-                      ? "Save & confirm"
-                      : "Confirm order"}
-                </Button>
-
-                <p className="text-2xs text-subtle">
-                  {isDirty
-                    ? "Your changes are saved as part of confirming."
-                    : "Confirming opens the kitchen. It does not send anything yet."}
-                </p>
-              </div>
-            </div>
-          </Surface>
-        )}
-
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start">
-          {/* Menu, to add more */}
-          <Surface>
-            <div className="flex gap-1 overflow-x-auto border-b border-border p-2">
-              {menu.map((category) => {
-                const isActive = category.id === activeCategory?.id;
-
-                return (
-                  <button
-                    key={category.id}
-                    type="button"
-                    aria-current={isActive ? "true" : undefined}
-                    onClick={() => setActiveCategoryId(category.id)}
-                    className={cn(
-                      "shrink-0 rounded-md px-3 py-1.5 text-sm transition-colors",
-                      isActive
-                        ? "bg-primary-soft font-medium text-primary"
-                        : "text-muted hover:bg-surface-3 hover:text-text",
-                    )}
-                  >
-                    {category.name}
-                  </button>
-                );
-              })}
-            </div>
-
-            <div className="grid grid-cols-1 gap-2 p-3 sm:grid-cols-2 xl:grid-cols-3">
-              {(activeCategory?.items ?? []).map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => addItem(item)}
-                  className="flex flex-col items-start gap-1 rounded-md border border-border bg-surface p-3 text-left transition-colors hover:border-primary-border hover:bg-primary-soft"
-                >
-                  <span className="text-base font-medium text-text">{item.name}</span>
-                  <span className="tabular mt-auto text-sm font-semibold text-primary">
-                    {item.price.toFixed(2)}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </Surface>
-
-          {/* The order, then the kitchen */}
-          <div className="flex flex-col gap-4 lg:sticky lg:top-4">
-            {/*
-              Placing an order does not send it. That is deliberate, so drinks can go
-              now and food later, but it means a waiter who stops here leaves an order
-              the kitchen has never heard of. This says so at the top of the column
-              rather than leaving it to be inferred from a button further down, and it
-              names the consequence: the bill cannot be settled either.
-            */}
-            {order.isEditable && pendingUnits > 0 && (
-              <p
-                role="status"
-                className="flex items-start gap-2 rounded-lg border border-warning-border bg-warning-soft px-3 py-2.5 text-sm text-warning"
-              >
-                <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-                <span>
-                  {isDirty
-                    ? "Save your changes, then send the order to the kitchen. Nothing is cooking yet."
-                    : `The kitchen has not been told about ${
-                        pendingUnits === 1 ? "1 item" : `${pendingUnits} items`
-                      }. Send ${
-                        pendingUnits === 1 ? "it" : "them"
-                      } through, or the food will not be made and the bill cannot be settled.`}
-                </span>
-              </p>
-            )}
-
+      <PageBody className="pb-24 lg:pb-5">
+        {/* The order first, the menu second - in that order in the markup, which is
+            what a phone reads. It was the other way round, so a waiter opening an
+            order to read it back to the table scrolled past the whole menu to reach
+            it. On a wide screen the order takes the narrow column, because it is a
+            list, and the menu takes the wide one, because it is a grid. */}
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[24rem_minmax(0,1fr)] lg:items-start">
+          {/* The order, and what to do with it */}
+          <div className="flex flex-col gap-4">
+            {/* Sticky on a wide screen, so the next move stays in view while the menu
+                is scrolled beside it. On a phone the same answer is pinned to the
+                bottom of the screen instead, at the foot of this file - both render
+                the same StepBody, so they cannot come to disagree. */}
+            <Surface
+              className={cn(
+                "hidden lg:sticky lg:top-4 lg:z-10 lg:flex lg:flex-col lg:gap-3 lg:p-4",
+                step.tone === "danger" && "lg:border-danger-border",
+                step.tone === "warning" && "lg:border-warning-border",
+              )}
+            >
+              <StepBody
+                order={order}
+                step={step}
+                error={stepError}
+                savedAt={savedAt}
+                isDirty={isDirty}
+                sentTicketNumber={sentTicketNumber}
+              />
+            </Surface>
             <Surface>
+              {/* Counted rather than merely flagged. "Unsaved changes" told a waiter
+                  that something had moved without saying what, which is no use to
+                  somebody checking their own corrections in front of a guest. */}
               <SurfaceHeader
                 title="Items"
                 description={
                   isDirty
-                    ? "Unsaved changes"
+                    ? changeSummary === ""
+                      ? "Unsaved changes"
+                      : changeSummary
                     : pendingUnits > 0
                       ? `${pendingUnits} waiting for the kitchen`
                       : "Everything is with the kitchen"
@@ -646,10 +816,10 @@ function OrderDetail() {
                 actions={
                   isDirty ? (
                     <Badge tone="warning" dot>
-                      Pending
+                      Not saved
                     </Badge>
                   ) : (
-                    <Badge tone="neutral">Up to date</Badge>
+                    <Badge tone="neutral">Saved</Badge>
                   )
                 }
               />
@@ -719,28 +889,54 @@ function OrderDetail() {
                   ) : (
                     <ul className="divide-y divide-border">
                       {pending.map(({ line, index }) => {
-                        const isNew = line.id === undefined;
+                        const mark = marks[index] ?? "same";
+                        const fromTable = line.addedByCustomer;
 
                         return (
                           <li
                             key={line.id ?? `new-${line.menuItemId}-${index}`}
-                            className="flex flex-col gap-2 px-3 py-2.5"
+                            // A stripe down the edge and a tinted ground, so the rows
+                            // that need attention are found by glancing rather than by
+                            // reading every line. A guest is waiting while this is
+                            // read back to them.
+                            //
+                            // The table's own lines win the colour where both apply:
+                            // a quantity a waiter changed can be checked against the
+                            // paper, but a line the guest typed has to be said out
+                            // loud to them, and that is the more expensive thing to
+                            // miss.
+                            className={cn(
+                              "flex flex-col gap-2 border-l-4 px-3 py-2.5",
+                              fromTable
+                                ? "border-l-warning bg-warning-soft/25"
+                                : mark === "new" || mark === "changed"
+                                  ? "border-l-primary bg-primary-soft/25"
+                                  : "border-l-transparent",
+                            )}
                           >
                             <div className="flex items-start justify-between gap-2">
-                              <div className="flex min-w-0 flex-col">
+                              <div className="flex min-w-0 flex-col gap-1">
                                 <span className="truncate text-sm font-medium text-text">
                                   {line.name}
-                                  {isNew && (
-                                    <span className="ml-1.5 text-2xs font-normal text-primary">
-                                      new
-                                    </span>
-                                  )}
-                                  {line.addedByCustomer && !line.isSubmitted && (
-                                    <span className="ml-1.5 text-2xs font-normal text-warning">
-                                      from the table
-                                    </span>
-                                  )}
                                 </span>
+
+                                {/* Pills rather than a word in coloured type. At arm's
+                                    length in a busy room, small text in a slightly
+                                    different colour is not a signal. */}
+                                {(fromTable || mark !== "same") && (
+                                  <span className="flex flex-wrap items-center gap-1">
+                                    {fromTable && (
+                                      <Badge tone="warning">From the table</Badge>
+                                    )}
+                                    {mark === "new" && (
+                                      <Badge tone="primary">Added</Badge>
+                                    )}
+                                    {mark === "changed" && (
+                                      <Badge tone="primary">Changed</Badge>
+                                    )}
+                                  </span>
+                                )}
+
                                 <span className="tabular text-2xs text-muted">
                                   {line.unitPrice.toFixed(2)} each
                                 </span>
@@ -778,7 +974,7 @@ function OrderDetail() {
                               </IconButton>
                               <IconButton
                                 label={`Remove ${line.name}`}
-                                onClick={() => removeLine(index)}
+                                onClick={() => removeLine(index, line)}
                                 className="ml-auto"
                               >
                                 <Trash2 className="size-3.5" />
@@ -803,15 +999,58 @@ function OrderDetail() {
                       })}
                     </ul>
                   )}
+
+                  {/* Removals used to leave nothing behind. A waiter who took the
+                      wrong dish off had no record of it, no way back, and nothing to
+                      say to the table - and the only sign anything had happened was
+                      the total moving. They stay here, struck through, until a save
+                      makes them real. */}
+                  {removed.length > 0 && (
+                    <>
+                      <GroupLabel>
+                        <Trash2 className="size-3" />
+                        Taken off — not saved yet
+                      </GroupLabel>
+                      <ul className="divide-y divide-border">
+                        {removed.map((line) => (
+                          <li
+                            key={line.id}
+                            className="flex items-center justify-between gap-2 border-l-4 border-l-danger bg-danger-soft/20 px-3 py-2.5"
+                          >
+                            <span className="flex min-w-0 flex-col">
+                              <span className="truncate text-sm font-medium text-muted line-through">
+                                <span className="tabular mr-1.5 text-2xs font-semibold">
+                                  {line.quantity}
+                                  {"×"}
+                                </span>
+                                {line.name}
+                              </span>
+                              {line.note.trim() !== "" && (
+                                <span className="text-2xs text-subtle line-through">
+                                  {line.note}
+                                </span>
+                              )}
+                            </span>
+
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => putBack(line)}
+                            >
+                              Put back
+                            </Button>
+                          </li>
+                        ))}
+                      </ul>
+                    </>
+                  )}
                 </>
               )}
 
-              <div className="flex flex-col gap-3 border-t border-border bg-surface-2 p-4">
-                {saveError !== null && <FormError message={saveError} />}
-                {savedAt !== null && !isDirty && (
-                  <FormSuccess message="Order updated." />
-                )}
-
+              {/* The total, and nothing to press. Saving lives in the one panel that
+                  says what the next move is - a second Save button down here was one
+                  of the four competing calls to action this screen used to have. */}
+              <div className="flex flex-col gap-2 border-t border-border bg-surface-2 p-4">
                 <div className="flex items-baseline justify-between">
                   <span className="text-sm text-muted">Total</span>
                   <span className="tabular text-xl font-semibold text-text">
@@ -824,20 +1063,6 @@ function OrderDetail() {
                   they were ordered at, and lines already with the kitchen cannot be
                   changed at all.
                 </p>
-
-                <Button
-                  onClick={() => void save()}
-                  disabled={!isDirty || isEmpty || isSaving}
-                  className="w-full"
-                >
-                  {isSaving
-                    ? "Saving…"
-                    : isEmpty
-                      ? "Add an item"
-                      : isDirty
-                        ? "Save changes"
-                        : "No changes"}
-                </Button>
               </div>
             </Surface>
 
@@ -855,6 +1080,23 @@ function OrderDetail() {
 
               <BillPanel order={order} />
 
+              {/* Only ever shown mid-edit. Everything else refreshes itself; this is
+                  the one case where it cannot, because taking the server's copy would
+                  discard whatever is unsaved above. */}
+              {kitchenMoved && (
+                <p
+                  role="status"
+                  className="flex items-start gap-2 border-b border-warning-border bg-warning-soft px-4 py-2.5 text-2xs text-warning"
+                >
+                  <ChefHat className="mt-px size-3.5 shrink-0" aria-hidden="true" />
+                  The kitchen has moved on since you opened this. Save your changes to
+                  see where the food has got to.
+                </p>
+              )}
+
+              {/* A record of what went, not a place to send from. Sending is the
+                  next-step panel's job; this is what a waiter checks when a guest
+                  asks how long the food will be. */}
               <SurfaceHeader
                 title="Kitchen"
                 description={
@@ -866,40 +1108,6 @@ function OrderDetail() {
                 }
               />
 
-              <div className="flex flex-col gap-3 p-4">
-                {sendError !== null && <FormError message={sendError} />}
-                {sentTicketNumber !== null && (
-                  <FormSuccess message={`Sent as KOT #${sentTicketNumber}.`} />
-                )}
-
-                <p className="text-2xs text-subtle">
-                  {order.needsConfirmation
-                    ? "Confirm this order with the table first. The kitchen will refuse it until you do."
-                    : pendingUnits === 0
-                      ? "Nothing is waiting. Add items to send another ticket."
-                      : isDirty
-                        ? "Save your changes first, so the kitchen receives what is actually on the order."
-                        : `${pendingUnits} ${
-                            pendingUnits === 1 ? "item" : "items"
-                          } will be sent as one ticket. Once sent they cannot be changed.`}
-                </p>
-
-                <Button
-                  onClick={() => void sendToKitchen()}
-                  disabled={!canSend}
-                  className="w-full"
-                  icon={<Send />}
-                >
-                  {isSending
-                    ? "Sending…"
-                    : order.needsConfirmation
-                      ? "Confirm it first"
-                      : pendingUnits === 0
-                        ? "Nothing to send"
-                        : `Send ${pendingUnits} to kitchen`}
-                </Button>
-              </div>
-
               {order.kitchenTickets.length > 0 && (
                 <ul className="divide-y divide-border border-t border-border">
                   {order.kitchenTickets.map((ticket) => (
@@ -909,7 +1117,9 @@ function OrderDetail() {
                           <ChefHat className="size-3.5 text-muted" />
                           KOT #{ticket.ticketNumber}
                         </span>
-                        <Badge tone="warning">{ticket.status}</Badge>
+                        <Badge tone={ticketTone(ticket.status)}>
+                          {ticket.status}
+                        </Badge>
                       </div>
 
                       <p className="text-2xs text-subtle">
@@ -918,20 +1128,54 @@ function OrderDetail() {
                         {formatTime(ticket.createdAtUtc)}
                       </p>
 
-                      <ul className="flex flex-col gap-0.5">
+                      {/* Dish by dish, because this is the screen a waiter is looking
+                          at when a guest asks where their momo is.
+
+                          The kitchen has ticked these off one at a time since per-dish
+                          progress went in, and the guest's own phone shows it - this
+                          was the only one of the three screens still reporting a whole
+                          slip as one lump, which left the person actually standing at
+                          the table the least informed of everybody. */}
+                      <ul className="flex flex-col gap-1">
                         {ticket.items.map((item, position) => (
                           <li
                             key={`${ticket.id}-${position}`}
-                            className="text-2xs text-muted"
+                            className="flex items-baseline justify-between gap-2 text-2xs"
                           >
-                            <span className="tabular font-semibold">
-                              {item.quantity}
-                              {"×"}
-                            </span>{" "}
-                            {item.itemName}
-                            {item.note !== null && item.note.trim() !== "" && (
-                              <span className="text-subtle"> · {item.note}</span>
-                            )}
+                            <span
+                              className={cn(
+                                "min-w-0",
+                                item.servedAtUtc !== null
+                                  ? "text-subtle line-through"
+                                  : "text-muted",
+                              )}
+                            >
+                              <span className="tabular font-semibold">
+                                {item.quantity}
+                                {"×"}
+                              </span>{" "}
+                              {item.itemName}
+                              {item.note !== null && item.note.trim() !== "" && (
+                                <span className="text-subtle"> · {item.note}</span>
+                              )}
+                            </span>
+
+                            <span
+                              className={cn(
+                                "shrink-0 font-medium whitespace-nowrap",
+                                item.servedAtUtc !== null
+                                  ? "text-muted"
+                                  : item.readyAtUtc !== null
+                                    ? "text-success"
+                                    : "text-warning",
+                              )}
+                            >
+                              {item.servedAtUtc !== null
+                                ? "delivered"
+                                : item.readyAtUtc !== null
+                                  ? "at the pass"
+                                  : "cooking"}
+                            </span>
                           </li>
                         ))}
                       </ul>
@@ -941,9 +1185,209 @@ function OrderDetail() {
               )}
             </Surface>
           </div>
+
+          {/* Adding to the order. Second, because a waiter opening this screen is
+              looking at what is on it far more often than they are adding to it -
+              but wide, because when they are adding, they are hunting a name in a
+              grid of forty. */}
+          <Surface>
+            <div className="flex flex-col gap-2 border-b border-border p-2">
+              <div className="relative">
+                <Search
+                  className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-subtle"
+                  aria-hidden="true"
+                />
+                <Input
+                  type="search"
+                  value={menuSearch}
+                  onChange={(event) => setMenuSearch(event.target.value)}
+                  placeholder="Search every course"
+                  aria-label="Search the menu"
+                  className="pl-8"
+                />
+              </div>
+
+              {/* Hidden while searching. Results come from the whole menu, so a row
+                  of course tabs above them would be claiming to filter something it
+                  is not. */}
+              {found === null && (
+                <div className="flex gap-1 overflow-x-auto">
+                  {menu.map((category) => {
+                    const isActive = category.id === activeCategory?.id;
+
+                    return (
+                      <button
+                        key={category.id}
+                        type="button"
+                        aria-current={isActive ? "true" : undefined}
+                        onClick={() => setActiveCategoryId(category.id)}
+                        className={cn(
+                          "pressable shrink-0 rounded-md px-3 py-1.5 text-sm transition-colors",
+                          isActive
+                            ? "bg-primary-soft font-medium text-primary"
+                            : "text-muted hover:bg-surface-3 hover:text-text",
+                        )}
+                      >
+                        {category.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {found !== null && found.length === 0 ? (
+              <p className="px-4 py-8 text-center text-sm text-muted">
+                Nothing on the menu answers to “{menuSearch.trim()}”.
+              </p>
+            ) : (
+              <div className="grid grid-cols-1 gap-2 p-3 sm:grid-cols-2 xl:grid-cols-3">
+                {(found ?? activeCategory?.items ?? []).map((item) => {
+                  const already = onOrder.get(item.id) ?? { sent: 0, pending: 0 };
+                  const total = already.sent + already.pending;
+
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => addItem(item)}
+                      className={cn(
+                        "pressable relative flex flex-col items-start gap-1 rounded-md border p-3 text-left transition-colors",
+                        total > 0
+                          ? "border-primary-border bg-primary-soft/50"
+                          : "border-border bg-surface hover:border-primary-border hover:bg-primary-soft",
+                      )}
+                    >
+                      <span className="pr-7 text-base font-medium text-text">
+                        {item.name}
+                      </span>
+                      <span className="tabular mt-auto text-sm font-semibold text-primary">
+                        {item.price.toFixed(2)}
+                      </span>
+
+                      {/* How many are already on the order. A waiter halfway through
+                          taking a round has no way of remembering whether they tapped
+                          the biryani, and the answer was only in the other column.
+
+                          Two pills rather than one total: the solid one is what is
+                          still in their hands to change, the outlined one is what the
+                          kitchen already has and cannot be taken back. */}
+                      <span className="absolute top-2 right-2 flex items-center gap-1">
+                        {already.sent > 0 && (
+                          <span
+                            title={`${already.sent} already with the kitchen`}
+                            className="tabular flex size-5 items-center justify-center rounded-full border border-border-strong bg-surface text-2xs font-semibold text-muted"
+                          >
+                            {already.sent}
+                          </span>
+                        )}
+                        {already.pending > 0 && (
+                          <span
+                            title={`${already.pending} not sent yet`}
+                            className="tabular flex size-5 items-center justify-center rounded-full bg-primary-solid text-2xs font-semibold text-primary-fg"
+                          >
+                            {already.pending}
+                          </span>
+                        )}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </Surface>
         </div>
       </PageBody>
+
+      {/* The same answer as the panel on a wide screen, pinned where a thumb is.
+          A waiter works this on a phone, scrolling the menu with the order out of
+          sight above - so the next move has to travel with them. */}
+      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-surface p-3 lg:hidden">
+        <StepBody
+          order={order}
+          step={step}
+          error={stepError}
+          savedAt={savedAt}
+          isDirty={isDirty}
+          sentTicketNumber={sentTicketNumber}
+          compact
+        />
+      </div>
     </>
+  );
+}
+
+/**
+ * What to do next, and why.
+ *
+ * One component so the wide-screen panel and the phone's bottom bar cannot drift
+ * apart. `compact` drops the explanation, because a bar over a thumb has room for a
+ * button and a line, and the explanation is on the panel for whoever has the screen
+ * to read it on.
+ */
+function StepBody({
+  order,
+  step,
+  error,
+  savedAt,
+  isDirty,
+  sentTicketNumber,
+  compact = false,
+}: {
+  order: Order;
+  step: {
+    label: string;
+    hint: string;
+    tone: "danger" | "warning" | "primary" | "neutral";
+    disabled: boolean;
+    act: (() => void) | null;
+  };
+  error: string | null;
+  savedAt: number | null;
+  isDirty: boolean;
+  sentTicketNumber: number | null;
+  compact?: boolean;
+}) {
+  return (
+    <div className="flex flex-col gap-2">
+      {error !== null && <FormError message={error} />}
+      {sentTicketNumber !== null && (
+        <FormSuccess message={`Sent as KOT #${sentTicketNumber}.`} />
+      )}
+      {error === null && sentTicketNumber === null && savedAt !== null && !isDirty && (
+        <FormSuccess message="Order updated." />
+      )}
+
+      {!compact && (
+        <div className="flex items-start gap-2">
+          {order.needsConfirmation && (
+            <span
+              aria-hidden="true"
+              className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-danger-soft text-danger"
+            >
+              <UserRoundCheck className="size-3" />
+            </span>
+          )}
+          <p className="text-2xs text-muted">{step.hint}</p>
+        </div>
+      )}
+
+      <Button
+        onClick={step.act ?? undefined}
+        disabled={step.disabled}
+        className="w-full"
+        variant={step.tone === "neutral" ? "secondary" : "primary"}
+        icon={
+          step.tone === "danger" ? (
+            <UserRoundCheck />
+          ) : step.tone === "primary" ? (
+            <Send />
+          ) : undefined
+        }
+      >
+        {step.label}
+      </Button>
+    </div>
   );
 }
 
@@ -1111,6 +1555,27 @@ function IconButton({
       {children}
     </button>
   );
+}
+
+/**
+ * How a kitchen ticket's state should read.
+ *
+ * Every one of these was painted `warning`, so a ticket the kitchen had finished
+ * cooking sat in the same amber as one nobody had picked up - which is the opposite of
+ * what a waiter scanning this list wants to know, since Ready is the one that means go
+ * and fetch it.
+ */
+function ticketTone(status: string): "neutral" | "primary" | "success" | "warning" {
+  switch (status.toLowerCase()) {
+    case "ready":
+      return "success";
+    case "preparing":
+      return "primary";
+    case "pending":
+      return "warning";
+    default:
+      return "neutral";
+  }
 }
 
 function formatTime(isoString: string): string {
