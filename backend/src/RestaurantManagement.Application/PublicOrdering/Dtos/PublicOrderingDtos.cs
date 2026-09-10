@@ -58,12 +58,24 @@ public sealed record PublicMenuSectionResponse(
 /// Whether the kitchen has been told about this line yet. What a guest actually wants to
 /// know is whether their food is coming.
 /// </param>
+/// <param name="IsReady">
+/// Whether this dish is cooked and waiting to come over.
+///
+/// Per dish, because that is how food arrives. A table ordering momo and samosa is told
+/// one thing about the whole order, and for fifteen minutes that one thing is wrong
+/// about half of it - either the samosa is described as still cooking or the momo is
+/// described as ready. Neither is a mistake in the timeline; the order was the wrong
+/// unit to describe.
+/// </param>
+/// <param name="IsServed">Whether it has been brought to the table.</param>
 public sealed record PublicOrderLineResponse(
     string ItemName,
     int Quantity,
     string? Note,
     decimal LineTotal,
-    bool IsSentToKitchen);
+    bool IsSentToKitchen,
+    bool IsReady,
+    bool IsServed);
 
 /// <summary>
 /// A guest own order at the table.

@@ -720,12 +720,12 @@ public sealed class OrderService : IOrderService
         Guid staffUserId,
         CancellationToken cancellationToken)
     {
-        var waiter = await ResolveWaiterAsync(staffUserId, cancellationToken);
+        var restaurantId = await ResolveFloorRestaurantAsync(staffUserId, cancellationToken);
 
-        if (waiter is null)
+        if (restaurantId is null)
         {
             return Result.Failure<IReadOnlyList<PassTicketResponse>>(
-                OrderErrors.NotAnActiveWaiter);
+                OrderErrors.NotOnTheFloor);
         }
 
         // Oldest first, which is the opposite of every other list in this product and
@@ -734,7 +734,7 @@ public sealed class OrderService : IOrderService
         var tickets = await _dbContext.KitchenTickets
             .AsNoTracking()
             .Where(ticket =>
-                ticket.RestaurantId == waiter.Value.RestaurantId &&
+                ticket.RestaurantId == restaurantId.Value &&
                 ticket.Status == KitchenTicketStatus.Ready &&
                 ticket.ServedAtUtc == null)
             .OrderBy(ticket => ticket.ReadyAtUtc)
@@ -750,12 +750,20 @@ public sealed class OrderService : IOrderService
                 // value. Falling back to when it was sent keeps the age sensible rather
                 // than showing an epoch date if that invariant ever broke.
                 ticket.ReadyAtUtc ?? ticket.CreatedAtUtc,
+                // Only what is still at the pass. A dish a colleague already carried
+                // is not on the plate this card is asking somebody to pick up, and
+                // listing it would have a waiter looking for food that has gone.
                 ticket.Items
-                    .OrderBy(item => item.ItemName)
+                    .Where(item => item.ReadyAtUtc != null && item.ServedAtUtc == null)
+                    .OrderBy(item => item.Id)
                     .Select(item => new KitchenTicketItemResponse(
+                        item.Id,
                         item.ItemName,
                         item.Quantity,
-                        item.Note))
+                        item.Note,
+                        item.Course,
+                        item.ReadyAtUtc,
+                        item.ServedAtUtc))
                     .ToList()))
             .ToListAsync(cancellationToken);
 
@@ -763,16 +771,17 @@ public sealed class OrderService : IOrderService
     }
 
     /// <inheritdoc />
-    public async Task<Result<PassTicketResponse>> MarkTicketServedAsync(
+    public async Task<Result<PassTicketResponse>> MarkTicketItemServedAsync(
         Guid staffUserId,
         Guid ticketId,
+        Guid itemId,
         CancellationToken cancellationToken)
     {
-        var waiter = await ResolveWaiterAsync(staffUserId, cancellationToken);
+        var restaurantId = await ResolveFloorRestaurantAsync(staffUserId, cancellationToken);
 
-        if (waiter is null)
+        if (restaurantId is null)
         {
-            return Result.Failure<PassTicketResponse>(OrderErrors.NotAnActiveWaiter);
+            return Result.Failure<PassTicketResponse>(OrderErrors.NotOnTheFloor);
         }
 
         var ticket = await _dbContext.KitchenTickets
@@ -782,7 +791,82 @@ public sealed class OrderService : IOrderService
             .SingleOrDefaultAsync(
                 candidate =>
                     candidate.Id == ticketId &&
-                    candidate.RestaurantId == waiter.Value.RestaurantId,
+                    candidate.RestaurantId == restaurantId.Value,
+                cancellationToken);
+
+        if (ticket is null)
+        {
+            return Result.Failure<PassTicketResponse>(OrderErrors.NotFound);
+        }
+
+        var now = DateTimeOffset.UtcNow;
+
+        if (!ticket.TryServeItem(itemId, staffUserId, now))
+        {
+            // Already carried, or not cooked yet. Both are ordinary at a pass two
+            // people are working, and neither is worth an error the second waiter can
+            // do nothing about - so the current state is handed back instead.
+            return Result.Success(ToPassResponse(ticket));
+        }
+
+        try
+        {
+            await _dbContext.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return Result.Failure<PassTicketResponse>(OrderErrors.Conflict);
+        }
+
+        _logger.LogInformation(
+            "Waiter {StaffId} took one dish off ticket {TicketNumber} to table {TableName}.",
+            staffUserId,
+            ticket.TicketNumber,
+            ticket.Order.Table.Name);
+
+        var response = ToPassResponse(ticket);
+
+        // Announced on every dish, not only the last. Another waiter's queue has to
+        // drop what has gone, and the kitchen's pass strip with it.
+        await _realtime.TicketServedAsync(
+            restaurantId.Value,
+            new TicketEvent(
+                ticket.Id,
+                ticket.TicketNumber,
+                ticket.OrderId,
+                ticket.Order.OrderNumber,
+                ticket.Order.Table.Name,
+                ticket.Items.Sum(item => item.Quantity),
+                ticket.Items
+                    .Where(item => item.IsWaitingAtPass)
+                    .Sum(item => item.Quantity),
+                ticket.Items.All(item => item.IsReady)),
+            cancellationToken);
+
+        return Result.Success(response);
+    }
+
+    /// <inheritdoc />
+    public async Task<Result<PassTicketResponse>> MarkTicketServedAsync(
+        Guid staffUserId,
+        Guid ticketId,
+        CancellationToken cancellationToken)
+    {
+        var restaurantId = await ResolveFloorRestaurantAsync(staffUserId, cancellationToken);
+
+        if (restaurantId is null)
+        {
+            return Result.Failure<PassTicketResponse>(OrderErrors.NotOnTheFloor);
+        }
+
+        var ticket = await _dbContext.KitchenTickets
+            .Include(candidate => candidate.Items)
+            .Include(candidate => candidate.Order)
+                .ThenInclude(order => order.Table)
+            .SingleOrDefaultAsync(
+                candidate =>
+                    candidate.Id == ticketId &&
+                    candidate.RestaurantId == restaurantId.Value,
                 cancellationToken);
 
         if (ticket is null)
@@ -827,14 +911,18 @@ public sealed class OrderService : IOrderService
         // Both sides. The floor so another waiter's queue drops it, and the kitchen so
         // its pass clears without anybody reloading.
         await _realtime.TicketServedAsync(
-            waiter.Value.RestaurantId,
+            restaurantId.Value,
             new TicketEvent(
                 ticket.Id,
                 ticket.TicketNumber,
                 ticket.OrderId,
                 ticket.Order.OrderNumber,
                 ticket.Order.Table.Name,
-                response.ItemCount),
+                response.ItemCount,
+                ticket.Items
+                    .Where(item => item.IsWaitingAtPass)
+                    .Sum(item => item.Quantity),
+                ticket.Items.All(item => item.IsReady)),
             cancellationToken);
 
         return Result.Success(response);
@@ -974,9 +1062,15 @@ public sealed class OrderService : IOrderService
 
         // Everything not already on a ticket goes out together as one submission.
         // Not a ticket per item: the kitchen wants one slip per trip to the pass.
+        //
+        // In the order the waiter added them, not alphabetically. This is where the
+        // ticket's own order is decided - the lines are copied onto it in this sequence
+        // and read back in it - so sorting by name here is what put the starters in the
+        // middle of a chef's slip. Version 7 identifiers ascend with creation, so this
+        // is the sequence the floor typed.
         var pending = order.Items
             .Where(item => !item.IsSubmittedToKitchen)
-            .OrderBy(item => item.ItemName)
+            .OrderBy(item => item.Id)
             .ToList();
 
         if (pending.Count == 0)
@@ -985,6 +1079,19 @@ public sealed class OrderService : IOrderService
         }
 
         var now = DateTimeOffset.UtcNow;
+
+        // Which course each dish belongs to, read once for the whole slip. It is the
+        // line the kitchen divides itself along - see KitchenTicketItem.Course - and it
+        // is copied onto the ticket rather than looked up later, so renaming a category
+        // cannot rewrite a slip that has already been cooked from.
+        var menuItemIds = pending.Select(item => item.MenuItemId).Distinct().ToList();
+
+        var courses = await _dbContext.MenuItems
+            .AsNoTracking()
+            .Where(item =>
+                item.RestaurantId == restaurantId && menuItemIds.Contains(item.Id))
+            .Select(item => new { item.Id, Course = item.Category.Name })
+            .ToDictionaryAsync(row => row.Id, row => row.Course, cancellationToken);
 
         var ticket = new KitchenTicket
         {
@@ -1007,6 +1114,7 @@ public sealed class OrderService : IOrderService
                 ItemName = item.ItemName,
                 Quantity = item.Quantity,
                 Note = item.Note,
+                Course = courses.GetValueOrDefault(item.MenuItemId),
             });
         }
 
@@ -1064,7 +1172,11 @@ public sealed class OrderService : IOrderService
                 order.Id,
                 order.OrderNumber,
                 order.Table.Name,
-                pending.Sum(item => item.Quantity)),
+                pending.Sum(item => item.Quantity),
+                // Brand new, so nothing on it is cooked and nothing is waiting
+                // for the floor to carry.
+                0,
+                false),
             cancellationToken);
 
         var placedBy = await NameOfStaffAsync(order.CreatedByStaffId, cancellationToken);
@@ -1180,6 +1292,33 @@ public sealed class OrderService : IOrderService
     /// The active check matters: an access token issued moments before the account
     /// was switched off would otherwise still work until it expired.
     /// </summary>
+    /// <summary>
+    /// Confirms the caller works this restaurant's floor, and returns the restaurant.
+    ///
+    /// An active waiter, or the restaurant's manager. Lighter than
+    /// <see cref="ResolveWaiterAsync"/> on purpose: that one fetches the charge rates
+    /// because opening an order needs them, and the pass needs nothing but the
+    /// restaurant - it neither prices anything nor records who took the order.
+    /// </summary>
+    private async Task<Guid?> ResolveFloorRestaurantAsync(
+        Guid staffUserId,
+        CancellationToken cancellationToken)
+    {
+        var rows = await _dbContext.Users
+            .AsNoTracking()
+            .Where(user =>
+                user.Id == staffUserId &&
+                user.IsActive &&
+                user.RestaurantId != null &&
+                (user.PlatformRole == PlatformRole.RestaurantManager ||
+                    (user.PlatformRole == PlatformRole.Staff &&
+                        user.StaffRole == StaffRole.Waiter)))
+            .Select(user => user.RestaurantId!.Value)
+            .ToListAsync(cancellationToken);
+
+        return rows.Count == 0 ? null : rows[0];
+    }
+
     private async Task<WaiterContext?> ResolveWaiterAsync(
         Guid staffUserId,
         CancellationToken cancellationToken)
@@ -1380,7 +1519,12 @@ public sealed class OrderService : IOrderService
                     item.AddedByCustomer))
                 .ToList(),
             order.KitchenTickets
-                .OrderByDescending(ticket => ticket.TicketNumber)
+                // Oldest first, which is how the rail and the pass already read. It
+                // was newest first, so the same three slips appeared in one order on a
+                // waiter's screen and the opposite order on the chef's - and the one
+                // they need to talk to each other about is the oldest, which was at
+                // opposite ends of the two lists.
+                .OrderBy(ticket => ticket.TicketNumber)
                 .Select(ToTicketResponse)
                 .ToList());
     }
@@ -1396,11 +1540,15 @@ public sealed class OrderService : IOrderService
             ticket.Items.Sum(item => item.Quantity),
             ticket.ReadyAtUtc ?? ticket.CreatedAtUtc,
             ticket.Items
-                .OrderBy(item => item.ItemName)
+                .OrderBy(item => item.Id)
                 .Select(item => new KitchenTicketItemResponse(
+                    item.Id,
                     item.ItemName,
                     item.Quantity,
-                    item.Note))
+                    item.Note,
+                    item.Course,
+                    item.ReadyAtUtc,
+                    item.ServedAtUtc))
                 .ToList());
 
     private static KitchenTicketResponse ToTicketResponse(KitchenTicket ticket) =>
@@ -1411,11 +1559,15 @@ public sealed class OrderService : IOrderService
             ticket.Items.Sum(item => item.Quantity),
             ticket.CreatedAtUtc,
             ticket.Items
-                .OrderBy(item => item.ItemName)
+                .OrderBy(item => item.Id)
                 .Select(item => new KitchenTicketItemResponse(
+                    item.Id,
                     item.ItemName,
                     item.Quantity,
-                    item.Note))
+                    item.Note,
+                    item.Course,
+                    item.ReadyAtUtc,
+                    item.ServedAtUtc))
                 .ToList());
 
     private static string? Normalise(string? value) =>

@@ -23,6 +23,17 @@ public static class RealtimeEventNames
     /// <summary>Food reached the pass and needs carrying.</summary>
     public const string TicketReady = "ticketReady";
 
+    /// <summary>
+    /// A ticket taken back off the pass and put back on the stove.
+    ///
+    /// Its own name rather than reusing <see cref="TicketStarted"/>, because the two
+    /// have different audiences. Starting is kitchen business - it stops a second chef
+    /// reaching for the same slip - and telling the floor about it would put a toast on
+    /// a waiter's phone for every ticket that gets picked up. A recall is the opposite:
+    /// the floor has to hear it, because a plate it was about to fetch has gone.
+    /// </summary>
+    public const string TicketRecalled = "ticketRecalled";
+
     /// <summary>A waiter took the food to the table.</summary>
     public const string TicketServed = "ticketServed";
 
@@ -101,10 +112,28 @@ public sealed record BillRequestedEvent(
 /// <param name="OrderNumber">Readable order number.</param>
 /// <param name="TableName">Where the food is going.</param>
 /// <param name="ItemCount">How many units are on it.</param>
+/// <param name="WaitingAtPassCount">
+/// How many units are cooked and still sitting at the pass.
+///
+/// Not the same as <paramref name="ItemCount"/>, and the difference is the whole point
+/// of per-dish progress. A slip of momo and samosa fires this event when the samosa is
+/// done, and telling the floor that three items are waiting when one of them is would
+/// send a waiter looking for food that is still on the stove.
+/// </param>
+/// <param name="IsFullyReady">
+/// Whether every dish on the ticket is cooked.
+///
+/// What separates "some of your food is up" from "your food is up", which is a
+/// distinction the customer's phone has to get right: it is the difference between a
+/// guest walking over to a pass and a guest being told to expect a plate that is
+/// fifteen minutes away.
+/// </param>
 public sealed record TicketEvent(
     Guid TicketId,
     int TicketNumber,
     Guid OrderId,
     int OrderNumber,
     string TableName,
-    int ItemCount);
+    int ItemCount,
+    int WaitingAtPassCount,
+    bool IsFullyReady);

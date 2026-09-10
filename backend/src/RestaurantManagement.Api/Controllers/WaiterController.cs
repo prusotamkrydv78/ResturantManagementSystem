@@ -256,6 +256,11 @@ public sealed class WaiterController : ControllerBase
     /// </remarks>
     /// <param name="cancellationToken">Cancellation token.</param>
     [HttpGet("pass")]
+    // Wider than the rest of this controller on purpose. Taking an order stays a
+    // waiter's job so that "who placed this" cannot become ambiguous; carrying a
+    // cooked plate to a table raises no such question, and a manager standing next to
+    // a pass full of food going cold should be able to pick it up.
+    [Authorize(Policy = AuthorizationPolicies.Serves)]
     [ProducesResponseType(typeof(IReadOnlyList<PassTicketResponse>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<ActionResult<IReadOnlyList<PassTicketResponse>>> GetPass(
@@ -276,12 +281,50 @@ public sealed class WaiterController : ControllerBase
     }
 
     /// <summary>
-    /// Records that this waiter took a cooked ticket to the table.
+    /// Records that one dish off a cooked ticket has been carried to the table.
     /// </summary>
     /// <remarks>
-    /// The ending the kitchen workflow did not have. A ticket used to reach Ready and
-    /// stay there all evening, so nobody could tell whether the plate was still at the
-    /// pass or had been eaten an hour ago.
+    /// A table's momo and samosa are on one slip and cooked fifteen minutes apart. The
+    /// ticket counts as served on its own once nothing is left at the pass.
+    /// </remarks>
+    /// <param name="id">The kitchen ticket.</param>
+    /// <param name="itemId">The dish on it.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    [HttpPost("pass/{id:guid}/items/{itemId:guid}/served")]
+    [Authorize(Policy = AuthorizationPolicies.Serves)]
+    [ProducesResponseType(typeof(PassTicketResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<PassTicketResponse>> MarkItemServed(
+        Guid id,
+        Guid itemId,
+        CancellationToken cancellationToken)
+    {
+        var staffId = User.GetUserId();
+
+        if (staffId is null)
+        {
+            return Unauthorized();
+        }
+
+        var result = await _orderService.MarkTicketItemServedAsync(
+            staffId.Value,
+            id,
+            itemId,
+            cancellationToken);
+
+        return result.IsFailure
+            ? ProblemFrom(result.Error!, StatusFor(result.Error!))
+            : Ok(result.Value);
+    }
+
+    /// <summary>
+    /// Records that this waiter took every remaining dish on a ticket to the table.
+    /// </summary>
+    /// <remarks>
+    /// The shorthand for clearing a whole slip at once, when everything on it is
+    /// cooked and going to the same table in one trip.
     ///
     /// Does not move the ticket's status - that belongs to the kitchen, and Ready is
     /// still true. A ticket somebody else already carried answers as success rather
@@ -291,6 +334,7 @@ public sealed class WaiterController : ControllerBase
     /// <param name="id">The kitchen ticket.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     [HttpPost("pass/{id:guid}/served")]
+    [Authorize(Policy = AuthorizationPolicies.Serves)]
     [ProducesResponseType(typeof(PassTicketResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -403,7 +447,8 @@ public sealed class WaiterController : ControllerBase
 
     private static int StatusFor(Error error)
     {
-        if (error == OrderErrors.NotAnActiveWaiter)
+        if (error == OrderErrors.NotAnActiveWaiter ||
+            error == OrderErrors.NotOnTheFloor)
         {
             return StatusCodes.Status403Forbidden;
         }

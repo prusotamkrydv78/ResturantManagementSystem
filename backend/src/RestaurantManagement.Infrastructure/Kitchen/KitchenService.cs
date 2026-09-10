@@ -45,7 +45,7 @@ public sealed class KitchenService : IKitchenService
         KitchenTicketStatus? status,
         CancellationToken cancellationToken)
     {
-        var restaurantId = await ResolveChefRestaurantAsync(staffUserId, cancellationToken);
+        var restaurantId = await ResolveKitchenRestaurantAsync(staffUserId, cancellationToken);
 
         if (restaurantId is null)
         {
@@ -64,6 +64,16 @@ public sealed class KitchenService : IKitchenService
             query = query.Where(ticket =>
                 ticket.Status == KitchenTicketStatus.Pending ||
                 ticket.Status == KitchenTicketStatus.Preparing);
+        }
+        else if (status.Value == KitchenTicketStatus.Ready)
+        {
+            // Asked for the pass, not for the evening's history. A Ready ticket that a
+            // waiter has carried is finished with as far as any screen is concerned,
+            // and including it would grow this list all night and bury the plates that
+            // are actually sitting there.
+            query = query.Where(ticket =>
+                ticket.Status == KitchenTicketStatus.Ready &&
+                ticket.ServedAtUtc == null);
         }
         else
         {
@@ -94,7 +104,7 @@ public sealed class KitchenService : IKitchenService
         Guid ticketId,
         CancellationToken cancellationToken)
     {
-        var restaurantId = await ResolveChefRestaurantAsync(staffUserId, cancellationToken);
+        var restaurantId = await ResolveKitchenRestaurantAsync(staffUserId, cancellationToken);
 
         if (restaurantId is null)
         {
@@ -145,6 +155,68 @@ public sealed class KitchenService : IKitchenService
                 realtime.TicketReadyAsync(restaurantId, payload, token),
             cancellationToken);
 
+    /// <inheritdoc />
+    public Task<Result<KitchenTicketResponse>> MarkItemReadyAsync(
+        Guid staffUserId,
+        Guid ticketId,
+        Guid itemId,
+        CancellationToken cancellationToken) =>
+        TransitionAsync(
+            staffUserId,
+            ticketId,
+            (ticket, now) => ticket.TryMarkItemReady(itemId, now),
+            KitchenErrors.NotCookable,
+            "marked a dish ready on",
+            // Told to the floor either way, and deliberately on every tick rather than
+            // only on the last one. One cooked dish is a plate at the pass going cold,
+            // which is work for a waiter whether or not the rest of the slip is done.
+            (realtime, restaurantId, payload, token) =>
+                realtime.TicketReadyAsync(restaurantId, payload, token),
+            cancellationToken);
+
+    /// <inheritdoc />
+    public Task<Result<KitchenTicketResponse>> RecallItemAsync(
+        Guid staffUserId,
+        Guid ticketId,
+        Guid itemId,
+        CancellationToken cancellationToken) =>
+        TransitionAsync(
+            staffUserId,
+            ticketId,
+            (ticket, now) => ticket.TryRecallItem(itemId, now),
+            KitchenErrors.NotRecallable,
+            "recalled a dish on",
+            // The recall announcement, same as pulling a whole slip back.
+            //
+            // This said start, and start reaches the kitchen group alone - so unticking
+            // a single dish left the pass showing a plate that had gone back on the
+            // stove. The whole-ticket path had already been fixed and this one had not,
+            // which made the bug look intermittent: recalling a slip worked and
+            // unticking a dish on it did not, and the two are the same gesture to
+            // anybody using the screen.
+            (realtime, restaurantId, payload, token) =>
+                realtime.TicketRecalledAsync(restaurantId, payload, token),
+            cancellationToken);
+
+    /// <inheritdoc />
+    public Task<Result<KitchenTicketResponse>> RecallAsync(
+        Guid staffUserId,
+        Guid ticketId,
+        CancellationToken cancellationToken) =>
+        TransitionAsync(
+            staffUserId,
+            ticketId,
+            (ticket, now) => ticket.TryRecall(now),
+            KitchenErrors.NotRecallable,
+            "recalled",
+            // Its own announcement, reaching the floor as well as the kitchen. It used
+            // to go out as a start, which only ever reached the kitchen group - so the
+            // pass kept showing a plate that had gone back on the stove until its next
+            // poll, and a waiter could walk over to fetch nothing.
+            (realtime, restaurantId, payload, token) =>
+                realtime.TicketRecalledAsync(restaurantId, payload, token),
+            cancellationToken);
+
     /* ------------------------------------------------------------------- Helpers */
 
     /// <summary>
@@ -165,7 +237,7 @@ public sealed class KitchenService : IKitchenService
         Func<IRealtimeNotifier, Guid, TicketEvent, CancellationToken, Task> announce,
         CancellationToken cancellationToken)
     {
-        var restaurantId = await ResolveChefRestaurantAsync(staffUserId, cancellationToken);
+        var restaurantId = await ResolveKitchenRestaurantAsync(staffUserId, cancellationToken);
 
         if (restaurantId is null)
         {
@@ -220,7 +292,11 @@ public sealed class KitchenService : IKitchenService
                 ticket.OrderId,
                 ticket.Order.OrderNumber,
                 ticket.Order.Table.Name,
-                ticket.Items.Sum(item => item.Quantity)),
+                ticket.Items.Sum(item => item.Quantity),
+                ticket.Items
+                    .Where(item => item.IsWaitingAtPass)
+                    .Sum(item => item.Quantity),
+                ticket.Items.All(item => item.IsReady)),
             cancellationToken);
 
         return Result.Success(ToResponse(ticket));
@@ -241,15 +317,18 @@ public sealed class KitchenService : IKitchenService
             .Include(ticket => ticket.Items);
 
     /// <summary>
-    /// Confirms the caller is an active chef attached to a restaurant, and returns
-    /// that restaurant.
+    /// Confirms the caller may work this kitchen, and returns their restaurant.
     ///
-    /// The active check matters: an access token issued moments before the account
-    /// was switched off would otherwise keep working until it expired. There is no
-    /// chef assignment on a ticket, so any active chef in the restaurant can work
+    /// An active chef, or the restaurant's manager. The manager half is the fix for a
+    /// screen the person answerable for the room could not open - the policy explains
+    /// why - and it has to be here as well as on the policy, because the policy reads a
+    /// token and this reads the account. An access token issued moments before an
+    /// account was switched off would otherwise keep working until it expired.
+    ///
+    /// There is no chef assignment on a ticket, so anybody who gets this far can work
     /// the whole queue, which is how a kitchen actually runs.
     /// </summary>
-    private async Task<Guid?> ResolveChefRestaurantAsync(
+    private async Task<Guid?> ResolveKitchenRestaurantAsync(
         Guid staffUserId,
         CancellationToken cancellationToken)
     {
@@ -258,9 +337,10 @@ public sealed class KitchenService : IKitchenService
             .Where(user =>
                 user.Id == staffUserId &&
                 user.IsActive &&
-                user.PlatformRole == PlatformRole.Staff &&
-                user.StaffRole == StaffRole.Chef &&
-                user.RestaurantId != null)
+                user.RestaurantId != null &&
+                (user.PlatformRole == PlatformRole.RestaurantManager ||
+                    (user.PlatformRole == PlatformRole.Staff &&
+                        user.StaffRole == StaffRole.Chef)))
             .Select(user => user.RestaurantId!.Value)
             .ToListAsync(cancellationToken);
 
@@ -286,15 +366,27 @@ public sealed class KitchenService : IKitchenService
             ticket.Order.OrderNumber,
             ticket.Order.Table.Name,
             ticket.Items.Sum(item => item.Quantity),
+            ticket.ReadyItemCount,
             ticket.CreatedAtUtc,
             ticket.StartedAtUtc,
             ticket.ReadyAtUtc,
             ticket.ServedAtUtc,
+            // In the order the waiter sent them, which for a Version 7 identifier is
+            // the order they were created in.
+            //
+            // They were alphabetical, which is the one ordering no kitchen uses: it
+            // scrambles what the waiter wrote down, splits a course, and puts the
+            // starters somewhere in the middle. A chef reading a ticket top to bottom
+            // should be reading the same sequence the floor read out.
             ticket.Items
-                .OrderBy(item => item.ItemName)
+                .OrderBy(item => item.Id)
                 .Select(item => new KitchenTicketItemResponse(
+                    item.Id,
                     item.ItemName,
                     item.Quantity,
-                    item.Note))
+                    item.Note,
+                    item.Course,
+                    item.ReadyAtUtc,
+                    item.ServedAtUtc))
                 .ToList());
 }

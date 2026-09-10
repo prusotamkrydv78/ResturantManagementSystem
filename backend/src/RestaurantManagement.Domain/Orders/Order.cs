@@ -203,9 +203,16 @@ public class Order
     /// and printed on receipts, so anybody who has eaten here could guess a
     /// neighbour's; this is unguessable by construction.
     ///
-    /// Null for anything a member of staff placed. They are standing at the table and
-    /// can simply add to the order, and a capability nobody needs is a capability worth
-    /// not having.
+    /// Every open order carries one, including the ones a member of staff placed. That
+    /// was not always so, and the reasoning that left staff orders without a key - that
+    /// the waiter is standing at the table, so nobody needs it - answered the wrong
+    /// question. The person who needs it is the guest: they scan the code on their
+    /// table, and without a key on the order that scan found nothing and showed them a
+    /// menu with their own table marked in use.
+    ///
+    /// It grants no more than it ever did - following the order, adding to it while the
+    /// kitchen has not been told, asking for the bill - and anything a guest adds still
+    /// has to be agreed by whoever opened the order. See NeedsConfirmation.
     /// </summary>
     public string? PublicOrderKey { get; set; }
 

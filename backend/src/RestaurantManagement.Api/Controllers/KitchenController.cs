@@ -151,6 +151,101 @@ public sealed class KitchenController : ControllerBase
             : Ok(result.Value);
     }
 
+    /// <summary>
+    /// Records that one dish on a ticket is cooked.
+    ///
+    /// The ticket reaches Ready on its own when the last dish is ticked, so there is no
+    /// separate step to remember.
+    /// </summary>
+    [HttpPut("tickets/{id:guid}/items/{itemId:guid}/ready")]
+    [ProducesResponseType(typeof(KitchenTicketResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<KitchenTicketResponse>> MarkItemReady(
+        Guid id,
+        Guid itemId,
+        CancellationToken cancellationToken)
+    {
+        var staffId = User.GetUserId();
+
+        if (staffId is null)
+        {
+            return Unauthorized();
+        }
+
+        var result = await _kitchenService.MarkItemReadyAsync(
+            staffId.Value,
+            id,
+            itemId,
+            cancellationToken);
+
+        return result.IsFailure
+            ? ProblemFrom(result.Error!, StatusFor(result.Error!))
+            : Ok(result.Value);
+    }
+
+    /// <summary>Puts one cooked dish back on the stove.</summary>
+    [HttpPut("tickets/{id:guid}/items/{itemId:guid}/recall")]
+    [ProducesResponseType(typeof(KitchenTicketResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<KitchenTicketResponse>> RecallItem(
+        Guid id,
+        Guid itemId,
+        CancellationToken cancellationToken)
+    {
+        var staffId = User.GetUserId();
+
+        if (staffId is null)
+        {
+            return Unauthorized();
+        }
+
+        var result = await _kitchenService.RecallItemAsync(
+            staffId.Value,
+            id,
+            itemId,
+            cancellationToken);
+
+        return result.IsFailure
+            ? ProblemFrom(result.Error!, StatusFor(result.Error!))
+            : Ok(result.Value);
+    }
+
+    /// <summary>
+    /// Takes a ticket back off the pass and puts it back on the stove.
+    ///
+    /// The undo for marking ready, which is one tap on a rail of identical cards.
+    /// Refused once a waiter has carried the food.
+    /// </summary>
+    [HttpPut("tickets/{id:guid}/recall")]
+    [ProducesResponseType(typeof(KitchenTicketResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<KitchenTicketResponse>> RecallTicket(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var staffId = User.GetUserId();
+
+        if (staffId is null)
+        {
+            return Unauthorized();
+        }
+
+        var result = await _kitchenService.RecallAsync(
+            staffId.Value,
+            id,
+            cancellationToken);
+
+        return result.IsFailure
+            ? ProblemFrom(result.Error!, StatusFor(result.Error!))
+            : Ok(result.Value);
+    }
+
     private static int StatusFor(Error error)
     {
         if (error == KitchenErrors.NotAnActiveChef)

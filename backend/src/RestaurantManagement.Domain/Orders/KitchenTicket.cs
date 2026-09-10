@@ -103,6 +103,24 @@ public class KitchenTicket
     /// <summary>Whether the ticket may be sent to the pass.</summary>
     public bool CanMarkReady => Status == KitchenTicketStatus.Preparing;
 
+    /// <summary>
+    /// Whether the kitchen may take this ticket back off the pass.
+    ///
+    /// Only while nothing on it has been carried. It used to ask whether the *ticket*
+    /// had been served, which stopped being the right question once a waiter could take
+    /// one dish and leave the rest: a ticket with the samosa eaten and the momo still at
+    /// the pass is not served, and recalling it would have un-cooked a dish somebody was
+    /// halfway through.
+    /// </summary>
+    public bool CanRecall =>
+        Status == KitchenTicketStatus.Ready && !Items.Any(item => item.IsServed);
+
+    /// <summary>How many dishes on this ticket are cooked.</summary>
+    public int ReadyItemCount => Items.Count(item => item.IsReady);
+
+    /// <summary>How many are cooked and still sitting at the pass.</summary>
+    public int WaitingAtPassCount => Items.Count(item => item.IsWaitingAtPass);
+
     /// <summary>Whether the food has been taken to the table.</summary>
     public bool IsServed => ServedAtUtc is not null;
 
@@ -113,15 +131,16 @@ public class KitchenTicket
     /// carried anywhere, and a second waiter arriving at an empty pass should be told
     /// somebody beat them to it rather than silently restamping the ticket.
     /// </summary>
-    public bool CanServe => Status == KitchenTicketStatus.Ready && !IsServed;
+    public bool CanServe => Items.Any(item => item.IsWaitingAtPass);
 
     /// <summary>
-    /// Whether this ticket is waiting at the pass for somebody to carry it.
+    /// Whether this ticket has anything waiting at the pass for somebody to carry.
     ///
-    /// The waiter's half of the kitchen rail: what the floor still has to do. Cooked,
-    /// and not yet taken to the table.
+    /// The waiter's half of the kitchen rail: what the floor still has to do. True as
+    /// soon as one dish on it is cooked and untaken, rather than waiting for the whole
+    /// slip - the samosa being ready is work for the floor whether or not the momo is.
     /// </summary>
-    public bool IsWaitingAtPass => Status == KitchenTicketStatus.Ready && !IsServed;
+    public bool IsWaitingAtPass => Items.Any(item => item.IsWaitingAtPass);
 
     /// <summary>
     /// Starts cooking: Pending becomes Preparing and the start time is recorded.
@@ -159,8 +178,153 @@ public class KitchenTicket
             return false;
         }
 
+        // Everything still cooking is now cooked. The whole-ticket button is a
+        // shorthand for ticking every remaining line, not a separate state that could
+        // disagree with them.
+        foreach (var item in Items)
+        {
+            item.TryMarkReady(now);
+        }
+
         Status = KitchenTicketStatus.Ready;
         ReadyAtUtc = now;
+        UpdatedAtUtc = now;
+
+        return true;
+    }
+
+    /// <summary>
+    /// Records that one dish on this ticket is cooked, and closes the ticket if it was
+    /// the last one.
+    /// </summary>
+    /// <remarks>
+    /// This is the point of per-line state. The kitchen ticks off what is done as it is
+    /// done; the ticket reaching Ready is a consequence rather than a decision, so the
+    /// ticket and its lines can never say different things about the same food.
+    ///
+    /// Allowed while the ticket is Pending as well as Preparing, and starts it if so: a
+    /// chef who ticks a dish has plainly begun, and refusing the tick to make them press
+    /// Start first would be the software asking to be told something it can see.
+    /// </remarks>
+    public bool TryMarkItemReady(Guid itemId, DateTimeOffset now)
+    {
+        if (Status == KitchenTicketStatus.Ready)
+        {
+            return false;
+        }
+
+        var item = Items.FirstOrDefault(candidate => candidate.Id == itemId);
+
+        if (item is null || !item.TryMarkReady(now))
+        {
+            return false;
+        }
+
+        StartedAtUtc ??= now;
+
+        if (Status == KitchenTicketStatus.Pending)
+        {
+            Status = KitchenTicketStatus.Preparing;
+        }
+
+        // The last line closes the ticket. Checked after the tick rather than before,
+        // so the answer describes the state the tick produced.
+        if (Items.All(candidate => candidate.IsReady))
+        {
+            Status = KitchenTicketStatus.Ready;
+            ReadyAtUtc = now;
+        }
+
+        UpdatedAtUtc = now;
+
+        return true;
+    }
+
+    /// <summary>
+    /// Puts one cooked dish back on the stove, reopening the ticket if it had closed.
+    /// </summary>
+    public bool TryRecallItem(Guid itemId, DateTimeOffset now)
+    {
+        var item = Items.FirstOrDefault(candidate => candidate.Id == itemId);
+
+        if (item is null || !item.TryRecall())
+        {
+            return false;
+        }
+
+        Status = KitchenTicketStatus.Preparing;
+        ReadyAtUtc = null;
+        UpdatedAtUtc = now;
+
+        return true;
+    }
+
+    /// <summary>
+    /// Takes a ticket back off the pass: Ready becomes Preparing again.
+    ///
+    /// Every other step here is one-way, and this one exists because the step before
+    /// it is the easiest to get wrong. Marking ready is a single tap on a rail of
+    /// identical cards, it sends a waiter walking to a pass that may have nothing on
+    /// it, and until now there was no way back from it - not even a way to see what had
+    /// been done, because the ticket left the rail in the same instant.
+    ///
+    /// The ready time is cleared rather than kept. It exists to say how long a plate
+    /// has been waiting at the pass, and a plate that was never really at the pass has
+    /// not been waiting; leaving the stamp behind would age a ticket from a moment that
+    /// turned out not to have happened. What is kept is the start time, because the
+    /// cooking did happen and is still happening.
+    ///
+    /// Refused once a waiter has taken it, and the caller reports that as a conflict.
+    /// </summary>
+    public bool TryRecall(DateTimeOffset now)
+    {
+        if (!CanRecall)
+        {
+            return false;
+        }
+
+        // Every line goes back on the stove with it, for the same reason the whole
+        // ticket button ticks them all: the ticket is a summary of its lines and must
+        // not be able to contradict them.
+        foreach (var item in Items)
+        {
+            item.TryRecall();
+        }
+
+        Status = KitchenTicketStatus.Preparing;
+        ReadyAtUtc = null;
+        UpdatedAtUtc = now;
+
+        return true;
+    }
+
+    /// <summary>
+    /// Records that a waiter carried one dish to the table, and closes the ticket if it
+    /// was the last one still at the pass.
+    /// </summary>
+    /// <remarks>
+    /// The floor's half of per-line state. A waiter who can be handed one finished dish
+    /// can carry one finished dish, and a guest who has eaten it should not be told
+    /// their order is still waiting.
+    /// </remarks>
+    public bool TryServeItem(Guid itemId, Guid servedByStaffId, DateTimeOffset now)
+    {
+        var item = Items.FirstOrDefault(candidate => candidate.Id == itemId);
+
+        if (item is null || !item.TryServe(now))
+        {
+            return false;
+        }
+
+        // The ticket counts as served once nothing is left at the pass. Recorded
+        // against whoever carried the last of it, which is the same answer the
+        // whole-ticket path gives.
+        if (Items.All(candidate => candidate.IsServed))
+        {
+            ServedAtUtc = now;
+            ServedByStaffId = servedByStaffId;
+        }
+
         UpdatedAtUtc = now;
 
         return true;
@@ -181,6 +345,13 @@ public class KitchenTicket
         if (!CanServe)
         {
             return false;
+        }
+
+        // Shorthand for carrying everything still at the pass, so the ticket cannot
+        // report itself served over lines that say otherwise.
+        foreach (var item in Items)
+        {
+            item.TryServe(now);
         }
 
         ServedAtUtc = now;

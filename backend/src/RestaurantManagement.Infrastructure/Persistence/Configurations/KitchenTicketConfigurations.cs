@@ -93,6 +93,8 @@ public sealed class KitchenTicketItemConfiguration
 
         builder.Property(item => item.Quantity).IsRequired();
 
+        builder.Property(item => item.Course).HasMaxLength(120);
+
         builder.Property(item => item.Note).HasMaxLength(200);
 
         // The whole point of this configuration.
@@ -101,6 +103,12 @@ public sealed class KitchenTicketItemConfiguration
         // same order at the same instant means the second insert violates this index
         // and the submission is refused, rather than the kitchen receiving the same
         // food twice.
+        // Where a dish's own progress is kept. Nullable because "not yet" is the
+        // ordinary state for both, and a sentinel date would be a lie a report would
+        // later have to be taught to ignore.
+        builder.Property(item => item.ReadyAtUtc);
+        builder.Property(item => item.ServedAtUtc);
+
         builder.HasIndex(item => item.OrderItemId).IsUnique();
 
         builder.HasIndex(item => item.KitchenTicketId);

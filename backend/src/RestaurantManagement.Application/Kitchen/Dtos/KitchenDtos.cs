@@ -10,13 +10,38 @@ namespace RestaurantManagement.Application.Kitchen.Dtos;
 /// when the waiter submitted, so a later menu change cannot rewrite what the
 /// kitchen was asked to make.
 /// </summary>
+/// <param name="Id">
+/// Identifier, so a screen can tick off this dish rather than the whole slip.
+/// </param>
 /// <param name="ItemName">What to cook.</param>
 /// <param name="Quantity">How many.</param>
 /// <param name="Note">The guest instruction, when there is one.</param>
+/// <param name="Course">
+/// The menu course this dish came from, as it was named at submission.
+///
+/// What lets a rail be divided. A kitchen screen showing every dish in the building is
+/// unusable in a rush, and the course is the division a restaurant has already made -
+/// so the grill can work Main Course without scrolling past the cold starters.
+/// </param>
+/// <param name="ReadyAtUtc">
+/// When this dish was cooked, or null while it is still being made.
+///
+/// Per dish rather than per slip, because that is where cooking finishes. Momo and
+/// samosa on one ticket are done fifteen minutes apart, and a ticket that could only
+/// be all-cooked or not-cooked left the kitchen choosing between a cold samosa and a
+/// raw momo.
+/// </param>
+/// <param name="ServedAtUtc">
+/// When a waiter carried this dish to the table, or null while it is at the pass.
+/// </param>
 public sealed record KitchenTicketItemResponse(
+    Guid Id,
     string ItemName,
     int Quantity,
-    string? Note);
+    string? Note,
+    string? Course,
+    DateTimeOffset? ReadyAtUtc,
+    DateTimeOffset? ServedAtUtc);
 
 /// <summary>
 /// A ticket on the kitchen rail.
@@ -31,6 +56,10 @@ public sealed record KitchenTicketItemResponse(
 /// <param name="OrderNumber">The order this came from.</param>
 /// <param name="TableName">Where the food is going.</param>
 /// <param name="ItemCount">Total units on the ticket.</param>
+/// <param name="ReadyItemCount">
+/// How many of the lines are cooked. What turns a rail card from all-or-nothing into
+/// "two of three done", which is the state a kitchen is actually in most of the time.
+/// </param>
 /// <param name="CreatedAtUtc">When the waiter sent it.</param>
 /// <param name="StartedAtUtc">When cooking began. Null while it is waiting.</param>
 /// <param name="ReadyAtUtc">When it reached the pass. Null until then.</param>
@@ -49,6 +78,7 @@ public sealed record KitchenTicketResponse(
     int OrderNumber,
     string TableName,
     int ItemCount,
+    int ReadyItemCount,
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset? StartedAtUtc,
     DateTimeOffset? ReadyAtUtc,

@@ -55,6 +55,19 @@ public static class OrderErrors
     /// another restaurant reports the same thing, so probing identifiers does not
     /// reveal whether one exists elsewhere.
     /// </summary>
+    /// <summary>
+    /// The caller is not somebody who works this restaurant's floor.
+    ///
+    /// Told apart from <see cref="NotAnActiveWaiter"/> because the pass admits the
+    /// restaurant's manager as well, and answering a manager with "you are not an
+    /// active waiter" would be describing the wrong reason for a refusal they can do
+    /// nothing about.
+    /// </summary>
+    public static readonly Error NotOnTheFloor =
+        new(
+            "orders.not_on_the_floor",
+            "Your account is not set up to work this restaurant's floor.");
+
     public static readonly Error NotFound =
         new("order.not_found", "The order could not be found.");
 
@@ -120,15 +133,20 @@ public static class OrderErrors
     /// <summary>
     /// The ticket cannot be marked as delivered.
     ///
-    /// Either the kitchen has not finished it, or another waiter already carried it.
-    /// One message for both, because a waiter arriving at an empty pass wants to know
-    /// their tap did nothing rather than which of two reasons applied.
+    /// Three ways to get here and one message for all of them: another waiter carried
+    /// it, the kitchen never finished it, or the kitchen pulled it back off the pass.
+    /// A waiter standing at an empty pass wants to know their tap did nothing, not
+    /// which of three reasons applied.
+    ///
+    /// It no longer tells them to reload. It used to, and by the time anybody read it
+    /// the screen had already corrected itself - so the instruction was both wrong and
+    /// the only thing on screen suggesting something was broken.
     /// </summary>
     public static readonly Error NotAtPass =
         new(
             "order.not_at_pass",
-            "That food is not waiting at the pass. Someone may have taken it already - "
-            + "reload to see what is still there.");
+            "That food is no longer at the pass. It has either gone out already or "
+            + "gone back to the kitchen.");
 
     /// <summary>There is nothing waiting to be sent to the kitchen.</summary>
     public static readonly Error NothingToSubmit =

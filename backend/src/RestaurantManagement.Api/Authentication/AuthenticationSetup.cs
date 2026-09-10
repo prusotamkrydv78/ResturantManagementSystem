@@ -98,15 +98,32 @@ public static class AuthenticationSetup
                     .RequireRole(PlatformRoles.Staff)
                     .RequireClaim(JwtClaimNames.StaffRole, StaffRoleNames.Waiter));
 
-            // Kitchen operations, gated the same way. Both policies are two claims
-            // rather than a permission table, because the product has two floor jobs
-            // and inventing a permission system for them would be scaffolding.
+            // Kitchen operations. An assertion rather than two claims, because a
+            // manager satisfies it as well - see the policy for why the rail is not a
+            // chef-only screen.
             options.AddPolicy(
                 AuthorizationPolicies.Chef,
                 policy => policy
                     .RequireAuthenticatedUser()
-                    .RequireRole(PlatformRoles.Staff)
-                    .RequireClaim(JwtClaimNames.StaffRole, StaffRoleNames.Chef));
+                    .RequireAssertion(context =>
+                        context.User.IsInRole(PlatformRoles.RestaurantManager) ||
+                        (context.User.IsInRole(PlatformRoles.Staff) &&
+                            context.User.HasClaim(
+                                JwtClaimNames.StaffRole,
+                                StaffRoleNames.Chef))));
+
+            // Carrying food off the pass. Same shape, different question - a manager
+            // and a waiter both, and a chef not.
+            options.AddPolicy(
+                AuthorizationPolicies.Serves,
+                policy => policy
+                    .RequireAuthenticatedUser()
+                    .RequireAssertion(context =>
+                        context.User.IsInRole(PlatformRoles.RestaurantManager) ||
+                        (context.User.IsInRole(PlatformRoles.Staff) &&
+                            context.User.HasClaim(
+                                JwtClaimNames.StaffRole,
+                                StaffRoleNames.Waiter))));
 
             // Two different accounts satisfy this one, so it is an assertion rather than
             // a list of claims: a manager is recognised by their platform role alone,

@@ -953,7 +953,11 @@ public sealed class PublicOrderingService : IPublicOrderingService
                 item.Quantity,
                 item.Note,
                 item.LineTotal,
-                item.IsSubmittedToKitchen))
+                item.IsSubmittedToKitchen,
+                // Read off the kitchen's own line rather than inferred from the
+                // ticket, so the guest is told exactly what the chef ticked.
+                item.KitchenTicketItem?.ReadyAtUtc != null,
+                item.KitchenTicketItem?.ServedAtUtc != null))
             .ToList();
 
         return new PublicOrderResponse(

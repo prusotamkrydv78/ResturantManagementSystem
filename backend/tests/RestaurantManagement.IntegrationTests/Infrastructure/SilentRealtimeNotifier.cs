@@ -46,6 +46,11 @@ internal sealed class SilentRealtimeNotifier : IRealtimeNotifier
         int orderNumber,
         CancellationToken cancellationToken) => Task.CompletedTask;
 
+    public Task TicketRecalledAsync(
+        Guid restaurantId,
+        TicketEvent payload,
+        CancellationToken cancellationToken) => Task.CompletedTask;
+
     public Task OrderCancelledAsync(
         Guid orderId,
         int orderNumber,

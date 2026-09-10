@@ -154,13 +154,32 @@ public sealed record OrderItemResponse(
     bool AddedByCustomer);
 
 /// <summary>One line on a kitchen ticket, as the kitchen was told it.</summary>
+/// <param name="Id">
+/// Identifier, so the pass can mark this one dish delivered rather than the whole slip.
+/// </param>
 /// <param name="ItemName">Item name at submission.</param>
 /// <param name="Quantity">How many were sent.</param>
 /// <param name="Note">The instruction given, if any.</param>
+/// <param name="Course">
+/// The menu course it came from, as named at submission. The line a kitchen divides
+/// its rail along - see KitchenTicketItem.Course.
+/// </param>
+/// <param name="ReadyAtUtc">When this dish was cooked, or null while it still is not.</param>
+/// <param name="ServedAtUtc">
+/// When it was carried to the table, or null while it waits at the pass.
+///
+/// Per dish, because a waiter handed one finished plate can carry one finished plate.
+/// A table's momo and samosa are cooked fifteen minutes apart, and a queue that could
+/// only be cleared whole made the floor wait for the slower one before taking either.
+/// </param>
 public sealed record KitchenTicketItemResponse(
+    Guid Id,
     string ItemName,
     int Quantity,
-    string? Note);
+    string? Note,
+    string? Course,
+    DateTimeOffset? ReadyAtUtc,
+    DateTimeOffset? ServedAtUtc);
 
 /// <summary>One submission of order lines to the kitchen.</summary>
 /// <param name="Id">Identifier.</param>

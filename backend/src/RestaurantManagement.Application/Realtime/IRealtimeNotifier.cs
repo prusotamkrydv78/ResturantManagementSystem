@@ -74,6 +74,20 @@ public interface IRealtimeNotifier
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Tells both the kitchen and the floor that a ticket has come back off the pass.
+    ///
+    /// Both, and that is the whole point of it existing. The kitchen needs the slip
+    /// back on its rail; the floor needs it gone from the pass, because a waiter
+    /// looking at a card for food that is back on the stove will walk over and find
+    /// nothing. Announcing it as a start reached only the kitchen, so the pass sat
+    /// showing a plate that no longer existed until its next poll.
+    /// </summary>
+    Task TicketRecalledAsync(
+        Guid restaurantId,
+        TicketEvent payload,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Tells the customer their order has been called off.
     ///
     /// Only the customer. The manager cancelling it watched themselves do it.

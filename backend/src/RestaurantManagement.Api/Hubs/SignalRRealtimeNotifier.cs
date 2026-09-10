@@ -120,9 +120,50 @@ public sealed class SignalRRealtimeNotifier : IRealtimeNotifier
             payload,
             cancellationToken);
 
+        // Only "ready" when all of it is.
+        //
+        // This event now fires each time a single dish is ticked off, and it used to
+        // tell the customer Ready regardless - so a table's phone announced that their
+        // food was ready the moment the samosa was done, with the momo still on the
+        // stove. A partial tick is progress in the kitchen, which is what the guest is
+        // told; the per-dish detail on their receipt says which part.
         await TellCustomerAsync(
             payload.OrderId,
-            new CustomerOrderUpdate(payload.OrderNumber, CustomerOrderStage.Ready),
+            new CustomerOrderUpdate(
+                payload.OrderNumber,
+                payload.IsFullyReady
+                    ? CustomerOrderStage.Ready
+                    : CustomerOrderStage.BeingPrepared),
+            cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task TicketRecalledAsync(
+        Guid restaurantId,
+        TicketEvent payload,
+        CancellationToken cancellationToken)
+    {
+        // The floor first, because it is the one holding a card for food that has just
+        // stopped existing.
+        await SendAsync(
+            OperationsHub.FloorGroup(restaurantId),
+            RealtimeEventNames.TicketRecalled,
+            payload,
+            cancellationToken);
+
+        await SendAsync(
+            OperationsHub.KitchenGroup(restaurantId),
+            RealtimeEventNames.TicketRecalled,
+            payload,
+            cancellationToken);
+
+        // And the guest, whose food went from ready back to cooking. Told plainly
+        // rather than left on a timeline that says their plate is waiting for them.
+        await TellCustomerAsync(
+            payload.OrderId,
+            new CustomerOrderUpdate(
+                payload.OrderNumber,
+                CustomerOrderStage.BeingPrepared),
             cancellationToken);
     }
 

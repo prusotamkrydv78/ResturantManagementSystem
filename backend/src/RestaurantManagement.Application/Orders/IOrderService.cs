@@ -114,6 +114,20 @@ public interface IOrderService
     /// must not be able to strand a table that wants to pay; the record is worth having
     /// and not worth blocking a sale for.
     /// </remarks>
+    /// <summary>
+    /// Records that one dish off a ticket has been carried to the table.
+    ///
+    /// A waiter handed one finished plate can carry one finished plate. The ticket
+    /// counts as served on its own once nothing is left at the pass, so there is no
+    /// separate step to remember - and a guest who has eaten their samosa is no longer
+    /// told their whole order is waiting.
+    /// </summary>
+    Task<Result<PassTicketResponse>> MarkTicketItemServedAsync(
+        Guid staffUserId,
+        Guid ticketId,
+        Guid itemId,
+        CancellationToken cancellationToken);
+
     Task<Result<PassTicketResponse>> MarkTicketServedAsync(
         Guid staffUserId,
         Guid ticketId,

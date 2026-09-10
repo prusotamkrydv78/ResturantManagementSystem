@@ -46,6 +46,28 @@ public static class KitchenErrors
     /// Someone else moved the ticket between it being read and written. Reported
     /// rather than restamping a transition that already happened.
     /// </summary>
+    /// <summary>
+    /// That dish cannot be marked cooked.
+    ///
+    /// Either it is already cooked, the slip is finished with, or the identifier names
+    /// nothing on this ticket.
+    /// </summary>
+    public static readonly Error NotCookable =
+        new(
+            "kitchen.not_cookable",
+            "That dish is not waiting to be cooked. Somebody may have ticked it off already.");
+
+    /// <summary>
+    /// The ticket cannot be taken back off the pass.
+    ///
+    /// Either it was never there, or a waiter has already carried it - and food on a
+    /// table is not the kitchen's to recall.
+    /// </summary>
+    public static readonly Error NotRecallable =
+        new(
+            "kitchen.not_recallable",
+            "This ticket is not waiting at the pass. If a waiter has already taken it, send a new ticket instead.");
+
     public static readonly Error Conflict =
         new(
             "kitchen.conflict",

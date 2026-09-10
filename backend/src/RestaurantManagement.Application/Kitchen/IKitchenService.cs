@@ -65,4 +65,44 @@ public interface IKitchenService
         Guid staffUserId,
         Guid ticketId,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Records that one dish on a ticket is cooked.
+    ///
+    /// The point of per-line state: a table's momo and samosa are on one slip and are
+    /// done fifteen minutes apart, and a ticket that could only be all-cooked or
+    /// not-cooked left the kitchen choosing between a cold samosa and a raw momo. The
+    /// ticket reaches Ready by itself when the last dish is ticked.
+    ///
+    /// Refused for a dish already cooked, so two chefs ticking the same line cannot
+    /// both claim it.
+    /// </summary>
+    Task<Result<KitchenTicketResponse>> MarkItemReadyAsync(
+        Guid staffUserId,
+        Guid ticketId,
+        Guid itemId,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Puts one cooked dish back on the stove.
+    ///
+    /// The undo for the tick above. Refused once a waiter has carried that dish.
+    /// </summary>
+    Task<Result<KitchenTicketResponse>> RecallItemAsync(
+        Guid staffUserId,
+        Guid ticketId,
+        Guid itemId,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Takes a ticket back off the pass and puts it back on the stove.
+    ///
+    /// The undo for the one step on this screen that is easy to tap by mistake and
+    /// expensive to get wrong. Refused once a waiter has carried the food, because at
+    /// that point it is on a table.
+    /// </summary>
+    Task<Result<KitchenTicketResponse>> RecallAsync(
+        Guid staffUserId,
+        Guid ticketId,
+        CancellationToken cancellationToken);
 }
