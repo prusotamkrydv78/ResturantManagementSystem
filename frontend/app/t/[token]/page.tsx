@@ -65,6 +65,9 @@ export default function PublicOrderingPage() {
   // The order number the send came back with, held only for the moment the overlay
   // is up. The panel below reads the reloaded table for everything after that.
   const [sentNumber, setSentNumber] = useState<number | null>(null);
+  // Stable, so a render of this pad cannot restart the overlay's own countdown.
+  // See OrderSentOverlay: an inline arrow here is what used to wedge it on screen.
+  const clearSent = useCallback(() => setSentNumber(null), []);
   const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
@@ -224,7 +227,7 @@ export default function PublicOrderingPage() {
       {sentNumber !== null && (
         <OrderSentOverlay
           orderNumber={sentNumber}
-          onDone={() => setSentNumber(null)}
+          onDone={clearSent}
         />
       )}
 

@@ -1,7 +1,11 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { cn } from "@/lib/utils/cn";
+
+/** How long the fade out takes. Must match `moment-out` in the stylesheet. */
+const LEAVING_MS = 280;
 
 /**
  * The moment an order lands.
@@ -34,20 +38,65 @@ export function OrderSentOverlay({
   onDone: () => void;
   duration?: number;
 }) {
+const [leaving, setLeaving] = useState(false);
+
+  /**
+   * Held in a ref, and this is the whole bug.
+   *
+   * The timer effect depended on `onDone`, and every caller passes an inline arrow -
+   * a new function on each render. So each render of the page underneath tore the
+   * timer down and started it again, and a page that re-rendered faster than this
+   * overlay's own lifetime could never dismiss it.
+   *
+   * That was survivable while the page was quiet. Per-dish progress made it common:
+   * the receipt now refetches on every message from the kitchen, so a chef ticking
+   * off four dishes in a row is four re-renders inside the same second and a half,
+   * and the overlay stops being able to close - full screen, over everything, with
+   * nothing to press. The only way out was a reload.
+   *
+   * Keeping the callback here means the countdown depends on the duration alone, and
+   * nothing the page does can restart it.
+   */
+  const latest = useRef(onDone);
+
   useEffect(() => {
-    const timer = setTimeout(onDone, duration);
+    latest.current = onDone;
+  }, [onDone]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setLeaving(true), duration);
 
     return () => clearTimeout(timer);
-  }, [onDone, duration]);
+  }, [duration]);
+
+  useEffect(() => {
+    if (!leaving) {
+      return;
+    }
+
+    const gone = setTimeout(() => latest.current(), LEAVING_MS);
+
+    return () => clearTimeout(gone);
+  }, [leaving]);
 
   return createPortal(
     <div
       // A status rather than a dialog: it announces itself and then leaves, and it
       // takes no input, so trapping focus in it would strand a keyboard for no
       // reason.
-      role="status"
+role="status"
       aria-live="polite"
-      className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-5 bg-canvas/95 backdrop-blur"
+      // A way out, whatever else happens.
+      //
+      // This covered the whole screen with no control on it at all, so anything that
+      // wedged it left a guest with a dead phone and no recourse but a reload. A
+      // full-screen panel needs a way out even when the timer is working, and
+      // especially when it is not.
+      onClick={() => setLeaving(true)}
+      className={cn(
+        "fixed inset-0 z-50 flex flex-col items-center justify-center gap-5 bg-canvas/95 backdrop-blur",
+        leaving ? "moment-out" : "moment-in",
+      )}
     >
       <div className="relative flex size-28 items-center justify-center">
         {/* Behind the disc and larger, so it reads as the impact rather than as a

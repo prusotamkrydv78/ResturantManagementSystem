@@ -43,6 +43,7 @@ import {
 import { clearReceipt, writeReceipt } from "@/features/public/receipt-store";
 import { useOrderUpdates } from "@/features/public/use-order-updates";
 import { ApiError } from "@/lib/api/client";
+import { useElapsed } from "@/features/public/use-elapsed";
 import { buzz } from "@/lib/notify/buzz";
 import { pushIfHidden } from "@/lib/notify/push";
 import { useTabAlert } from "@/lib/notify/use-tab-alert";
@@ -138,7 +139,10 @@ function WebsiteOrder() {
   const [adding, setAdding] = useState(false);
   // Separate from the order itself, because the receipt should be built and
   // sitting there ready by the time the overlay clears, not assembling afterwards.
-  const [celebrating, setCelebrating] = useState(false);
+const [celebrating, setCelebrating] = useState(false);
+  // Stable, so the overlay's own countdown is never restarted by a render out here.
+  // See OrderSentOverlay - an inline arrow is what used to wedge it on screen.
+  const stopCelebrating = useCallback(() => setCelebrating(false), []);
   const [reloadKey, setReloadKey] = useState(0);
   /**
    * Which step of placing an order they are on.
@@ -521,6 +525,10 @@ function WebsiteOrder() {
       // was recorded - so the confirmed state comes from the restaurant rather than from
       // a flag this page sets and then loses on the next reload.
       setPlaced(await requestBill(slug, orderKey));
+
+      // The phone is face down on the table by now - it usually is by the time
+      // somebody wants to pay - so the confirmation has to be felt as well as drawn.
+      buzz("done");
     } catch (caught) {
       setAskError(
         caught instanceof ApiError
@@ -733,7 +741,7 @@ function WebsiteOrder() {
         {celebrating && (
           <OrderSentOverlay
             orderNumber={placed.orderNumber}
-            onDone={() => setCelebrating(false)}
+onDone={stopCelebrating}
           />
         )}
 
@@ -847,17 +855,57 @@ function WebsiteOrder() {
             eight blocks was what made this screen a wall. */}
         <Surface className="flex flex-col gap-4 p-5">
           {/* Asking is not paying. The money still changes hands with a person, so the
-              button says what it does - it calls somebody over. */}
+              button says what it does - it calls somebody over.
+
+              Wrapped so the swap is felt. Every other thing a guest finishes on this
+              page gets a moment - sending the order takes the whole screen, each stage
+              takes it again, the review ends on a tick that springs in - and this one
+              replaced a button with a green paragraph. It is the request with the most
+              anxiety attached: they have decided to leave, they have put their hand up
+              in a room where nobody may have looked, and the weakest feedback on the
+              page was the one telling them somebody heard. */}
+          <AnimatePresence mode="wait" initial={false}>
           {placed.billRequestedAtUtc !== null ? (
-            <p
+            <motion.div
+              key="asked"
               role="status"
-              className="flex items-start gap-2 rounded-md bg-success-soft px-3 py-2 text-sm font-medium text-success"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+              className="flex items-start gap-2.5 rounded-md bg-success-soft px-3 py-2.5"
             >
-              <Check className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-              A member of staff is on their way with your bill.
-            </p>
+              <span
+                aria-hidden="true"
+                className="sent-pop mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-success text-inverse"
+              >
+                <Check className="size-3" strokeWidth={3} />
+              </span>
+
+              <span className="flex min-w-0 flex-col">
+                <span className="text-sm font-medium text-success">
+                  A member of staff is on their way with your bill.
+                </span>
+
+                {/* How long ago, counting.
+
+                    The restaurant records the moment precisely so its floor can see
+                    who has been waiting longest; the table waiting has more reason to
+                    know than anybody. Without it a guest who asked eight minutes ago
+                    sees the same sentence they saw at eight seconds, and asks again -
+                    or stands up. */}
+                <BillWaitedFor since={placed.billRequestedAtUtc} />
+              </span>
+            </motion.div>
           ) : placed.canRequestBill ? (
-            <div className="flex flex-col gap-2">
+            <motion.div
+              key="ask"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.2 }}
+              className="flex flex-col gap-2"
+            >
               {askError !== null && (
                 <p role="alert" className="flex items-start gap-2 text-sm text-warning">
                   <Info className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
@@ -878,12 +926,18 @@ function WebsiteOrder() {
                 A waiter will come over to take payment. You can keep sitting where you
                 are.
               </p>
-            </div>
+            </motion.div>
           ) : (
-            <p className="text-sm text-muted">
+            <motion.p
+              key="settled"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="text-sm text-muted"
+            >
               This order has been settled. Thank you.
-            </p>
+            </motion.p>
           )}
+          </AnimatePresence>
 
           {/* Offered here because this is the moment it makes sense to the person
               being asked: they have ordered, and they are about to stop watching. */}
@@ -1341,6 +1395,26 @@ async function keyFromTable(
   } catch {
     return null;
   }
+}
+
+/**
+ * How long the table has been waiting for somebody to come over.
+ *
+ * Its own component only because the hook has to live somewhere that re-renders on a
+ * timer, and the card around it should not.
+ */
+function BillWaitedFor({ since }: { since: string }) {
+  const waited = useElapsed(since);
+
+  if (waited === null) {
+    return null;
+  }
+
+  return (
+    <span className="text-2xs text-muted">
+      {waited === "just now" ? "Asked just now" : `Asked ${waited} ago`}
+    </span>
+  );
 }
 
 /**
