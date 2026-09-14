@@ -4,9 +4,11 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RestaurantManagement.Application.Managers;
 using RestaurantManagement.Application.Managers.Dtos;
+using RestaurantManagement.Application.Platform;
 using RestaurantManagement.Application.Restaurants;
 using RestaurantManagement.Application.Restaurants.Dtos;
 using RestaurantManagement.Domain.Identity;
+using RestaurantManagement.Domain.Platform;
 using RestaurantManagement.Domain.Restaurants;
 using RestaurantManagement.Infrastructure.Persistence;
 using RestaurantManagement.Shared.Results;
@@ -24,14 +26,17 @@ public sealed partial class RestaurantService : IRestaurantService
 {
     private readonly ApplicationDbContext _dbContext;
     private readonly IManagerService _managerService;
+    private readonly IAdminActivityLog _activity;
     private readonly ILogger<RestaurantService> _logger;
 
     /// <summary>Creates the service.</summary>
     public RestaurantService(
         ApplicationDbContext dbContext,
         IManagerService managerService,
+        IAdminActivityLog activity,
         ILogger<RestaurantService> logger)
     {
+        _activity = activity;
         _dbContext = dbContext;
         _managerService = managerService;
         _logger = logger;
@@ -61,6 +66,18 @@ public sealed partial class RestaurantService : IRestaurantService
 
         var now = DateTimeOffset.UtcNow;
 
+        // The rates a new restaurant starts on come from the platform defaults, and
+        // from the entity own constants only when nobody has ever set them. Inherited
+        // at creation and then owned by the restaurant: changing the platform default
+        // later moves what the next restaurant starts on, never what an existing one
+        // is charging, and never what a bill already printed says.
+        var defaults = await _dbContext.PlatformSettings
+            .AsNoTracking()
+            .FirstOrDefaultAsync(
+                row => row.Id == PlatformSettings.WellKnownId,
+                cancellationToken)
+            ?? new PlatformSettings();
+
         var restaurant = new Restaurant
         {
             Id = Guid.CreateVersion7(),
@@ -71,6 +88,8 @@ public sealed partial class RestaurantService : IRestaurantService
             AddressLine = Normalise(request.AddressLine),
             City = Normalise(request.City),
             Country = Normalise(request.Country),
+            VatRate = defaults.DefaultVatRate,
+            ServiceChargeRate = defaults.DefaultServiceChargeRate,
             CreatedAtUtc = now,
             UpdatedAtUtc = now
         };
@@ -127,6 +146,13 @@ public sealed partial class RestaurantService : IRestaurantService
             restaurant.Id,
             restaurant.Slug,
             withManager ? " with a manager" : " with no manager yet");
+
+        await _activity.RecordAsync(
+            AdminActions.RestaurantCreated,
+            restaurant.Name,
+            restaurant.Id,
+            withManager ? "With a manager" : "No manager yet",
+            cancellationToken);
 
         // Re-read so the response carries the manager the transaction just attached.
         return await GetByIdAsync(restaurant.Id, cancellationToken);
@@ -218,6 +244,12 @@ public sealed partial class RestaurantService : IRestaurantService
 
         _logger.LogInformation("Updated restaurant {RestaurantId}.", restaurant.Id);
 
+        await _activity.RecordAsync(
+            AdminActions.RestaurantUpdated,
+            restaurant.Name,
+            restaurant.Id,
+            cancellationToken: cancellationToken);
+
         return Result.Success(ToResponse(restaurant, restaurant.Manager));
     }
 
@@ -267,6 +299,14 @@ public sealed partial class RestaurantService : IRestaurantService
                 restaurantId,
                 restaurant.Slug);
         }
+
+        await _activity.RecordAsync(
+            request.IsActive
+                ? AdminActions.RestaurantRestored
+                : AdminActions.RestaurantSuspended,
+            restaurant.Name,
+            restaurantId,
+            cancellationToken: cancellationToken);
 
         return Result.Success(ToResponse(restaurant, restaurant.Manager));
     }

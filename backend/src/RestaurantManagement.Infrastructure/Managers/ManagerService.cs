@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RestaurantManagement.Application.Managers;
+using RestaurantManagement.Application.Platform;
 using RestaurantManagement.Application.Managers.Dtos;
 using RestaurantManagement.Domain.Identity;
 using RestaurantManagement.Domain.Restaurants;
@@ -21,14 +22,17 @@ public sealed class ManagerService : IManagerService
 {
     private readonly ApplicationDbContext _dbContext;
     private readonly UserManager<ApplicationUser> _userManager;
+    private readonly IAdminActivityLog _activity;
     private readonly ILogger<ManagerService> _logger;
 
     /// <summary>Creates the service.</summary>
     public ManagerService(
         ApplicationDbContext dbContext,
         UserManager<ApplicationUser> userManager,
+        IAdminActivityLog activity,
         ILogger<ManagerService> logger)
     {
+        _activity = activity;
         _dbContext = dbContext;
         _userManager = userManager;
         _logger = logger;
@@ -199,6 +203,13 @@ public sealed class ManagerService : IManagerService
             manager.Id,
             restaurant is null ? "" : $" assigned to restaurant {restaurant.Id}");
 
+        await _activity.RecordAsync(
+            AdminActions.ManagerCreated,
+            manager.FullName,
+            manager.Id,
+            restaurant is null ? null : $"Assigned to {restaurant.Name}",
+            cancellationToken);
+
         return Result.Success(await ToResponseAsync(manager, cancellationToken));
     }
 
@@ -256,6 +267,12 @@ public sealed class ManagerService : IManagerService
         }
 
         _logger.LogInformation("Updated restaurant manager {ManagerId}.", manager.Id);
+
+        await _activity.RecordAsync(
+            AdminActions.ManagerUpdated,
+            manager.FullName,
+            manager.Id,
+            cancellationToken: cancellationToken);
 
         return Result.Success(await ToResponseAsync(manager, cancellationToken));
     }
@@ -340,6 +357,15 @@ public sealed class ManagerService : IManagerService
             target.Id,
             current is null ? "" : $" (moved from {current.Id})");
 
+        await _activity.RecordAsync(
+            AdminActions.ManagerAssigned,
+            manager.FullName,
+            managerId,
+            current is null
+                ? $"Now runs {target.Name}"
+                : $"Moved from {current.Name} to {target.Name}",
+            cancellationToken);
+
         return Result.Success(await ToResponseAsync(manager, cancellationToken));
     }
 
@@ -372,6 +398,13 @@ public sealed class ManagerService : IManagerService
                 "Unassigned manager {ManagerId} from restaurant {RestaurantId}.",
                 managerId,
                 current.Id);
+
+            await _activity.RecordAsync(
+                AdminActions.ManagerUnassigned,
+                manager.FullName,
+                managerId,
+                $"Released {current.Name}",
+                cancellationToken);
         }
 
         // The account keeps its RestaurantManager role so it can be assigned again
@@ -440,6 +473,15 @@ public sealed class ManagerService : IManagerService
         // signing them out of a device they are holding would not help.
         _logger.LogInformation("Reset the password for manager {ManagerId}.", managerId);
 
+        // Recorded without a word about what the password is or was. The point of the
+        // entry is that somebody issued one, which is exactly the thing a person who
+        // did not issue it needs to be able to see.
+        await _activity.RecordAsync(
+            AdminActions.ManagerPasswordReset,
+            manager.FullName,
+            managerId,
+            cancellationToken: cancellationToken);
+
         return Result.Success(await ToResponseAsync(manager, cancellationToken));
     }
 
@@ -500,6 +542,12 @@ public sealed class ManagerService : IManagerService
             "Manager {ManagerId} is now {State}.",
             managerId,
             request.IsActive ? "active" : "suspended");
+
+        await _activity.RecordAsync(
+            request.IsActive ? AdminActions.ManagerRestored : AdminActions.ManagerSuspended,
+            manager.FullName,
+            managerId,
+            cancellationToken: cancellationToken);
 
         return Result.Success(await ToResponseAsync(manager, cancellationToken));
     }

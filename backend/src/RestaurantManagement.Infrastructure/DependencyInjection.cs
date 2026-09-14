@@ -77,6 +77,7 @@ public static class DependencyInjection
 
         services.AddAuthenticationInfrastructure(configuration);
 
+        services.AddScoped<IAdminActivityLog, AdminActivityLog>();
         services.AddScoped<IRestaurantService, RestaurantService>();
         services.AddScoped<IManagerService, ManagerService>();
         services.AddScoped<IStaffService, StaffService>();
