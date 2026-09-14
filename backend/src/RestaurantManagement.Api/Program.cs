@@ -1,4 +1,5 @@
 using RestaurantManagement.Api.Authentication;
+using RestaurantManagement.Application.Authentication;
 using RestaurantManagement.Api.Hubs;
 using RestaurantManagement.Api.Middleware;
 using RestaurantManagement.Api.OpenApi;
@@ -71,6 +72,12 @@ builder.Services.AddPublicRateLimiting();
 // Telling the floor and the kitchen what just happened. The transport lives here; the
 // services that raise the events depend only on the interface.
 builder.Services.AddScoped<IRealtimeNotifier, SignalRRealtimeNotifier>();
+
+// Who is signed in, for the modules that record what was done rather than decide what
+// may be done. Registered here because this is the only layer that knows what a request
+// is; everything below depends on the interface.
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<ICurrentUser, HttpContextCurrentUser>();
 
 // Layer registrations.
 builder.Services.AddApplication();

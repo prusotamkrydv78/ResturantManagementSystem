@@ -32,6 +32,14 @@ interface AuthContextValue {
    */
   signIn: (payload: LoginPayload) => Promise<AuthUser>;
   signOut: () => Promise<void>;
+  /**
+   * Re-reads the signed-in account from the API.
+   *
+   * For the one screen that can edit it. Without this, changing your own name leaves
+   * the greeting in the header addressing whoever you used to be until the next full
+   * page load, which reads as the change not having worked.
+   */
+  refresh: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -94,6 +102,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const refresh = useCallback(async () => {
+    setUser(await authApi.getCurrentUser());
+  }, []);
+
   const value = useMemo<AuthContextValue>(
     () => ({
       user,
@@ -101,8 +113,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isAuthenticated: user !== null,
       signIn,
       signOut,
+      refresh,
     }),
-    [user, isLoading, signIn, signOut],
+    [user, isLoading, signIn, signOut, refresh],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

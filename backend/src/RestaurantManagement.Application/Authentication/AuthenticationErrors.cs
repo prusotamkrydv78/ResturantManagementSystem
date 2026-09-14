@@ -27,4 +27,21 @@ public static class AuthenticationErrors
     /// <summary>The authenticated user no longer exists.</summary>
     public static readonly Error UserNotFound =
         new("auth.user_not_found", "The user could not be found.");
+
+    /// <summary>
+    /// The current password supplied alongside a new one did not verify.
+    ///
+    /// Named separately from <see cref="InvalidCredentials"/> on purpose. Nothing is
+    /// being enumerated here - the caller has already proved who they are with a token
+    /// - so the honest message is the useful one.
+    /// </summary>
+    public static readonly Error WrongCurrentPassword =
+        new("auth.wrong_current_password", "That is not your current password.");
+
+    /// <summary>The email is already attached to another account.</summary>
+    public static readonly Error EmailTaken =
+        new("auth.email_taken", "Another account already uses that email.");
+
+    /// <summary>Identity refused the change, usually a password policy.</summary>
+    public static Error Rejected(string detail) => new("auth.rejected", detail);
 }

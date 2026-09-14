@@ -219,6 +219,153 @@ public sealed class AuthService : IAuthService
         };
     }
 
+    /// <inheritdoc />
+    public async Task<Result<UserDto>> UpdateProfileAsync(
+        Guid userId,
+        UpdateProfileRequest request,
+        CancellationToken cancellationToken)
+    {
+        var user = await _userManager.FindByIdAsync(userId.ToString());
+
+        if (user is null)
+        {
+            return Result.Failure<UserDto>(AuthenticationErrors.UserNotFound);
+        }
+
+        var email = request.Email.Trim();
+        var fullName = request.FullName.Trim();
+
+        // Checked before Identity is asked, so the caller gets the specific reason
+        // rather than whatever wording the identity errors happen to carry.
+        var taken = await _dbContext.Users
+            .AsNoTracking()
+            .AnyAsync(
+                other => other.Id != userId && other.NormalizedEmail == email.ToUpperInvariant(),
+                cancellationToken);
+
+        if (taken)
+        {
+            return Result.Failure<UserDto>(AuthenticationErrors.EmailTaken);
+        }
+
+        user.FullName = fullName;
+
+        // The email is also the user name in this product, and Identity keeps the two
+        // normalised copies that every lookup actually reads. Setting the columns by
+        // hand would leave those stale and the account unable to sign in, which is a
+        // spectacular way to lock the platform owner out of their own platform.
+        if (!string.Equals(user.Email, email, StringComparison.OrdinalIgnoreCase))
+        {
+            var emailChange = await _userManager.SetEmailAsync(user, email);
+
+            if (!emailChange.Succeeded)
+            {
+                return Result.Failure<UserDto>(
+                    AuthenticationErrors.Rejected(Describe(emailChange)));
+            }
+
+            var nameChange = await _userManager.SetUserNameAsync(user, email);
+
+            if (!nameChange.Succeeded)
+            {
+                return Result.Failure<UserDto>(
+                    AuthenticationErrors.Rejected(Describe(nameChange)));
+            }
+        }
+
+        var updated = await _userManager.UpdateAsync(user);
+
+        if (!updated.Succeeded)
+        {
+            return Result.Failure<UserDto>(AuthenticationErrors.Rejected(Describe(updated)));
+        }
+
+        _logger.LogInformation("Account {UserId} updated its own profile.", userId);
+
+        return await GetUserByIdAsync(userId, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task<Result> ChangePasswordAsync(
+        Guid userId,
+        ChangePasswordRequest request,
+        CancellationToken cancellationToken)
+    {
+        var user = await _userManager.FindByIdAsync(userId.ToString());
+
+        if (user is null)
+        {
+            return Result.Failure(AuthenticationErrors.UserNotFound);
+        }
+
+        if (!await _userManager.CheckPasswordAsync(user, request.CurrentPassword))
+        {
+            _logger.LogInformation(
+                "Password change refused for {UserId}: current password did not verify.",
+                userId);
+
+            return Result.Failure(AuthenticationErrors.WrongCurrentPassword);
+        }
+
+        var changed = await _userManager.ChangePasswordAsync(
+            user,
+            request.CurrentPassword,
+            request.NewPassword);
+
+        if (!changed.Succeeded)
+        {
+            return Result.Failure(AuthenticationErrors.Rejected(Describe(changed)));
+        }
+
+        // Everything else signs out. Somebody changing a password usually believes it
+        // was known to a person it should not have been, and leaving that person's
+        // refresh token alive would make the change cosmetic.
+        var now = DateTimeOffset.UtcNow;
+
+        await RevokeAllActiveTokensAsync(user.Id, now, cancellationToken);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation(
+            "Account {UserId} changed its own password; every session was revoked.",
+            userId);
+
+        return Result.Success();
+    }
+
+    /// <inheritdoc />
+    public async Task<Result<int>> SignOutEverywhereAsync(
+        Guid userId,
+        CancellationToken cancellationToken)
+    {
+        var user = await _dbContext.Users
+            .AsNoTracking()
+            .FirstOrDefaultAsync(row => row.Id == userId, cancellationToken);
+
+        if (user is null)
+        {
+            return Result.Failure<int>(AuthenticationErrors.UserNotFound);
+        }
+
+        var live = await _dbContext.RefreshTokens
+            .CountAsync(
+                token => token.UserId == userId && token.RevokedAtUtc == null,
+                cancellationToken);
+
+        await RevokeAllActiveTokensAsync(userId, DateTimeOffset.UtcNow, cancellationToken);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation(
+            "Account {UserId} revoked {Count} refresh tokens.",
+            userId,
+            live);
+
+        return Result.Success(live);
+    }
+
+    /// <summary>Identity failures, joined into one sentence a screen can print.</summary>
+    private static string Describe(IdentityResult result) =>
+        string.Join(" ", result.Errors.Select(error => error.Description));
+
     private async Task RevokeAllActiveTokensAsync(
         Guid userId,
         DateTimeOffset now,

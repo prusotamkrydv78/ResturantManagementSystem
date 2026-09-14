@@ -38,3 +38,46 @@ export function getCurrentUser(): Promise<AuthUser> {
  * every refresh in the app shares the same de-duplicated request.
  */
 export { refreshSession };
+
+/**
+ * Changes the signed-in account's own name and email.
+ *
+ * Every account in the product has somebody who can maintain it for them — a manager
+ * has the platform administrator, staff have their manager — except the platform
+ * administrator, who has nobody. These three calls exist so the account at the top of
+ * the tree is not the only one that cannot be maintained from inside the product.
+ */
+export function updateMyProfile(payload: {
+  fullName: string;
+  email: string;
+}): Promise<AuthUser> {
+  return apiFetch<AuthUser>("/api/auth/me", {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
+/**
+ * Replaces the signed-in account's own password.
+ *
+ * Asks for the current one, unlike an administrator resetting somebody else: a stolen
+ * access token would otherwise be enough to take an account permanently, and a token
+ * is the easier of the two to steal. Every session is revoked on success, this one
+ * included, so the caller has to sign in again.
+ */
+export function changeMyPassword(payload: {
+  currentPassword: string;
+  newPassword: string;
+}): Promise<void> {
+  return apiFetch<void>("/api/auth/me/password", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+/** Revokes every refresh token this account holds, on every device. */
+export function signOutEverywhere(): Promise<{ sessionsEnded: number }> {
+  return apiFetch<{ sessionsEnded: number }>("/api/auth/me/sign-out-everywhere", {
+    method: "POST",
+  });
+}

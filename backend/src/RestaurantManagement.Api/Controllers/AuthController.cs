@@ -116,6 +116,106 @@ public sealed class AuthController : ControllerBase
     }
 
     /// <summary>
+    /// Changes the signed-in account name and email.
+    ///
+    /// Any signed-in account, not only the platform administrator. The identifier comes
+    /// from the validated token and never from the body, so this cannot be pointed at
+    /// somebody else.
+    /// </summary>
+    [HttpPut("me")]
+    [Authorize]
+    [ProducesResponseType(typeof(UserDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult<UserDto>> UpdateMe(
+        UpdateProfileRequest request,
+        CancellationToken cancellationToken)
+    {
+        var userId = User.GetUserId();
+
+        if (userId is null)
+        {
+            return Unauthorized();
+        }
+
+        var result = await _authService.UpdateProfileAsync(
+            userId.Value,
+            request,
+            cancellationToken);
+
+        return result.IsFailure
+            ? ProblemFrom(result.Error!, StatusCodes.Status400BadRequest)
+            : Ok(result.Value);
+    }
+
+    /// <summary>
+    /// Replaces the signed-in account password, having checked the current one.
+    /// </summary>
+    [HttpPost("me/password")]
+    [Authorize]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> ChangeMyPassword(
+        ChangePasswordRequest request,
+        CancellationToken cancellationToken)
+    {
+        var userId = User.GetUserId();
+
+        if (userId is null)
+        {
+            return Unauthorized();
+        }
+
+        var result = await _authService.ChangePasswordAsync(
+            userId.Value,
+            request,
+            cancellationToken);
+
+        if (result.IsFailure)
+        {
+            return ProblemFrom(result.Error!, StatusCodes.Status400BadRequest);
+        }
+
+        // Every refresh token was revoked, this browser included, so the cookie it is
+        // still holding is now worthless. Cleared here rather than left to expire, or
+        // the next refresh would look like a session failure instead of a sign-out the
+        // reader asked for.
+        _refreshCookie.Clear(Response);
+
+        return NoContent();
+    }
+
+    /// <summary>
+    /// Revokes every refresh token this account holds, on every device.
+    /// </summary>
+    [HttpPost("me/sign-out-everywhere")]
+    [Authorize]
+    [ProducesResponseType(typeof(SignedOutResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult<SignedOutResponse>> SignOutEverywhere(
+        CancellationToken cancellationToken)
+    {
+        var userId = User.GetUserId();
+
+        if (userId is null)
+        {
+            return Unauthorized();
+        }
+
+        var result = await _authService.SignOutEverywhereAsync(userId.Value, cancellationToken);
+
+        if (result.IsFailure)
+        {
+            return ProblemFrom(result.Error!, StatusCodes.Status400BadRequest);
+        }
+
+        _refreshCookie.Clear(Response);
+
+        return Ok(new SignedOutResponse(result.Value));
+    }
+
+    /// <summary>
     /// Writes the refresh token to its cookie and returns only the access token part
     /// of the result, so the refresh token never appears in a response body.
     /// </summary>

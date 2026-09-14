@@ -155,6 +155,9 @@ public static class JwtClaimNames
 
     /// <summary>Staff role claim, holding what the person does on the floor.</summary>
     public const string StaffRole = "staff_role";
+
+    /// <summary>Name claim, holding what the account is called.</summary>
+    public const string Name = "name";
 }
 
 /// <summary>
