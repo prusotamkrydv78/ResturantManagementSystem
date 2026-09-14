@@ -272,7 +272,7 @@ export default function WebsitePage() {
 
       {/* Wider than the standard well, because this screen is three columns and
           the middle one is a form that still has to be comfortable to type in. */}
-      <div className="mx-auto flex w-full max-w-[120rem] gap-6 px-4 py-5 sm:px-6">
+      <div className="mx-auto flex w-full max-w-[120rem] gap-6 px-4 py-4">
         {/* The navigator, at the width where a third column stops crowding the
             form rather than at the width where it merely fits. */}
         <aside className="hidden w-52 shrink-0 2xl:block">

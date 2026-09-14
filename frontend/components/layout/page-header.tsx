@@ -36,7 +36,7 @@ export function PageHeader({
 }) {
   return (
     <header className="border-b border-border bg-surface">
-      <div className="flex flex-col gap-3 px-4 py-4 sm:px-6">
+      <div className="flex flex-col gap-3 px-4 py-3.5">
         {crumbs !== undefined && crumbs.length > 0 && (
           <nav aria-label="Breadcrumb">
             <ol className="flex flex-wrap items-center gap-1 text-xs text-muted">
@@ -82,7 +82,16 @@ export function PageHeader({
   );
 }
 
-/** Standard content well. Padded like the header, so their edges line up. */
+/**
+ * Standard content well. Padded like the header, so their edges line up.
+ *
+ * One gutter at every width, rather than sixteen pixels on a phone widening to
+ * twenty-four from the small breakpoint up. The wider gutter was inherited from a
+ * layout that centred its content and had room to spend; this shell does not centre
+ * anything, so the extra eight pixels were not breathing room between the content and
+ * the edge of the window - they were a trench between the sidebar and the work, and
+ * they cost the same eight on the far side of a dense table.
+ */
 export function PageBody({
   className,
   children,
@@ -93,7 +102,7 @@ export function PageBody({
   return (
     <div
       className={cn(
-        "flex flex-col gap-5 px-4 py-5 sm:px-6",
+        "flex flex-col gap-4 px-4 py-4",
         className,
       )}
     >
