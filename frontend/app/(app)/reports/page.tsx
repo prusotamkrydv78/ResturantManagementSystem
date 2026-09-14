@@ -10,6 +10,11 @@ import { Input } from "@/components/ui/input";
 import { Surface, SurfaceHeader } from "@/components/ui/surface";
 import { EmptyState, ErrorState, Skeleton } from "@/components/ui/states";
 import { PageBody, PageHeader } from "@/components/layout/page-header";
+import {
+  ReportRangeCard,
+  TenderCard,
+  WeekdayCard,
+} from "@/features/analytics/charts";
 import { RequireAuth } from "@/features/auth/require-auth";
 import { NoRestaurantAssigned } from "@/features/restaurants/no-restaurant";
 import { getReportSummary } from "@/features/reports/api";
@@ -109,6 +114,32 @@ function Reports() {
         {/* The range. Plain dates, because they are the restaurant days and the server
             reads them in its timezone rather than the browser one. */}
         <Surface>
+          {/* Presets above the dates.
+ 
+              Nothing asked for means today, which is right as a default and wrong as
+              the only quick answer: "how did last week go" was two date pickers and a
+              small arithmetic problem, and almost nobody asks a report for an
+              arbitrary window before they have asked it for the obvious ones. */}
+          <div className="flex flex-wrap items-center gap-1.5 border-b border-border px-4 py-3">
+            {REPORT_PRESETS.map((option) => (
+              <button
+                key={option.key}
+                type="button"
+                onClick={() => {
+                  const range = presetRange(option.key);
+
+                  setFrom(range.from);
+                  setTo(range.to);
+                  setIsLoading(true);
+                  setApplied(range);
+                }}
+                className="rounded-full border border-border px-3 py-1 text-xs font-medium text-muted transition-colors hover:bg-surface-2 hover:text-text focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+
           <div className="flex flex-wrap items-end gap-3 p-4">
             <Field label="From" htmlFor="from" className="w-40">
               <Input
@@ -219,6 +250,49 @@ function Reports() {
                 tone={report.cancelledCount > 0 ? "danger" : "neutral"}
               />
             </div>
+
+            {/* The spine: every day in the range, takings over bills. */}
+            <ReportRangeCard days={report.days} />
+
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+              <div className="xl:col-span-2">
+                <WeekdayCard byWeekday={report.byWeekday} />
+              </div>
+              <TenderCard byMethod={report.byMethod} />
+            </div>
+
+            {/* Where the money did not come from.
+
+                The product has recorded a reason on every cancellation since it could
+                cancel anything, and had never shown one anywhere. For a manager this is
+                the more useful half of the cancelled figure: the total says how much did
+                not arrive, this says what to do about it. */}
+            {report.cancellations.length > 0 && (
+              <Surface>
+                <SurfaceHeader
+                  title="Why orders were called off"
+                  description={`${report.cancelledCount} ${report.cancelledCount === 1 ? "order" : "orders"}, heaviest first.`}
+                />
+                <ul className="divide-y divide-border">
+                  {report.cancellations.map((row) => (
+                    <li
+                      key={row.reason}
+                      className="flex items-baseline justify-between gap-3 px-4 py-2.5"
+                    >
+                      <span className="min-w-0 text-sm text-text">{row.reason}</span>
+                      <span className="flex shrink-0 items-baseline gap-3">
+                        <span className="tabular text-2xs text-subtle">
+                          {row.count} {row.count === 1 ? "order" : "orders"}
+                        </span>
+                        <span className="tabular text-sm font-medium text-warning">
+                          {row.value.toFixed(2)}
+                        </span>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </Surface>
+            )}
 
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
               {/* By tender. Every method, always, so a zero reads as a zero. */}
@@ -468,4 +542,70 @@ function formatDateTime(isoString: string): string {
   const parsed = new Date(isoString);
 
   return Number.isNaN(parsed.getTime()) ? "—" : parsed.toLocaleString();
+}
+
+/* -------------------------------------------------------------------------- */
+/* The range                                                                  */
+/* -------------------------------------------------------------------------- */
+
+type PresetKey = "today" | "7d" | "30d" | "month" | "lastMonth";
+
+const REPORT_PRESETS: { key: PresetKey; label: string }[] = [
+  { key: "today", label: "Today" },
+  { key: "7d", label: "Last 7 days" },
+  { key: "30d", label: "Last 30 days" },
+  { key: "month", label: "This month" },
+  { key: "lastMonth", label: "Last month" },
+];
+
+/**
+ * The dates a preset resolves to.
+ *
+ * Worked out against the service day rather than the reader's own clock, because that
+ * is the boundary the server counts against. A manager checking last week from a phone
+ * still set to another country should be asking for the same seven days.
+ */
+function presetRange(key: PresetKey): { from: string; to: string } {
+  const today = serviceToday();
+
+  switch (key) {
+    case "today":
+      return { from: iso(today), to: iso(today) };
+    case "7d":
+      return { from: iso(addDays(today, -6)), to: iso(today) };
+    case "month":
+      return {
+        from: iso(new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1))),
+        to: iso(today),
+      };
+    case "lastMonth": {
+      const first = new Date(
+        Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - 1, 1),
+      );
+      const last = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 0));
+
+      return { from: iso(first), to: iso(last) };
+    }
+    default:
+      return { from: iso(addDays(today, -29)), to: iso(today) };
+  }
+}
+
+/** UTC+05:45, the one boundary every daily figure in this product is counted against. */
+const SERVICE_OFFSET_MINUTES = 345;
+
+function serviceToday(): Date {
+  const shifted = new Date(Date.now() + SERVICE_OFFSET_MINUTES * 60_000);
+
+  return new Date(
+    Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth(), shifted.getUTCDate()),
+  );
+}
+
+function addDays(date: Date, days: number): Date {
+  return new Date(date.getTime() + days * 86_400_000);
+}
+
+function iso(date: Date): string {
+  return date.toISOString().slice(0, 10);
 }

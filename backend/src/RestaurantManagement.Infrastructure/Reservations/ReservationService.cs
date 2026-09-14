@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RestaurantManagement.Application.Reservations;
 using RestaurantManagement.Application.Reservations.Dtos;
+using RestaurantManagement.Domain.Customers;
 using RestaurantManagement.Domain.Reservations;
 using RestaurantManagement.Domain.Restaurants;
 using RestaurantManagement.Infrastructure.Persistence;
@@ -143,6 +144,86 @@ public sealed class ReservationService : IReservationService
     }
 
     /// <inheritdoc />
+    /// <summary>
+    /// Who the booking is for, whether they were already on the books or not.
+    ///
+    /// Three paths, in the order a caller is most likely to mean them:
+    ///
+    /// An identifier names somebody already recorded, and must belong to this
+    /// restaurant - one from another restaurant is simply not found rather than
+    /// refused, so the endpoint cannot be used to discover whether a customer exists
+    /// elsewhere.
+    ///
+    /// A name with a telephone number is matched against the book first. The number is
+    /// unique within a restaurant, so this is what stops a regular who rings every week
+    /// becoming fifty-two customers. A match reuses the record and leaves their name as
+    /// it was: the person who first wrote it down had more context than a booking form.
+    ///
+    /// A name with no number always creates. There is nothing to match on, and guessing
+    /// by name would eventually join two different people called Ram.
+    ///
+    /// Nothing is saved here. The new customer is added to the change tracker and
+    /// committed by the same SaveChanges as the booking, so a refused booking cannot
+    /// leave a stranger on the books.
+    /// </summary>
+    private async Task<Result<Guid>> ResolveCustomerAsync(
+        Guid restaurantId,
+        CreateReservationRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (request.CustomerId is { } customerId)
+        {
+            var exists = await _dbContext.Customers.AnyAsync(
+                customer =>
+                    customer.Id == customerId && customer.RestaurantId == restaurantId,
+                cancellationToken);
+
+            return exists
+                ? Result.Success(customerId)
+                : Result.Failure<Guid>(ReservationErrors.CustomerNotFound);
+        }
+
+        var name = Normalise(request.CustomerName);
+
+        if (name is null)
+        {
+            return Result.Failure<Guid>(ReservationErrors.CustomerRequired);
+        }
+
+        var phone = Normalise(request.CustomerPhone);
+
+        if (phone is not null)
+        {
+            var known = await _dbContext.Customers
+                .Where(customer =>
+                    customer.RestaurantId == restaurantId && customer.Phone == phone)
+                .Select(customer => (Guid?)customer.Id)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (known is { } existing)
+            {
+                return Result.Success(existing);
+            }
+        }
+
+        var now = DateTimeOffset.UtcNow;
+
+        var created = new Customer
+        {
+            Id = Guid.CreateVersion7(),
+            RestaurantId = restaurantId,
+            Name = name,
+            Phone = phone,
+            IsActive = true,
+            CreatedAtUtc = now,
+            UpdatedAtUtc = now,
+        };
+
+        _dbContext.Customers.Add(created);
+
+        return Result.Success(created.Id);
+    }
+
     public async Task<Result<ReservationResponse>> CreateAsync(
         Guid managerUserId,
         CreateReservationRequest request,
@@ -156,19 +237,14 @@ public sealed class ReservationService : IReservationService
                 ReservationErrors.NoRestaurantAssigned);
         }
 
-        // The customer must be one of ours, and active. Loaded from our own book, so one
-        // from elsewhere simply is not found.
-        var customerExists = await _dbContext.Customers
-            .AnyAsync(
-                customer =>
-                    customer.Id == request.CustomerId &&
-                    customer.RestaurantId == restaurantId.Value,
-                cancellationToken);
+        var customer = await ResolveCustomerAsync(
+            restaurantId.Value,
+            request,
+            cancellationToken);
 
-        if (!customerExists)
+        if (customer.IsFailure)
         {
-            return Result.Failure<ReservationResponse>(
-                ReservationErrors.CustomerNotFound);
+            return Result.Failure<ReservationResponse>(customer.Error!);
         }
 
         var duration = request.DurationMinutes ?? Reservation.DefaultDurationMinutes;
@@ -177,7 +253,7 @@ public sealed class ReservationService : IReservationService
         {
             Id = Guid.CreateVersion7(),
             RestaurantId = restaurantId.Value,
-            CustomerId = request.CustomerId,
+            CustomerId = customer.Value,
             ReservedForUtc = request.ReservedForUtc,
             DurationMinutes = duration,
             GuestCount = request.GuestCount,

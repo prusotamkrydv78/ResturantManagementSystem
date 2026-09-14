@@ -98,6 +98,35 @@ export interface Today {
   byMethod: PaymentMethodTotal[];
 }
 
+/**
+ * One service day behind this restaurant.
+ *
+ * The overview could say what the restaurant had taken and never once whether that
+ * was good. A total with nothing beside it is a number a manager reads and cannot
+ * act on; the same total against the six days before it is a decision about
+ * staffing tomorrow.
+ */
+export interface DashboardDay {
+  localDate: string;
+  ordersPlaced: number;
+  completed: number;
+  cancelled: number;
+  takings: number;
+}
+
+/**
+ * One hour of the service day now running.
+ *
+ * The shape of a restaurant day is two spikes and a long quiet middle, and which
+ * hours those are decides when staff are rota-ed on, when the kitchen preps and when
+ * the floor gets cleaned. Every timestamp needed to say it already existed.
+ */
+export interface DashboardHour {
+  hour: number;
+  ordersPlaced: number;
+  takings: number;
+}
+
 /** Whether the restaurant is set up enough to trade. */
 export interface Readiness {
   availableMenuItemCount: number;
@@ -117,6 +146,12 @@ export interface ManagerDashboard {
   floor: Floor;
   kitchen: KitchenLoad;
   today: Today;
+  /** The day before, whole. The same entry that sits second-to-last in days. */
+  yesterday: DashboardDay;
+  /** The last week, oldest first, every day present even at zero. */
+  days: DashboardDay[];
+  /** Today, hour by hour, all twenty-four including the ones still to come. */
+  hours: DashboardHour[];
   readiness: Readiness;
   activity: ActivityEntry[];
 }

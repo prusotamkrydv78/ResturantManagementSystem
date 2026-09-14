@@ -50,8 +50,64 @@ export interface ReportSummary {
   /** Payment total over payment count, computed by the server. */
   averageOrderValue: number;
   byMethod: MethodTotal[];
+  /** The period of the same length immediately before this one. */
+  previous: ReportPeriod;
+  /** Every day in the range, oldest first, present even at zero. */
+  days: ReportDay[];
+  /** The range summed into seven weekdays. */
+  byWeekday: ReportWeekday[];
+  /** Why orders were called off, heaviest first by value. */
+  cancellations: ReportCancellation[];
   completed: ReportOrder[];
   cancelled: ReportOrder[];
+}
+
+/**
+ * One service day inside a report range.
+ *
+ * The spine of the screen. A report over ninety days used to arrive as four totals and
+ * two lists, and no arithmetic on four totals says which day something changed.
+ */
+export interface ReportDay {
+  localDate: string;
+  bills: number;
+  takings: number;
+  cancelled: number;
+  cancelledValue: number;
+}
+
+/** What one weekday carried across the whole range. */
+export interface ReportWeekday {
+  weekday:
+    | "Sunday"
+    | "Monday"
+    | "Tuesday"
+    | "Wednesday"
+    | "Thursday"
+    | "Friday"
+    | "Saturday";
+  bills: number;
+  takings: number;
+}
+
+/** Why orders were called off, and what they were worth. */
+export interface ReportCancellation {
+  reason: string;
+  count: number;
+  /** What those orders would have come to. Never revenue. */
+  value: number;
+}
+
+/** The totals for a period, thin, so one period can be read against another. */
+export interface ReportPeriod {
+  fromLocalDate: string;
+  toLocalDate: string;
+  completedCount: number;
+  cancelledCount: number;
+  cancelledValue: number;
+  paymentTotal: number;
+  paymentCount: number;
+  averageOrderValue: number;
 }
 
 /** The longest range the API will cover in one request. */

@@ -28,6 +28,7 @@ import { Field, describedBy } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { PasswordInput } from "@/components/ui/password-input";
+import { FilterChip } from "@/components/ui/filter-chip";
 import { Surface } from "@/components/ui/surface";
 import {
   EmptyState,
@@ -41,9 +42,9 @@ import { PageBody, PageHeader } from "@/components/layout/page-header";
 import { cn } from "@/lib/utils/cn";
 import { RequireAuth } from "@/features/auth/require-auth";
 import { getPlatformPulse } from "@/features/platform/api";
-import { FilterChip } from "@/features/platform/filter-chip";
-import { formatDate, money } from "@/features/platform/format";
-import { sinceLabel, timeOf, useNow } from "@/features/platform/since";
+
+import { formatDate, money } from "@/features/analytics/format";
+import { sinceLabel, timeOf, useNow } from "@/lib/time/since";
 import {
   assignManagerToRestaurant,
   createManager,

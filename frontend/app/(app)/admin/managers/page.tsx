@@ -17,6 +17,7 @@ import { Field, describedBy } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { PasswordInput } from "@/components/ui/password-input";
+import { FilterChip } from "@/components/ui/filter-chip";
 import { Surface } from "@/components/ui/surface";
 import {
   EmptyState,
@@ -28,9 +29,9 @@ import { Table, TableWrap, Td, Th, Tr } from "@/components/ui/table";
 import { PageBody, PageHeader } from "@/components/layout/page-header";
 import { RequireAuth } from "@/features/auth/require-auth";
 import { getPlatformPulse } from "@/features/platform/api";
-import { FilterChip } from "@/features/platform/filter-chip";
-import { formatDate, money } from "@/features/platform/format";
-import { sinceLabel, timeOf, useNow } from "@/features/platform/since";
+
+import { formatDate, money } from "@/features/analytics/format";
+import { sinceLabel, timeOf, useNow } from "@/lib/time/since";
 import { createManager, listManagers } from "@/features/managers/api";
 import { listRestaurants } from "@/features/restaurants/api";
 import type { Manager } from "@/types/manager";
@@ -499,7 +500,6 @@ function inBucket(row: ManagerRow, bucket: ManagerBucket): boolean {
       return true;
   }
 }
-
 
 /* -------------------------------------------------------------------------- */
 /* Create                                                                     */

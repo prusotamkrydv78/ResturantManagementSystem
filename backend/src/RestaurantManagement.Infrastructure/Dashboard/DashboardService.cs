@@ -144,6 +144,89 @@ public sealed class DashboardService : IDashboardService
             .Include(order => order.Table)
             .ToListAsync(cancellationToken);
 
+        // The week behind today, and yesterday inside it.
+        //
+        // One read, cut three ways: the trend line, the day before for comparison, and
+        // the hours of today. Projected down to the four columns the arithmetic needs
+        // rather than loaded as entities, because none of it is displayed as a row -
+        // it is all counted, summed and thrown away.
+        //
+        // Selected by when an order ended, matching the rule the rest of this screen
+        // and every report in the product already use: a table that opened before
+        // midnight and paid after it belongs to the day it was settled on.
+        var today = ServiceDay.LocalToday(now);
+        var weekStart = ServiceDay.StartOn(today.AddDays(-(TrendDays - 1)));
+
+        var weekOrders = await _dbContext.Orders
+            .AsNoTracking()
+            .Where(order =>
+                order.RestaurantId == restaurantId &&
+                ((order.CompletedAtUtc != null && order.CompletedAtUtc >= weekStart) ||
+                 (order.CancelledAtUtc != null && order.CancelledAtUtc >= weekStart)))
+            .Select(order => new
+            {
+                order.Status,
+                order.Subtotal,
+                order.CompletedAtUtc,
+                order.CancelledAtUtc,
+                Paid = order.Payments.Sum(payment => (decimal?)payment.Amount) ?? 0m,
+                PaymentCount = order.Payments.Count(),
+            })
+            .ToListAsync(cancellationToken);
+
+        var byDay = weekOrders
+            .Select(order => new
+            {
+                Date = ServiceDay.LocalToday(
+                    order.CompletedAtUtc ?? order.CancelledAtUtc ?? now),
+                order.Status,
+                order.Subtotal,
+                order.Paid,
+                order.PaymentCount,
+            })
+            .GroupBy(order => order.Date)
+            .ToDictionary(group => group.Key, group => group.ToList());
+
+        var days = Enumerable
+            .Range(0, TrendDays)
+            .Select(offset =>
+            {
+                var date = today.AddDays(offset - (TrendDays - 1));
+                var orders = byDay.GetValueOrDefault(date) ?? [];
+
+                return new DashboardDayResponse(
+                    date,
+                    orders.Count,
+                    orders.Count(order => order.Status == OrderStatus.Completed),
+                    orders.Count(order => order.Status == OrderStatus.Cancelled),
+                    orders
+                        .Where(order => order.Status == OrderStatus.Completed)
+                        .Sum(order => order.Paid));
+            })
+            .ToList();
+
+        // Orders opened per hour, and money taken per hour. Two different timestamps
+        // on purpose: a manager rostering staff wants to know when people arrive, and
+        // a manager counting a till wants to know when the money did.
+        var ordersByHour = openedToday
+            .GroupBy(order => order.CreatedAtUtc.ToOffset(ServiceDay.Offset).Hour)
+            .ToDictionary(group => group.Key, group => group.Count());
+
+        var takingsByHour = closedToday
+            .Where(order => order.Status == OrderStatus.Completed)
+            .SelectMany(order => order.Payments)
+            .Where(payment => payment.RecordedAtUtc >= dayStart)
+            .GroupBy(payment => payment.RecordedAtUtc.ToOffset(ServiceDay.Offset).Hour)
+            .ToDictionary(group => group.Key, group => group.Sum(payment => payment.Amount));
+
+        var hours = Enumerable
+            .Range(0, 24)
+            .Select(hour => new DashboardHourResponse(
+                hour,
+                ordersByHour.GetValueOrDefault(hour),
+                takingsByHour.GetValueOrDefault(hour)))
+            .ToList();
+
         var inService = tables.Where(table => table.IsActive).ToList();
 
         return Result.Success(new ManagerDashboardResponse(
@@ -175,11 +258,27 @@ public sealed class DashboardService : IDashboardService
                     .DefaultIfEmpty(null)
                     .Min()),
             BuildToday(closedToday, dayStart),
+            // Yesterday is not computed again - it is the second-to-last entry of the
+            // series above. Taken rather than recalculated so the figure the headline
+            // compares against and the column the chart draws are, by construction,
+            // the same figure.
+            days[^2],
+            days,
+            hours,
             new ReadinessResponse(
                 availableMenuItems,
                 inService.Count > 0 && availableMenuItems > 0),
             BuildActivity(openedToday, closedToday, ticketsToday, dayStart)));
     }
+
+    /// <summary>
+    /// How far back the overview trend reaches.
+    ///
+    /// A week. Long enough to show a weekend, which is the rhythm a restaurant is
+    /// actually run on, and short enough that the window read stays a single small
+    /// query. Anything longer is a question for the report, which takes a range.
+    /// </summary>
+    private const int TrendDays = 7;
 
     /* --------------------------------------------------------------------- Today */
 

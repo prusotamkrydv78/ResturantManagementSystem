@@ -12,6 +12,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Card, CardGrid, CardGridSkeleton } from "@/components/ui/card-grid";
 import { Button } from "@/components/ui/button";
+import { FilterChip } from "@/components/ui/filter-chip";
 import {
   Dialog,
   DialogClose,
@@ -43,6 +44,8 @@ import {
 } from "@/features/reservations/api";
 import { listTables } from "@/features/tables/api";
 import { ApiError, isMissingRestaurant } from "@/lib/api/client";
+import { useNow } from "@/lib/time/since";
+import { cn } from "@/lib/utils/cn";
 import { RESERVATION_LIMITS } from "@/types/reservation";
 import type { Reservation, ReservationBoard, ReservationStatus } from "@/types/reservation";
 import type { Customer } from "@/types/customer";
@@ -73,7 +76,15 @@ function Reservations() {
   const [noRestaurant, setNoRestaurant] = useState(false);
   const [onDate, setOnDate] = useState("");
   const [includeClosed, setIncludeClosed] = useState(false);
+  const [view, setView] = useState<BookingView>("All");
   const [reloadKey, setReloadKey] = useState(0);
+
+  // A ticking clock, because the only thing that changes on this screen without
+  // anybody touching it is the time. A booking does not become late when somebody
+  // presses a button; it becomes late because a quarter of an hour went by, and a
+  // board that only re-read itself on an action would keep saying a party was due in
+  // five minutes an hour after they failed to turn up.
+  const now = useNow();
 
   const refresh = useCallback(() => setReloadKey((key) => key + 1), []);
 
@@ -110,6 +121,19 @@ function Reservations() {
     };
   }, [includeClosed, onDate, reloadKey]);
 
+  // Every booking, tagged with where it stands against the clock. Worked out once
+  // here rather than per card, so the strip at the top and the cards underneath can
+  // never disagree about who is late.
+  const tagged = (board?.reservations ?? []).map((reservation) => ({
+    reservation,
+    timing: timingOf(reservation, now),
+  }));
+
+  const shown = tagged.filter(({ reservation }) => inBookingView(reservation, view));
+  const late = tagged.filter(({ timing }) => timing === "late").length;
+  const dueSoon = tagged.filter(({ timing }) => timing === "due").length;
+  const next = tagged.find(({ timing }) => timing === "due" || timing === "later");
+
   return (
     <>
       <PageHeader
@@ -127,15 +151,53 @@ function Reservations() {
           <NoRestaurantAssigned area="Reservations" />
         ) : (
           <>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <Stat label="Today" value={board?.todayCount} hint="Bookings for today" />
-              <Stat
+{/* The clock first, then the day.
+
+              A reservations board during service answers two questions in this order:
+              is anybody standing at the door I have not dealt with, and who is next.
+              The counts for the day are the context for those, not the other way
+              round, and they used to be the only thing here. */}
+            <div className="grid grid-cols-2 overflow-hidden rounded-lg border border-border lg:grid-cols-4">
+              <div
+                className={cn(
+                  "flex flex-col gap-0.5 px-4 py-3",
+                  late > 0
+                    ? "bg-danger-soft text-danger"
+                    : dueSoon > 0
+                      ? "bg-warning-soft text-warning"
+                      : "bg-primary-solid text-primary-fg",
+                )}
+              >
+                <span className="text-2xs font-semibold tracking-wider uppercase opacity-80">
+                  {late > 0 ? "Past their time" : dueSoon > 0 ? "Due soon" : "Next in"}
+                </span>
+                <span className="tabular text-xl leading-7 font-semibold">
+                  {late > 0
+                    ? late
+                    : dueSoon > 0
+                      ? dueSoon
+                      : next === undefined
+                        ? "—"
+                        : formatTime(next.reservation.reservedForUtc)}
+                </span>
+                <span className="text-2xs opacity-80">
+                  {late > 0
+                    ? "not seated or cancelled"
+                    : dueSoon > 0
+                      ? "within the half hour"
+                      : next === undefined
+                        ? "nothing booked"
+                        : next.reservation.customerName}
+                </span>
+              </div>
+
+              <BoardStat label="Today" value={board?.todayCount} hint="Bookings" />
+              <BoardStat
                 label="Covers today"
                 value={board?.todayGuestCount}
-                hint="Guests expected, cancellations excluded"
+                hint="Guests expected"
               />
-              <Stat label="Still to come" value={board?.upcomingCount} hint="Not yet due" />
-              <Stat label="Seated now" value={board?.seatedCount} hint="Parties in" />
+              <BoardStat label="Seated now" value={board?.seatedCount} hint="Parties in" />
             </div>
 
             <Surface>
@@ -174,11 +236,39 @@ function Reservations() {
                 </label>
               </div>
 
+              {/* Where a booking stands, as the thing you filter by. The checkbox above
+                  decides what the server sends; these decide what you are looking at
+                  within it, which is why choosing "Finished" also ticks the box rather
+                  than showing an empty list and leaving you to work out why. */}
+              <div className="flex flex-wrap gap-1.5 border-b border-border px-4 py-2.5">
+                {BOOKING_VIEWS.map((option) => (
+                  <FilterChip
+                    key={option.value}
+                    active={view === option.value}
+                    count={
+                      tagged.filter(({ reservation }) =>
+                        inBookingView(reservation, option.value),
+                      ).length
+                    }
+                    tone={option.tone}
+                    onClick={() => {
+                      setView(option.value);
+
+                      if (option.value === "Closed") {
+                        setIncludeClosed(true);
+                      }
+                    }}
+                  >
+                    {option.label}
+                  </FilterChip>
+                ))}
+              </div>
+
               {error !== null && <ErrorState message={error} onRetry={refresh} />}
 
               {board === null ? (
                 <CardGridSkeleton count={10} />
-              ) : board.reservations.length === 0 ? (
+              ) : shown.length === 0 ? (
                 <EmptyState
                   icon={<CalendarClock />}
                   title={onDate === "" ? "Nothing booked" : "Nothing on that day"}
@@ -191,14 +281,33 @@ function Reservations() {
                 />
               ) : (
                 <CardGrid>
-                  {board.reservations.map((reservation) => (
-                    <Card key={reservation.id} className="p-3.5">
+                  {shown.map(({ reservation, timing }) => (
+                    <Card
+                      key={reservation.id}
+                      className={cn(
+                        "p-3.5",
+                        timing === "late"
+                          ? "border-danger-border ring-1 ring-danger-border"
+                          : timing === "due"
+                            ? "border-warning-border"
+                            : undefined,
+                      )}
+                    >
                       {/* The time leads. A booking is looked up by when it is, and
                           on a board sorted by time that is the thing the eye is
                           running down. */}
                       <div className="flex items-baseline justify-between gap-2">
                         <p className="flex items-baseline gap-1.5">
-                          <span className="text-lg font-semibold text-text tabular">
+                          <span
+                            className={cn(
+                              "tabular text-lg font-semibold",
+                              timing === "late"
+                                ? "text-danger"
+                                : timing === "due"
+                                  ? "text-warning"
+                                  : "text-text",
+                            )}
+                          >
                             {formatTime(reservation.reservedForUtc)}
                           </span>
                           <span className="text-2xs text-muted">
@@ -210,8 +319,22 @@ function Reservations() {
                         </Badge>
                       </div>
 
+                      {/* Where this booking stands against the clock, in the words
+                          somebody would use at the door. Only said when it is not the
+                          obvious one - a booking three hours away needs no comment. */}
                       <p className="text-2xs text-subtle">
-                        until {formatTime(reservation.endsAtUtc)}
+                        {timing === "late" ? (
+                          <span className="font-medium text-danger">
+                            {minutesBetween(reservation.reservedForUtc, now)} min past
+                            their time
+                          </span>
+                        ) : timing === "due" ? (
+                          <span className="font-medium text-warning">
+                            due in {minutesBetween(now, reservation.reservedForUtc)} min
+                          </span>
+                        ) : (
+                          <>until {formatTime(reservation.endsAtUtc)}</>
+                        )}
                       </p>
 
                       <div className="mt-2.5 min-w-0">
@@ -277,26 +400,6 @@ function Reservations() {
         )}
       </PageBody>
     </>
-  );
-}
-
-function Stat({
-  label,
-  value,
-  hint,
-}: {
-  label: string;
-  value: number | undefined;
-  hint: string;
-}) {
-  return (
-    <Surface className="flex flex-col gap-0.5 px-4 py-3">
-      <p className="text-xs font-medium tracking-wide text-muted uppercase">{label}</p>
-      <p className="text-2xl font-semibold text-text tabular">
-        {value === undefined ? "—" : value}
-      </p>
-      <p className="text-xs text-muted">{hint}</p>
-    </Surface>
   );
 }
 
@@ -383,6 +486,12 @@ function ReservationDialog({
   const [customers, setCustomers] = useState<Customer[] | null>(null);
   const [tables, setTables] = useState<RestaurantTable[] | null>(null);
   const [customerId, setCustomerId] = useState(reservation?.customerId ?? "");
+  // Somebody new by default. Taking a booking almost always means a person who is not
+  // on the books yet - a regular is the pleasant exception - and the old form put the
+  // exception first, then sent the manager to another screen for everything else.
+  const [isKnown, setIsKnown] = useState(false);
+  const [customerName, setCustomerName] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
   const [when, setWhen] = useState(
     reservation === undefined ? "" : toLocalInput(reservation.reservedForUtc),
   );
@@ -434,6 +543,9 @@ function ReservationDialog({
 
   function reset() {
     setCustomerId(reservation?.customerId ?? "");
+    setIsKnown(false);
+    setCustomerName("");
+    setCustomerPhone("");
     setWhen(reservation === undefined ? "" : toLocalInput(reservation.reservedForUtc));
     setGuests(String(reservation?.guestCount ?? 2));
     setDuration(
@@ -463,7 +575,16 @@ function ReservationDialog({
       if (isEdit) {
         await updateReservation(reservation.id, payload);
       } else {
-        await createReservation({ ...payload, customerId });
+        await createReservation(
+          isKnown
+            ? { ...payload, customerId }
+            : {
+                ...payload,
+                customerName: customerName.trim(),
+                customerPhone:
+                  customerPhone.trim() === "" ? null : customerPhone.trim(),
+              },
+        );
       }
 
       setIsOpen(false);
@@ -514,34 +635,112 @@ function ReservationDialog({
                 . Booking somebody else means taking a new booking.
               </p>
             ) : (
-              <Field
-                htmlFor={fieldId("customer")}
-                label="Customer"
-                required
-                hint="Only people already on your books. Add them under Customers first."
-                error={firstError(fieldErrors, "customerId")}
-              >
-                <Select
-                  id={fieldId("customer")}
-                  required
-                  value={customerId}
-                  onChange={setCustomerId}
-                  aria-describedby={describedBy(fieldId("customer"), { hasHint: true })}
-                  options={[
-                    {
-                      value: "",
-                      label: customers === null ? "Loading…" : "Choose a customer",
-                    },
-                    ...(customers ?? []).map((customer) => ({
-                      value: customer.id,
-                      label:
-                        customer.phone === null
-                          ? customer.name
-                          : `${customer.name} · ${customer.phone}`,
-                    })),
-                  ]}
-                />
-              </Field>
+              <div className="flex flex-col gap-3">
+                {/* Who it is for, asked the way it is asked on the telephone.
+
+                    This used to be a dropdown of existing customers and nothing else,
+                    with a hint telling the manager to go and create the person on
+                    another screen first. Taking a booking is six steps and two screens
+                    in that arrangement, while somebody waits on the line.
+
+                    The server takes a name and a number and finds or creates the
+                    record, so the list is what it should always have been: a shortcut
+                    for regulars, not the toll gate. */}
+                <div
+                  role="group"
+                  aria-label="Who the booking is for"
+                  className="flex rounded-md border border-border p-0.5"
+                >
+                  <button
+                    type="button"
+                    onClick={() => setIsKnown(false)}
+                    aria-pressed={!isKnown}
+                    className={cn(
+                      "flex-1 rounded px-3 py-1.5 text-xs font-medium transition-colors",
+                      isKnown ? "text-muted hover:text-text" : "bg-primary-soft text-primary",
+                    )}
+                  >
+                    Someone new
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsKnown(true)}
+                    aria-pressed={isKnown}
+                    className={cn(
+                      "flex-1 rounded px-3 py-1.5 text-xs font-medium transition-colors",
+                      isKnown ? "bg-primary-soft text-primary" : "text-muted hover:text-text",
+                    )}
+                  >
+                    On the books
+                  </button>
+                </div>
+
+                {isKnown ? (
+                  <Field
+                    htmlFor={fieldId("customer")}
+                    label="Customer"
+                    required
+                    error={firstError(fieldErrors, "customerId")}
+                  >
+                    <Select
+                      id={fieldId("customer")}
+                      required
+                      value={customerId}
+                      onChange={setCustomerId}
+                      options={[
+                        {
+                          value: "",
+                          label: customers === null ? "Loading…" : "Choose a customer",
+                        },
+                        ...(customers ?? []).map((customer) => ({
+                          value: customer.id,
+                          label:
+                            customer.phone === null
+                              ? customer.name
+                              : `${customer.name} · ${customer.phone}`,
+                        })),
+                      ]}
+                    />
+                  </Field>
+                ) : (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Field
+                      htmlFor={fieldId("customer-name")}
+                      label="Name"
+                      required
+                      error={firstError(fieldErrors, "customerName")}
+                    >
+                      <Input
+                        id={fieldId("customer-name")}
+                        required
+                        maxLength={120}
+                        autoComplete="off"
+                        value={customerName}
+                        onChange={(event) => setCustomerName(event.target.value)}
+                      />
+                    </Field>
+
+                    <Field
+                      htmlFor={fieldId("customer-phone")}
+                      label="Phone"
+                      hint="Matches them to an existing record, so a regular stays one person."
+                      error={firstError(fieldErrors, "customerPhone")}
+                    >
+                      <Input
+                        id={fieldId("customer-phone")}
+                        type="tel"
+                        maxLength={32}
+                        autoComplete="off"
+                        value={customerPhone}
+                        onChange={(event) => setCustomerPhone(event.target.value)}
+                        aria-describedby={describedBy(fieldId("customer-phone"), {
+                          hasHint: true,
+                        })}
+                      />
+                    </Field>
+                  </div>
+                )}
+              </div>
             )}
 
             <Field
@@ -643,7 +842,17 @@ function ReservationDialog({
             </DialogClose>
             {/* Guarded here rather than by the browser. The dropdown is no longer a
                 native control, so a required attribute has nothing to block on. */}
-            <Button type="submit" disabled={isSubmitting || customerId === ""}>
+            <Button
+              type="submit"
+              disabled={
+                isSubmitting ||
+                (isEdit
+                  ? false
+                  : isKnown
+                    ? customerId === ""
+                    : customerName.trim() === "")
+              }
+            >
               {isSubmitting ? "Saving…" : isEdit ? "Save changes" : "Take booking"}
             </Button>
           </DialogFooter>
@@ -850,5 +1059,118 @@ function CancelReservationDialog({
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Where a booking stands                                                     */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * How soon a booking is, relative to now.
+ *
+ * "late" is the one that matters and the one this board could not previously show: a
+ * table held for seven o'clock, still Pending or Confirmed at twenty past, with nobody
+ * seated and nobody having cancelled it. That is a party standing at a door or a table
+ * being held for people who are not coming, and it looked exactly like a booking for
+ * next Tuesday.
+ */
+type Timing = "late" | "due" | "later" | "settled";
+
+/** Bookings that have been dealt with are out of the running, whatever the clock says. */
+function timingOf(reservation: Reservation, now: number | null): Timing {
+  if (
+    now === null ||
+    reservation.status === "Seated" ||
+    reservation.status === "Completed" ||
+    reservation.status === "Cancelled"
+  ) {
+    return "settled";
+  }
+
+  const minutes = minutesBetween(now, reservation.reservedForUtc);
+
+  if (minutes < 0) {
+    return "late";
+  }
+
+  return minutes <= DUE_WITHIN_MINUTES ? "due" : "later";
+}
+
+/**
+ * How far ahead counts as "about to happen".
+ *
+ * Half an hour: long enough to lay a table and check the kitchen knows, short enough
+ * that everything in the evening is not shouting at once.
+ */
+const DUE_WITHIN_MINUTES = 30;
+
+/** Whole minutes from one instant to another. Negative when the second is in the past. */
+function minutesBetween(
+  from: number | string | null,
+  to: number | string | null,
+): number {
+  if (from === null || to === null) {
+    return 0;
+  }
+
+  const start = typeof from === "number" ? from : new Date(from).getTime();
+  const end = typeof to === "number" ? to : new Date(to).getTime();
+
+  return Number.isNaN(start) || Number.isNaN(end)
+    ? 0
+    : Math.round((end - start) / 60_000);
+}
+
+/** How a board is read: by what still needs doing. */
+type BookingView = "All" | "Pending" | "Confirmed" | "Seated" | "Closed";
+
+const BOOKING_VIEWS: {
+  value: BookingView;
+  label: string;
+  tone: "neutral" | "warning" | "danger";
+}[] = [
+  { value: "All", label: "All", tone: "neutral" },
+  { value: "Pending", label: "Not confirmed", tone: "warning" },
+  { value: "Confirmed", label: "Confirmed", tone: "neutral" },
+  { value: "Seated", label: "Seated", tone: "neutral" },
+  { value: "Closed", label: "Finished or cancelled", tone: "neutral" },
+];
+
+function inBookingView(reservation: Reservation, view: BookingView): boolean {
+  switch (view) {
+    case "Pending":
+      return reservation.status === "Pending";
+    case "Confirmed":
+      return reservation.status === "Confirmed";
+    case "Seated":
+      return reservation.status === "Seated";
+    case "Closed":
+      return reservation.status === "Completed" || reservation.status === "Cancelled";
+    default:
+      return true;
+  }
+}
+
+/** One count in the strip along the top. */
+function BoardStat({
+  label,
+  value,
+  hint,
+}: {
+  label: string;
+  value: number | undefined;
+  hint: string;
+}) {
+  return (
+    <div className="flex flex-col gap-0.5 border-l border-border bg-surface px-4 py-3">
+      <span className="text-2xs font-semibold tracking-wider text-subtle uppercase">
+        {label}
+      </span>
+      <span className="tabular text-xl leading-7 font-semibold text-text">
+        {value ?? "—"}
+      </span>
+      <span className="text-2xs text-muted">{hint}</span>
+    </div>
   );
 }

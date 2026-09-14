@@ -66,7 +66,22 @@ export interface ReservationBoard {
  * that restaurant own.
  */
 export interface CreateReservationPayload {
-  customerId: string;
+  /**
+   * Who it is for, when they are already on the books.
+   *
+   * Send this or the two fields below, never both. A manager booking a regular picks
+   * them from the list; anybody else describes the person on the telephone and the
+   * server finds or creates the record.
+   */
+  customerId?: string;
+  /** Who it is for, when they are not on the books yet. */
+  customerName?: string;
+  /**
+   * How to reach them, and what stops one regular becoming fifty-two customers: a
+   * phone number is unique within a restaurant, so it is what an existing record is
+   * matched on. Without it every booking by name creates a new one.
+   */
+  customerPhone?: string | null;
   reservedForUtc: string;
   guestCount: number;
   durationMinutes?: number;

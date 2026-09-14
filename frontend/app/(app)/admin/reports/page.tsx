@@ -22,8 +22,8 @@ import { Table, TableWrap, Td, Th, Tr } from "@/components/ui/table";
 import { PageBody, PageHeader } from "@/components/layout/page-header";
 import { RequireAuth } from "@/features/auth/require-auth";
 import { getPlatformReport } from "@/features/platform/api";
-import { ReportRangeCard, TenderCard, WeekdayCard } from "@/features/platform/charts";
-import { money as amount } from "@/features/platform/format";
+import { ReportRangeCard, TenderCard, WeekdayCard } from "@/features/analytics/charts";
+import { money as amount } from "@/features/analytics/format";
 import { cn } from "@/lib/utils/cn";
 import type { PlatformReport, PlatformRestaurantRow } from "@/types/platform";
 

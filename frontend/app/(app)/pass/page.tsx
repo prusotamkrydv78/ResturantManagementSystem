@@ -58,6 +58,35 @@ const STALE_NOTICE_MS = 6000;
 /** How often the queue refreshes itself, for when the live connection is not there. */
 const REFRESH_MS = 20_000;
 
+/**
+ * When a plate stops being fresh, and when it stops being acceptable.
+ *
+ * The kitchen rail has had these for a while and the pass never did, which was the
+ * wrong way round: a ticket waiting to be cooked is work not started, and a plate at
+ * the pass is food actively getting worse. Five minutes is about as long as something
+ * plated sits before it stops being what the kitchen sent out; ten and somebody should
+ * be answering for it.
+ *
+ * Position alone used to carry this - the first card got a warning border and nothing
+ * else did - which meant a queue of one plate sitting twenty minutes looked exactly
+ * like a queue of one plate sitting twenty seconds.
+ */
+const COLD_AFTER_MINUTES = 5;
+const VERY_COLD_AFTER_MINUTES = 10;
+
+/** How urgent one plate is, from how long it has been standing there. */
+type Heat = "fresh" | "cold" | "veryCold";
+
+function heatOf(isoString: string, since: number): Heat {
+  const minutes = minutesAtPass(isoString, since);
+
+  if (minutes >= VERY_COLD_AFTER_MINUTES) {
+    return "veryCold";
+  }
+
+  return minutes >= COLD_AFTER_MINUTES ? "cold" : "fresh";
+}
+
 function Pass() {
   const [tickets, setTickets] = useState<PassTicket[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -186,6 +215,23 @@ function Pass() {
     [tickets],
   );
 
+  // The oldest plate, the number of rooms to walk to, and how many of the waiting
+  // plates are past their time. Three questions a waiter answers by looking at the
+  // pass, and until now all three needed counting the cards by eye.
+  const oldest = tickets?.[0]?.readyAtUtc ?? null;
+  const tables = new Set(tickets?.map((row) => row.tableName) ?? []).size;
+  const goingCold =
+    tickets?.filter((row) => heatOf(row.readyAtUtc, loadedAt) !== "fresh").length ?? 0;
+
+  // Tables with more than one slip waiting. A waiter walking to table four should
+  // carry both, and the oldest-first order that makes this screen work also splits
+  // them apart on the page.
+  const slipsPerTable = new Map<string, number>();
+
+  for (const row of tickets ?? []) {
+    slipsPerTable.set(row.tableName, (slipsPerTable.get(row.tableName) ?? 0) + 1);
+  }
+
   return (
     <>
       <PageHeader
@@ -203,6 +249,46 @@ function Pass() {
 
       <PageBody>
         {serveError !== null && <FormError message={serveError} />}
+
+        {/* What is standing there, before the cards. The first cell is filled because
+            it is the only one that is a countdown rather than a count. */}
+        {tickets !== null && tickets.length > 0 && (
+          <div className="grid grid-cols-3 overflow-hidden rounded-lg border border-border">
+            <div
+              className={cn(
+                "flex flex-col gap-0.5 px-4 py-3",
+                goingCold > 0
+                  ? "bg-warning-soft text-warning"
+                  : "bg-primary-solid text-primary-fg",
+              )}
+            >
+              <span className="text-2xs font-semibold tracking-wider uppercase opacity-80">
+                Longest wait
+              </span>
+              <span className="tabular text-xl leading-7 font-semibold">
+                {oldest === null ? "—" : formatAge(oldest, loadedAt)}
+              </span>
+            </div>
+
+            <div className="flex flex-col gap-0.5 border-l border-border px-4 py-3">
+              <span className="text-2xs font-semibold tracking-wider text-subtle uppercase">
+                Plates
+              </span>
+              <span className="tabular text-xl leading-7 font-semibold text-text">
+                {waiting}
+              </span>
+            </div>
+
+            <div className="flex flex-col gap-0.5 border-l border-border px-4 py-3">
+              <span className="text-2xs font-semibold tracking-wider text-subtle uppercase">
+                Tables
+              </span>
+              <span className="tabular text-xl leading-7 font-semibold text-text">
+                {tables}
+              </span>
+            </div>
+          </div>
+        )}
 
         {error !== null ? (
           <Surface>
@@ -228,18 +314,24 @@ function Pass() {
           </Surface>
         ) : (
           <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {tickets.map((ticket, index) => {
-              // The oldest plate is the one going cold, and it is first in the list.
-              // Marked rather than merely positioned, because a waiter scanning a
-              // screen of six cards should not have to work out the order.
-              const isOldest = index === 0 && tickets.length > 1;
+            {tickets.map((ticket) => {
+              // Coloured by how long it has actually stood there rather than by where
+              // it happens to sit in the list. The first card is still the oldest -
+              // the order has not changed - but a plate is now marked because it is
+              // going cold, not because it is at the top.
+              const heat = heatOf(ticket.readyAtUtc, loadedAt);
+              const alsoWaiting = (slipsPerTable.get(ticket.tableName) ?? 1) - 1;
 
               return (
                 <li key={ticket.ticketId}>
                   <Surface
                     className={cn(
                       "flex h-full flex-col",
-                      isOldest && "border-warning-border",
+                      heat === "veryCold"
+                        ? "border-danger-border ring-1 ring-danger-border"
+                        : heat === "cold"
+                          ? "border-warning-border"
+                          : undefined,
                     )}
                   >
                     <div className="flex items-start justify-between gap-3 p-4 pb-3">
@@ -250,9 +342,28 @@ function Pass() {
                         <span className="tabular text-2xs text-subtle">
                           KOT #{ticket.ticketNumber} · order #{ticket.orderNumber}
                         </span>
+                        {/* The oldest-first order is what makes this screen work, and
+                            it is also what separates two slips for the same table.
+                            Saying so on the card is cheaper than asking a waiter to
+                            scan the rest of the queue before walking. */}
+                        {alsoWaiting > 0 && (
+                          <span className="text-2xs font-medium text-primary">
+                            {alsoWaiting} more slip{alsoWaiting === 1 ? "" : "s"} for
+                            this table
+                          </span>
+                        )}
                       </div>
 
-                      <Badge tone={isOldest ? "warning" : "neutral"} dot={isOldest}>
+                      <Badge
+                        tone={
+                          heat === "veryCold"
+                            ? "danger"
+                            : heat === "cold"
+                              ? "warning"
+                              : "neutral"
+                        }
+                        dot={heat !== "fresh"}
+                      >
                         {formatAge(ticket.readyAtUtc, loadedAt)}
                       </Badge>
                     </div>
@@ -277,9 +388,19 @@ function Pass() {
                             // the other is carrying a plate.
                             className="pressable flex min-h-11 w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-success-soft"
                           >
+                            {/* Fills while the request is in flight. It was drawn
+                                permanently empty, so tapping a dish gave a waiter
+                                nothing at all until the list came back - and on a
+                                phone at the pass that is exactly when somebody taps
+                                it again. */}
                             <span
                               aria-hidden="true"
-                              className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded border border-border-strong text-transparent"
+                              className={cn(
+                                "mt-0.5 flex size-5 shrink-0 items-center justify-center rounded border transition-colors",
+                                serving.has(item.id)
+                                  ? "border-success bg-success text-inverse"
+                                  : "border-border-strong text-transparent",
+                              )}
                             >
                               <Check className="size-3.5" />
                             </span>
@@ -333,15 +454,22 @@ function Pass() {
   );
 }
 
-/** How long the plate has been sitting there, which is the whole urgency of this screen. */
-function formatAge(isoString: string, since: number): string {
+/** Minutes a plate has been standing, or -1 when the server sent nothing parseable. */
+function minutesAtPass(isoString: string, since: number): number {
   const ready = new Date(isoString);
 
-  if (Number.isNaN(ready.getTime())) {
+  return Number.isNaN(ready.getTime())
+    ? -1
+    : Math.max(0, Math.round((since - ready.getTime()) / 60000));
+}
+
+/** How long the plate has been sitting there, which is the whole urgency of this screen. */
+function formatAge(isoString: string, since: number): string {
+  const minutes = minutesAtPass(isoString, since);
+
+  if (minutes < 0) {
     return "—";
   }
-
-  const minutes = Math.max(0, Math.round((since - ready.getTime()) / 60000));
 
   if (minutes < 1) {
     return "just now";

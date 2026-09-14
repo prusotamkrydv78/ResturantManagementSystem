@@ -20,6 +20,15 @@ public static class ReservationErrors
     /// The customer named is not one of the caller own, which reports the same as one
     /// that does not exist.
     /// </summary>
+    /// <summary>
+    /// Neither an existing customer nor a name was sent.
+    ///
+    /// A booking has to be for somebody. The request allows two ways of saying who,
+    /// and this is what a caller gets for using neither.
+    /// </summary>
+    public static readonly Error CustomerRequired =
+        new("reservation.customer_required", "Say who the booking is for.");
+
     public static readonly Error CustomerNotFound =
         new("reservation.customer_not_found", "That customer could not be found.");
 

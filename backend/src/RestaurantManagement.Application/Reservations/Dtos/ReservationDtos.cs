@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using RestaurantManagement.Domain.Customers;
 using RestaurantManagement.Domain.Reservations;
 
 namespace RestaurantManagement.Application.Reservations.Dtos;
@@ -79,12 +80,49 @@ public sealed record ReservationBoardResponse(
 ///
 /// No restaurant field: it is taken for the restaurant of the authenticated manager,
 /// and both the customer and the table must be that restaurant own.
+///
+/// Who the booking is for can arrive two ways, and only one of them may be used at a
+/// time. <see cref="CustomerId"/> names somebody already on the books.
+/// <see cref="CustomerName"/> with an optional <see cref="CustomerPhone"/> describes
+/// whoever is on the telephone right now, and the server finds or creates the record.
+///
+/// It used to be the identifier alone, which meant a manager taking a booking had to
+/// leave the page, create a customer, and come back - six steps and two screens while
+/// somebody waited on the line. It also made a public booking form impossible: a guest
+/// on a restaurant's own website has no customer list and never will, so a name and a
+/// telephone number is the only thing that path can ever send.
 /// </summary>
 public sealed class CreateReservationRequest
 {
-    /// <summary>Who it is for. Must be one of the caller own customers.</summary>
-    [Required(ErrorMessage = "Choose the customer.")]
-    public Guid CustomerId { get; set; }
+    /// <summary>
+    /// Who it is for, when they are already on the books. Must be one of the caller own
+    /// customers. Leave unset when sending a name instead.
+    /// </summary>
+    public Guid? CustomerId { get; set; }
+
+    /// <summary>
+    /// Who it is for, when they are not on the books yet.
+    ///
+    /// Ignored when <see cref="CustomerId"/> is given, so a caller cannot send both and
+    /// leave the server deciding which one it meant.
+    /// </summary>
+    [StringLength(
+        Customer.MaxNameLength,
+        ErrorMessage = "A name cannot be longer than 120 characters.")]
+    public string? CustomerName { get; set; }
+
+    /// <summary>
+    /// How to reach them, and the only thing that stops the same person becoming three
+    /// people.
+    ///
+    /// A telephone number is unique within a restaurant, so it is what an existing
+    /// customer is matched on. Without one every booking taken by name creates a new
+    /// record, which is why the form asks for it even though it is not required.
+    /// </summary>
+    [StringLength(
+        Customer.MaxPhoneLength,
+        ErrorMessage = "A phone number cannot be longer than 32 characters.")]
+    public string? CustomerPhone { get; set; }
 
     /// <summary>When they are expected, as an instant.</summary>
     [Required(ErrorMessage = "Enter when they are coming.")]

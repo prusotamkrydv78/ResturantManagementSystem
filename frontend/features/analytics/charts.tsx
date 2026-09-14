@@ -21,8 +21,8 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Surface, SurfaceHeader } from "@/components/ui/surface";
 import { Skeleton } from "@/components/ui/states";
 import { cn } from "@/lib/utils/cn";
-import { fade, useChartTheme } from "@/features/platform/chart-theme";
-import type { ChartTheme } from "@/features/platform/chart-theme";
+import { fade, useChartTheme } from "@/features/analytics/chart-theme";
+import type { ChartTheme } from "@/features/analytics/chart-theme";
 import type {
   PlatformHour,
   PlatformMethodTotal,

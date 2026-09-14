@@ -71,6 +71,13 @@ public sealed record ReportOrderResponse(
 /// The same total split by tender, every method listed even at zero so the shape does
 /// not change with the range.
 /// </param>
+/// <param name="Previous">
+/// The period of the same length immediately before this one, so a figure can be read
+/// as a direction rather than as a number on its own.
+/// </param>
+/// <param name="Days">Every day in the range, oldest first, present even at zero.</param>
+/// <param name="ByWeekday">The range summed into seven weekdays.</param>
+/// <param name="Cancellations">Why orders were called off, heaviest first by value.</param>
 /// <param name="Completed">The completed orders, newest first.</param>
 /// <param name="Cancelled">The cancelled orders, newest first.</param>
 public sealed record ReportSummaryResponse(
@@ -86,5 +93,78 @@ public sealed record ReportSummaryResponse(
     decimal CancelledValue,
     decimal AverageOrderValue,
     IReadOnlyList<MethodTotalResponse> ByMethod,
+    ReportPeriodResponse Previous,
+    IReadOnlyList<ReportDayResponse> Days,
+    IReadOnlyList<ReportWeekdayResponse> ByWeekday,
+    IReadOnlyList<ReportCancellationResponse> Cancellations,
     IReadOnlyList<ReportOrderResponse> Completed,
     IReadOnlyList<ReportOrderResponse> Cancelled);
+
+/// <summary>
+/// One service day inside a report range.
+///
+/// The spine of the screen. A report over ninety days used to arrive as four totals
+/// and two lists, and no arithmetic on four totals says which day something changed.
+/// </summary>
+/// <param name="LocalDate">The service day.</param>
+/// <param name="Bills">Orders settled that day.</param>
+/// <param name="Takings">What those bills came to.</param>
+/// <param name="Cancelled">Orders called off that day.</param>
+/// <param name="CancelledValue">What the cancelled orders would have come to.</param>
+public sealed record ReportDayResponse(
+    DateOnly LocalDate,
+    int Bills,
+    decimal Takings,
+    int Cancelled,
+    decimal CancelledValue);
+
+/// <summary>
+/// One day of the week, summed across the range.
+///
+/// Seven rows, always. A restaurant is staffed and prepped against the rhythm of a
+/// week, and a total over a month hides which end of it carried the month.
+/// </summary>
+/// <param name="Weekday">Sunday through Saturday.</param>
+/// <param name="Bills">Bills settled on that weekday across the range.</param>
+/// <param name="Takings">What they came to.</param>
+public sealed record ReportWeekdayResponse(
+    DayOfWeek Weekday,
+    int Bills,
+    decimal Takings);
+
+/// <summary>
+/// Why orders were called off, and what they were worth.
+///
+/// The product has recorded a reason on every cancellation since it could cancel
+/// anything, and had never shown one. For a manager this is the more useful half of
+/// the cancelled figure: the total says how much did not arrive, this says what to do
+/// about it.
+/// </summary>
+/// <param name="Reason">What was typed, or a stand-in when nothing was.</param>
+/// <param name="Count">How many were called off for it.</param>
+/// <param name="Value">What those orders would have come to. Never revenue.</param>
+public sealed record ReportCancellationResponse(
+    string Reason,
+    int Count,
+    decimal Value);
+
+/// <summary>
+/// The totals for a period, thin, so one period can be read against another.
+/// </summary>
+/// <param name="FromLocalDate">First day of the comparison period.</param>
+/// <param name="ToLocalDate">Last day of it, inclusive.</param>
+/// <param name="CompletedCount">Orders paid for and closed.</param>
+/// <param name="CancelledCount">Orders called off.</param>
+/// <param name="CancelledValue">What those would have come to.</param>
+/// <param name="PaymentTotal">Everything taken.</param>
+/// <param name="PaymentCount">How many bills were settled.</param>
+/// <param name="AverageOrderValue">Payment total over payment count, or zero.</param>
+public sealed record ReportPeriodResponse(
+    DateOnly FromLocalDate,
+    DateOnly ToLocalDate,
+    int CompletedCount,
+    int CancelledCount,
+    decimal CancelledValue,
+    decimal PaymentTotal,
+    int PaymentCount,
+    decimal AverageOrderValue);

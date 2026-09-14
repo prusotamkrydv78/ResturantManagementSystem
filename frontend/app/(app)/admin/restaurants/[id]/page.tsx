@@ -25,8 +25,8 @@ import { Table, TableWrap, Td, Th, Tr } from "@/components/ui/table";
 import { PageBody, PageHeader } from "@/components/layout/page-header";
 import { RequireAuth } from "@/features/auth/require-auth";
 import { getPlatformRestaurant } from "@/features/platform/api";
-import { RecentDaysCard, TenderCard } from "@/features/platform/charts";
-import { sinceLabel, useNow } from "@/features/platform/since";
+import { RecentDaysCard, TenderCard } from "@/features/analytics/charts";
+import { sinceLabel, useNow } from "@/lib/time/since";
 import { cn } from "@/lib/utils/cn";
 import type {
   PlatformRestaurantDetail,

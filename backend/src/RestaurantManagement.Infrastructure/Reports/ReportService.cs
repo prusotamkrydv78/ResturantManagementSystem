@@ -93,6 +93,14 @@ public sealed class ReportService : IReportService
         var start = ServiceDay.StartOn(first);
         var end = ServiceDay.StartOn(last.AddDays(1));
 
+        // The period of the same length, immediately before. Not "last month" and not
+        // "this week last year": a manager who asked for eleven days gets eleven days
+        // to read them against, and no calendar rule has to be explained on screen
+        // before the comparison can be trusted.
+        var previousLast = first.AddDays(-1);
+        var previousFirst = previousLast.AddDays(-(dayCount - 1));
+        var previousStart = ServiceDay.StartOn(previousFirst);
+
         // Selected by when they ended rather than when they were placed, so a table
         // that opened before a boundary and settled after it belongs to the day it was
         // paid on. That is the same rule the dashboard uses.
@@ -130,6 +138,99 @@ public sealed class ReportService : IReportService
 
         var paymentTotal = payments.Sum(payment => payment.Amount);
 
+        // One extra read, deliberately thinner than the one above: the previous period
+        // only ever appears as a handful of totals, so it is projected down to what a
+        // subtraction needs rather than to what a table would. Same selection rule -
+        // by when an order ended, not when it was placed.
+        var before = await _dbContext.Orders
+            .AsNoTracking()
+            .Where(order =>
+                order.RestaurantId == restaurant.Id &&
+                ((order.CompletedAtUtc != null &&
+                  order.CompletedAtUtc >= previousStart &&
+                  order.CompletedAtUtc < start) ||
+                 (order.CancelledAtUtc != null &&
+                  order.CancelledAtUtc >= previousStart &&
+                  order.CancelledAtUtc < start)))
+            .Select(order => new
+            {
+                order.Status,
+                order.Subtotal,
+                Paid = order.Payments.Sum(payment => (decimal?)payment.Amount) ?? 0m,
+                PaymentCount = order.Payments.Count(),
+            })
+            .ToListAsync(cancellationToken);
+
+        var beforeCompleted = before.Where(row => row.Status == OrderStatus.Completed).ToList();
+        var beforeCancelled = before.Where(row => row.Status == OrderStatus.Cancelled).ToList();
+        var beforeTotal = beforeCompleted.Sum(row => row.Paid);
+        var beforeCount = beforeCompleted.Sum(row => row.PaymentCount);
+
+        // Every day present, oldest first. A gap in a chart reads as missing data
+        // rather than as a day the restaurant was shut, and the chart cannot tell the
+        // difference.
+        var byDay = closed
+            .Select(order => new
+            {
+                Date = ServiceDay.LocalToday(
+                    order.CompletedAtUtc ?? order.CancelledAtUtc ?? order.CreatedAtUtc),
+                order.Status,
+                order.Subtotal,
+                Paid = order.Payments.Sum(payment => payment.Amount),
+                PaymentCount = order.Payments.Count,
+            })
+            .GroupBy(row => row.Date)
+            .ToDictionary(group => group.Key, group => group.ToList());
+
+        var days = Enumerable
+            .Range(0, dayCount)
+            .Select(offset =>
+            {
+                var date = first.AddDays(offset);
+                var rows = byDay.GetValueOrDefault(date) ?? [];
+
+                return new ReportDayResponse(
+                    date,
+                    rows.Where(row => row.Status == OrderStatus.Completed)
+                        .Sum(row => row.PaymentCount),
+                    rows.Where(row => row.Status == OrderStatus.Completed)
+                        .Sum(row => row.Paid),
+                    rows.Count(row => row.Status == OrderStatus.Cancelled),
+                    rows.Where(row => row.Status == OrderStatus.Cancelled)
+                        .Sum(row => row.Subtotal));
+            })
+            .ToList();
+
+        // Derived from the days rather than from the orders again: one source, so the
+        // week profile and the chart above it cannot drift apart.
+        var byWeekday = Enum.GetValues<DayOfWeek>()
+            .Select(weekday =>
+            {
+                var matching = days.Where(day => day.LocalDate.DayOfWeek == weekday).ToList();
+
+                return new ReportWeekdayResponse(
+                    weekday,
+                    matching.Sum(day => day.Bills),
+                    matching.Sum(day => day.Takings));
+            })
+            .ToList();
+
+        // Heaviest first by value rather than by count: ten tables walking out on a
+        // misheard order costs less than one banquet called off, and this is a page
+        // about money.
+        var cancellations = cancelled
+            .GroupBy(order =>
+                string.IsNullOrWhiteSpace(order.CancellationReason)
+                    ? NoReasonGiven
+                    : order.CancellationReason.Trim())
+            .Select(group => new ReportCancellationResponse(
+                group.Key,
+                group.Count(),
+                group.Sum(order => order.Subtotal)))
+            .OrderByDescending(reason => reason.Value)
+            .ThenByDescending(reason => reason.Count)
+            .ToList();
+
         return Result.Success(new ReportSummaryResponse(
             first,
             last,
@@ -146,9 +247,29 @@ public sealed class ReportService : IReportService
                 ? 0m
                 : decimal.Round(paymentTotal / payments.Count, 2),
             ByMethod(payments),
+            new ReportPeriodResponse(
+                previousFirst,
+                previousLast,
+                beforeCompleted.Count,
+                beforeCancelled.Count,
+                beforeCancelled.Sum(row => row.Subtotal),
+                beforeTotal,
+                beforeCount,
+                beforeCount == 0 ? 0m : decimal.Round(beforeTotal / beforeCount, 2)),
+            days,
+            byWeekday,
+            cancellations,
             completed.Take(RowLimit).Select(ToCompletedRow).ToList(),
             cancelled.Take(RowLimit).Select(ToCancelledRow).ToList()));
     }
+
+    /// <summary>
+    /// What a manager typed when they typed nothing.
+    ///
+    /// A named bucket rather than a blank row, so the reasons still add up to the
+    /// cancellation count and "nobody says why" is itself a figure on the page.
+    /// </summary>
+    private const string NoReasonGiven = "No reason given";
 
     /// <summary>
     /// The takings split by tender, with every method present even at zero.

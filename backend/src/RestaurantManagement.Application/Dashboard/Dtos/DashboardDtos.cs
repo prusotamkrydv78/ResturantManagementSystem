@@ -161,6 +161,46 @@ public sealed record TodayResponse(
     IReadOnlyList<PaymentMethodTotalResponse> ByMethod);
 
 /// <summary>
+/// One service day behind this restaurant.
+///
+/// Added because the overview could say what the restaurant had taken and never once
+/// whether that was good. A total with nothing beside it is a number a manager reads
+/// and cannot act on; the same total against the six days before it is a decision
+/// about staffing tomorrow.
+/// </summary>
+/// <param name="LocalDate">The service day.</param>
+/// <param name="OrdersPlaced">Orders opened that day, whatever became of them.</param>
+/// <param name="Completed">Orders paid for and closed.</param>
+/// <param name="Cancelled">Orders called off.</param>
+/// <param name="Takings">Everything taken in payments that day.</param>
+public sealed record DashboardDayResponse(
+    DateOnly LocalDate,
+    int OrdersPlaced,
+    int Completed,
+    int Cancelled,
+    decimal Takings);
+
+/// <summary>
+/// One hour of the service day now running.
+///
+/// The shape of a restaurant day is two spikes and a long quiet middle, and which
+/// hours those are is the single most useful thing a manager can know about their own
+/// room: it decides when people are rota-ed on, when the kitchen preps, and when the
+/// floor can be cleaned. The product recorded every timestamp needed to say it and had
+/// never said it.
+///
+/// All twenty-four are sent, the ones still to come included, so a chart has the shape
+/// of a whole day from the moment it is opened.
+/// </summary>
+/// <param name="Hour">Local hour, 0 to 23.</param>
+/// <param name="OrdersPlaced">Orders opened in that hour.</param>
+/// <param name="Takings">Payments recorded in that hour.</param>
+public sealed record DashboardHourResponse(
+    int Hour,
+    int OrdersPlaced,
+    decimal Takings);
+
+/// <summary>
 /// Whether the restaurant is set up enough to trade.
 ///
 /// Two facts a manager needs to see when the floor is quiet for the wrong reason: a
@@ -190,6 +230,13 @@ public sealed record ReadinessResponse(
 /// <param name="Floor">Table availability right now.</param>
 /// <param name="Kitchen">Kitchen workload right now.</param>
 /// <param name="Today">What the restaurant has done today.</param>
+/// <param name="Yesterday">
+/// The day before, whole, so today can be read as a direction rather than as a
+/// number. The same entry that appears second-to-last in <c>Days</c>, handed over
+/// separately only so a screen does not have to index into a list to find it.
+/// </param>
+/// <param name="Days">The last week, oldest first, every day present even at zero.</param>
+/// <param name="Hours">Today, hour by hour, all twenty-four.</param>
 /// <param name="Readiness">Whether it can trade at all.</param>
 /// <param name="Activity">What has happened today, newest first.</param>
 public sealed record ManagerDashboardResponse(
@@ -198,5 +245,8 @@ public sealed record ManagerDashboardResponse(
     FloorResponse Floor,
     KitchenLoadResponse Kitchen,
     TodayResponse Today,
+    DashboardDayResponse Yesterday,
+    IReadOnlyList<DashboardDayResponse> Days,
+    IReadOnlyList<DashboardHourResponse> Hours,
     ReadinessResponse Readiness,
     IReadOnlyList<ActivityEntryResponse> Activity);

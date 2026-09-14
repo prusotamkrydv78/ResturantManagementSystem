@@ -33,7 +33,7 @@ import {
   listPlatformActivity,
   updatePlatformSettings,
 } from "@/features/platform/api";
-import { sinceLabel, useNow } from "@/features/platform/since";
+import { sinceLabel, useNow } from "@/lib/time/since";
 import { Report, useAction } from "@/features/platform/use-action";
 import { cn } from "@/lib/utils/cn";
 import type { AuthUser } from "@/types/auth";
