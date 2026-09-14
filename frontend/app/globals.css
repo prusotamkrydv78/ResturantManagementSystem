@@ -155,6 +155,25 @@
   /* Focus. The brand, at whichever step is visible on the ground in use. */
   --ring: light-dark(#3e5641, #7fa486);
 
+  /* Categorical series, for charts only.
+
+     A chart that plots one restaurant against another needs colours that mean
+     nothing except "not the same as that one", which is a different job from
+     every token above: those carry meaning, and a restaurant is not a warning.
+
+     Drawn from the same muted, slightly earthy family as the rest of the
+     product rather than from a default chart palette, and paired per theme by
+     hand, because a hue that reads as calm on paper-white goes muddy on a dark
+     ground. The last one is the grey band that gathers everything past the
+     sixth restaurant, and is meant to recede. */
+  --chart-1: light-dark(#3e5641, #7fa486);
+  --chart-2: light-dark(#004d61, #4fa8c4);
+  --chart-3: light-dark(#8a5a12, #d9a441);
+  --chart-4: light-dark(#822659, #d2778c);
+  --chart-5: light-dark(#3f5a8a, #8aa6d9);
+  --chart-6: light-dark(#6b4f7a, #b393c7);
+  --chart-rest: light-dark(#b3b1ac, #5a5a5a);
+
   /* Elevation.
 
      A shadow is not a colour, so `light-dark()` cannot wrap the whole value -

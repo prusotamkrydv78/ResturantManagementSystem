@@ -33,10 +33,45 @@ public interface IPlatformService
         CancellationToken cancellationToken);
 
     /// <summary>
-    /// The shape of the estate, and how each restaurant is configured to operate.
+    /// One restaurant, whole: how it is configured, who works there, what it has
+    /// taken, and what is running on its floor at this moment.
+    ///
+    /// The only way a platform administrator can see any of it. Every other module
+    /// scopes its reads to the caller own restaurant, and an administrator has none.
     /// </summary>
-    Task<Result<PlatformOverviewResponse>> GetOverviewAsync(
+    Task<Result<PlatformRestaurantDetailResponse>> GetRestaurantAsync(
+        Guid restaurantId,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// The most recent things platform administrators have done, newest first.
+    /// </summary>
+    Task<Result<IReadOnlyList<PlatformActivityResponse>>> GetActivityAsync(
+        int limit,
+        CancellationToken cancellationToken);
+
+    /// <summary>The platform-wide defaults a new restaurant inherits.</summary>
+    Task<Result<PlatformSettingsResponse>> GetSettingsAsync(CancellationToken cancellationToken);
+
+    /// <summary>Changes the platform-wide defaults.</summary>
+    Task<Result<PlatformSettingsResponse>> UpdateSettingsAsync(
+        UpdatePlatformSettingsRequest request,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Whether the deployment itself is healthy: its clock, its build, and whether the
+    /// database has every migration the running code expects.
+    /// </summary>
+    Task<Result<PlatformSystemResponse>> GetSystemAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// What the estate is doing right now.
+    ///
+    /// Today against yesterday, what is still running, and when each restaurant last
+    /// took an order. The overview below says how the platform is set up; this says
+    /// whether it is working, which is the question after the first week.
+    /// </summary>
+    Task<Result<PlatformPulseResponse>> GetPulseAsync(
+        CancellationToken cancellationToken);
 
 }

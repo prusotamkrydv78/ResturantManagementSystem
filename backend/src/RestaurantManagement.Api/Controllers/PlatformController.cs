@@ -60,15 +60,98 @@ public sealed class PlatformController : ControllerBase
     }
 
     /// <summary>
-    /// The shape of the estate, and how each restaurant is configured to operate.
+    /// One restaurant, whole: its settings, its people, its trading and its floor.
     /// </summary>
-    [HttpGet("overview")]
-    [ProducesResponseType(typeof(PlatformOverviewResponse), StatusCodes.Status200OK)]
+    [HttpGet("restaurants/{id:guid}")]
+    [ProducesResponseType(typeof(PlatformRestaurantDetailResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    public async Task<ActionResult<PlatformOverviewResponse>> GetOverview(
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<PlatformRestaurantDetailResponse>> GetRestaurant(
+        Guid id,
         CancellationToken cancellationToken)
     {
-        var result = await _platformService.GetOverviewAsync(cancellationToken);
+        var result = await _platformService.GetRestaurantAsync(id, cancellationToken);
+
+        return result.IsFailure
+            ? ProblemFrom(result.Error!, StatusFor(result.Error!))
+            : Ok(result.Value);
+    }
+
+    /// <summary>
+    /// The most recent things platform administrators have done, newest first.
+    /// </summary>
+    [HttpGet("activity")]
+    [ProducesResponseType(typeof(IReadOnlyList<PlatformActivityResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<ActionResult<IReadOnlyList<PlatformActivityResponse>>> GetActivity(
+        [FromQuery] int limit,
+        CancellationToken cancellationToken)
+    {
+        var result = await _platformService.GetActivityAsync(
+            limit <= 0 ? 50 : limit,
+            cancellationToken);
+
+        return result.IsFailure
+            ? ProblemFrom(result.Error!, StatusCodes.Status400BadRequest)
+            : Ok(result.Value);
+    }
+
+    /// <summary>The platform-wide defaults a new restaurant inherits.</summary>
+    [HttpGet("settings")]
+    [ProducesResponseType(typeof(PlatformSettingsResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<ActionResult<PlatformSettingsResponse>> GetSettings(
+        CancellationToken cancellationToken)
+    {
+        var result = await _platformService.GetSettingsAsync(cancellationToken);
+
+        return result.IsFailure
+            ? ProblemFrom(result.Error!, StatusCodes.Status400BadRequest)
+            : Ok(result.Value);
+    }
+
+    /// <summary>Changes the platform-wide defaults.</summary>
+    [HttpPut("settings")]
+    [ProducesResponseType(typeof(PlatformSettingsResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<ActionResult<PlatformSettingsResponse>> UpdateSettings(
+        UpdatePlatformSettingsRequest request,
+        CancellationToken cancellationToken)
+    {
+        var result = await _platformService.UpdateSettingsAsync(request, cancellationToken);
+
+        return result.IsFailure
+            ? ProblemFrom(result.Error!, StatusCodes.Status400BadRequest)
+            : Ok(result.Value);
+    }
+
+    /// <summary>
+    /// Whether the deployment itself is healthy.
+    /// </summary>
+    [HttpGet("system")]
+    [ProducesResponseType(typeof(PlatformSystemResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<ActionResult<PlatformSystemResponse>> GetSystem(
+        CancellationToken cancellationToken)
+    {
+        var result = await _platformService.GetSystemAsync(cancellationToken);
+
+        return result.IsFailure
+            ? ProblemFrom(result.Error!, StatusCodes.Status400BadRequest)
+            : Ok(result.Value);
+    }
+
+    /// <summary>
+    /// What the estate is doing right now, and what it did today against yesterday.
+    /// </summary>
+    [HttpGet("pulse")]
+    [ProducesResponseType(typeof(PlatformPulseResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<ActionResult<PlatformPulseResponse>> GetPulse(
+        CancellationToken cancellationToken)
+    {
+        var result = await _platformService.GetPulseAsync(cancellationToken);
 
         return result.IsFailure
             ? ProblemFrom(result.Error!, StatusCodes.Status400BadRequest)

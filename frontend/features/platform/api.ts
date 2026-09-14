@@ -1,5 +1,12 @@
 import { apiFetch } from "@/lib/api/client";
-import type { PlatformOverview, PlatformReport } from "@/types/platform";
+import type {
+  PlatformActivity,
+  PlatformPulse,
+  PlatformReport,
+  PlatformRestaurantDetail,
+  PlatformSettings,
+  PlatformSystem,
+} from "@/types/platform";
 
 /**
  * Platform administration calls.
@@ -35,8 +42,43 @@ export function getPlatformReport(options?: {
   return apiFetch<PlatformReport>(`/api/platform/reports${suffix}`);
 }
 
-/** The shape of the estate: how many restaurants, who runs them, how big they are. */
-export function getPlatformOverview(): Promise<PlatformOverview> {
-  return apiFetch<PlatformOverview>("/api/platform/overview");
+/** What the estate is doing right now: today against yesterday, and what is running. */
+export function getPlatformPulse(): Promise<PlatformPulse> {
+  return apiFetch<PlatformPulse>("/api/platform/pulse");
 }
 
+/**
+ * One restaurant, whole: settings, people, trading and floor.
+ *
+ * The only read of a single restaurant a platform administrator has. Every other
+ * module scopes itself to the caller own restaurant, which this account does not have.
+ */
+export function getPlatformRestaurant(id: string): Promise<PlatformRestaurantDetail> {
+  return apiFetch<PlatformRestaurantDetail>(`/api/platform/restaurants/${id}`);
+}
+
+/** The most recent things platform administrators have done, newest first. */
+export function listPlatformActivity(limit = 50): Promise<PlatformActivity[]> {
+  return apiFetch<PlatformActivity[]>(`/api/platform/activity?limit=${limit}`);
+}
+
+/** The platform-wide defaults a new restaurant inherits. */
+export function getPlatformSettings(): Promise<PlatformSettings> {
+  return apiFetch<PlatformSettings>("/api/platform/settings");
+}
+
+/** Changes the platform-wide defaults. */
+export function updatePlatformSettings(payload: {
+  defaultVatRate: number;
+  defaultServiceChargeRate: number;
+}): Promise<PlatformSettings> {
+  return apiFetch<PlatformSettings>("/api/platform/settings", {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
+/** Whether the deployment itself is healthy. */
+export function getPlatformSystem(): Promise<PlatformSystem> {
+  return apiFetch<PlatformSystem>("/api/platform/system");
+}

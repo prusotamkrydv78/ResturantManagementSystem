@@ -12,6 +12,10 @@ public static class PlatformErrors
     /// administrator may legitimately reach every restaurant, so a not-found means the
     /// identifier is genuinely wrong rather than that it belongs to somebody else.
     /// </summary>
+    /// <summary>A rate was outside the range a rate can be.</summary>
+    public static readonly Error RateOutOfRange =
+        new("platform.rate_out_of_range", "A rate has to be between 0 and 1.");
+
     public static readonly Error RestaurantNotFound =
         new("platform.restaurant_not_found", "That restaurant could not be found.");
 

@@ -1,9 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { Pencil, Search, UserPlus, Users } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Pencil, Search, TriangleAlert, UserPlus, Users } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, LinkButton } from "@/components/ui/button";
 import {
   Dialog,
   DialogClose,
@@ -25,17 +27,14 @@ import {
 import { Table, TableWrap, Td, Th, Tr } from "@/components/ui/table";
 import { PageBody, PageHeader } from "@/components/layout/page-header";
 import { RequireAuth } from "@/features/auth/require-auth";
-import {
-  assignManagerToRestaurant,
-  createManager,
-  listManagers,
-  resetManagerPassword,
-  setManagerActive,
-  unassignManager,
-  updateManager,
-} from "@/features/managers/api";
+import { getPlatformPulse } from "@/features/platform/api";
+import { FilterChip } from "@/features/platform/filter-chip";
+import { formatDate, money } from "@/features/platform/format";
+import { sinceLabel, timeOf, useNow } from "@/features/platform/since";
+import { createManager, listManagers } from "@/features/managers/api";
 import { listRestaurants } from "@/features/restaurants/api";
-import type { Manager, ManagerFilter } from "@/types/manager";
+import type { Manager } from "@/types/manager";
+import type { PlatformPulse, PlatformPulseRestaurant } from "@/types/platform";
 import type { RestaurantSummary } from "@/types/restaurant";
 
 /**
@@ -55,14 +54,19 @@ export default function ManagersPage() {
 function Managers() {
   const [managers, setManagers] = useState<Manager[] | null>(null);
   const [restaurants, setRestaurants] = useState<RestaurantSummary[]>([]);
+  const [pulse, setPulse] = useState<PlatformPulse | null>(null);
+  const [pulseFailed, setPulseFailed] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [status, setStatus] = useState<ManagerFilter>("All");
+  const [bucket, setBucket] = useState<ManagerBucket>("All");
+  const [sort, setSort] = useState<ManagerSort>("name");
+  const now = useNow();
+  const router = useRouter();
 
-  const load = useCallback(async (term: string, filter: ManagerFilter) => {
+  const load = useCallback(async (term: string) => {
     try {
       const [loadedManagers, loadedRestaurants] = await Promise.all([
-        listManagers({ search: term, status: filter }),
+        listManagers({ search: term, status: "All" }),
         listRestaurants(),
       ]);
       setManagers(loadedManagers);
@@ -71,17 +75,27 @@ function Managers() {
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to load managers.");
     }
+
+    try {
+      setPulse(await getPlatformPulse());
+      setPulseFailed(false);
+    } catch {
+      setPulseFailed(true);
+    }
   }, []);
 
-  // Refetch on the server whenever the query changes, so search works across the
-  // whole set rather than only the rows already downloaded.
+  // Search still goes to the server, so it covers every manager rather than only the
+  // rows already downloaded. The buckets below are worked out here instead, for two
+  // reasons: the endpoint has no filter for a suspended account, which is the bucket
+  // most worth having, and counting on the client is what lets each chip carry its
+  // own figure. The endpoint returns the whole list either way.
   useEffect(() => {
     let cancelled = false;
 
     async function run() {
       try {
         const [loadedManagers, loadedRestaurants] = await Promise.all([
-          listManagers({ search, status }),
+          listManagers({ search, status: "All" }),
           listRestaurants(),
         ]);
         if (!cancelled) {
@@ -104,15 +118,100 @@ function Managers() {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [search, status]);
+  }, [search]);
 
-  const refresh = useCallback(() => load(search, status), [load, search, status]);
+  // Trading is read once and separately. It decorates this page rather than driving
+  // it: a manager who cannot be found is a problem whether or not their restaurant's
+  // takings loaded.
+  useEffect(() => {
+    let cancelled = false;
+
+    async function run() {
+      try {
+        const loaded = await getPlatformPulse();
+        if (!cancelled) {
+          setPulse(loaded);
+          setPulseFailed(false);
+        }
+      } catch {
+        if (!cancelled) {
+          setPulseFailed(true);
+        }
+      }
+    }
+
+    void run();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const refresh = useCallback(() => load(search), [load, search]);
+
+  /**
+   * Open the manager this row is about.
+   *
+   * A convenience over the Manage button, not a replacement: the button is what makes
+   * the row reachable by keyboard and what opens a manager in a new tab on a middle
+   * click. This catches the other nine times out of ten.
+   *
+   * A click that landed on a control keeps that control meaning - the restaurant link
+   * in the middle of the row goes to the restaurant, not to the manager - and a click
+   * that ends a text selection is somebody copying an email address.
+   */
+  function open(event: React.MouseEvent<HTMLTableRowElement>, managerId: string) {
+    if ((event.target as HTMLElement).closest("a, button, input, select, label")) {
+      return;
+    }
+
+    if ((window.getSelection()?.toString() ?? "") !== "") {
+      return;
+    }
+
+    router.push(`/admin/managers/${managerId}`);
+  }
 
   const unassignedRestaurants = restaurants.filter(
     (restaurant) => restaurant.managerId === null,
   );
 
-  const isFiltered = search.trim() !== "" || status !== "All";
+  const live = new Map(
+    (pulse?.restaurants ?? []).map((row) => [row.id, row] as const),
+  );
+
+  const rows: ManagerRow[] = (managers ?? []).map((manager) => ({
+    manager,
+    today:
+      manager.restaurant === null ? undefined : live.get(manager.restaurant.id),
+  }));
+
+  const counts: Record<ManagerBucket, number> = {
+    All: rows.length,
+    Assigned: rows.filter((row) => inBucket(row, "Assigned")).length,
+    Unassigned: rows.filter((row) => inBucket(row, "Unassigned")).length,
+    Suspended: rows.filter((row) => inBucket(row, "Suspended")).length,
+  };
+
+  const filtered = rows.filter((row) => inBucket(row, bucket));
+
+  const sorted = [...filtered].sort((a, b) => {
+    if (sort === "busiest") {
+      return (
+        (b.today?.takingsToday ?? 0) - (a.today?.takingsToday ?? 0) ||
+        a.manager.fullName.localeCompare(b.manager.fullName)
+      );
+    }
+
+    if (sort === "newest") {
+      return (
+        timeOf(b.manager.createdAtUtc) - timeOf(a.manager.createdAtUtc) ||
+        a.manager.fullName.localeCompare(b.manager.fullName)
+      );
+    }
+
+    return a.manager.fullName.localeCompare(b.manager.fullName);
+  });
 
   return (
     <>
@@ -130,8 +229,8 @@ function Managers() {
 
       <PageBody>
         <Surface>
-          <div className="flex flex-col gap-3 border-b border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex flex-1 flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="flex flex-col gap-3 border-b border-border px-4 py-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="relative sm:max-w-xs sm:flex-1">
                 <Search
                   className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-subtle"
@@ -149,61 +248,83 @@ function Managers() {
               </div>
 
               <Select
-                id="manager-status"
-                className="sm:w-44"
-                value={status}
-                onChange={(next) => setStatus(next as ManagerFilter)}
-                aria-label="Filter by assignment"
+                id="manager-sort"
+                className="sm:w-48"
+                value={sort}
+                onChange={(next) => setSort(next as ManagerSort)}
+                aria-label="Sort managers"
                 options={[
-                  { value: "All", label: "All managers" },
-                  { value: "Assigned", label: "Assigned" },
-                  { value: "Unassigned", label: "Unassigned" },
+                  { value: "name", label: "By name" },
+                  { value: "busiest", label: "Busiest restaurant" },
+                  { value: "newest", label: "Recently added" },
                 ]}
               />
             </div>
 
-            <p className="text-sm text-muted">
-              {managers === null
-                ? "Loading…"
-                : `${managers.length} ${managers.length === 1 ? "manager" : "managers"}`}
-            </p>
+            {/* The same chips as the restaurants list, and for the same reason: how
+                many managers are unstaffed or locked out is the news, and a dropdown
+                hides three figures behind a click. It also gains a bucket the old
+                dropdown could not offer at all - a suspended manager cannot sign in,
+                and there was no way to ask which ones those were. */}
+            <div className="flex flex-wrap gap-1.5">
+              {MANAGER_BUCKETS.map((option) => (
+                <FilterChip
+                  key={option.value}
+                  active={bucket === option.value}
+                  count={counts[option.value]}
+                  tone={option.tone}
+                  onClick={() => setBucket(option.value)}
+                >
+                  {option.label}
+                </FilterChip>
+              ))}
+            </div>
+
+            {pulseFailed && (
+              <p className="flex items-center gap-2 text-xs text-muted">
+                <TriangleAlert
+                  className="size-3.5 shrink-0 text-warning"
+                  aria-hidden="true"
+                />
+                Today&rsquo;s trading could not be read, so the last two columns are
+                blank. Everything else on this page still works.
+              </p>
+            )}
           </div>
 
           {error !== null && <ErrorState message={error} onRetry={() => void refresh()} />}
 
           {managers === null ? (
-            <TableSkeleton rows={5} columns={4} />
-          ) : managers.length === 0 ? (
-            isFiltered ? (
-              <EmptyState
-                icon={<Search />}
-                title="No managers match"
-                description="Try a different search term or clear the filter."
-                action={
-                  <Button
-                    variant="secondary"
-                    onClick={() => {
-                      setSearch("");
-                      setStatus("All");
-                    }}
-                  >
-                    Clear filters
-                  </Button>
-                }
-              />
-            ) : (
-              <EmptyState
-                icon={<Users />}
-                title="No managers yet"
-                description="Create a manager, then assign them the restaurant they will run."
-                action={
-                  <CreateManagerDialog
-                    restaurants={unassignedRestaurants}
-                    onCreated={refresh}
-                  />
-                }
-              />
-            )
+            <TableSkeleton rows={5} columns={5} />
+          ) : managers.length === 0 && search.trim() === "" ? (
+            <EmptyState
+              icon={<Users />}
+              title="No managers yet"
+              description="Create a manager, then assign them the restaurant they will run."
+              action={
+                <CreateManagerDialog
+                  restaurants={unassignedRestaurants}
+                  onCreated={refresh}
+                />
+              }
+            />
+          ) : sorted.length === 0 ? (
+            <EmptyState
+              icon={<Search />}
+              title="No managers match"
+              description="Try a different search term, or a different filter."
+              action={
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    setSearch("");
+                    setBucket("All");
+                  }}
+                >
+                  Clear filters
+                </Button>
+              }
+            />
           ) : (
             <TableWrap>
               <Table>
@@ -212,33 +333,52 @@ function Managers() {
                     <Th>Manager</Th>
                     <Th>Restaurant</Th>
                     <Th>Status</Th>
-                    <Th className="text-right">Created</Th>
+                    <Th className="text-right">Their day</Th>
+                    <Th className="text-right">Last order</Th>
                     <Th>
                       <span className="sr-only">Actions</span>
                     </Th>
                   </tr>
                 </thead>
                 <tbody>
-                  {managers.map((manager) => (
-                    <Tr key={manager.id}>
+                  {sorted.map(({ manager, today }) => (
+                    <Tr
+                      key={manager.id}
+                      className="cursor-pointer"
+                      onClick={(event) => open(event, manager.id)}
+                    >
                       <Td>
                         <span className="font-medium text-text">{manager.fullName}</span>
                         <span className="block truncate text-2xs text-muted">
                           {manager.email}
                         </span>
                       </Td>
+
+                      {/* The restaurant is the link, and only the restaurant.
+
+                          The row is about a manager, and a manager has no page of
+                          their own - almost everything worth knowing about one is
+                          their restaurant, which does. Making the whole row jump to
+                          a different subject would be a surprise; making the name of
+                          that subject a link is just a link. */}
                       <Td className="text-muted">
                         {manager.restaurant === null ? (
-                          "—"
+                          <span className="text-subtle">—</span>
                         ) : (
                           <>
-                            <span className="text-text">{manager.restaurant.name}</span>
+                            <Link
+                              href={`/admin/restaurants/${manager.restaurant.id}`}
+                              className="rounded text-text hover:text-primary hover:underline"
+                            >
+                              {manager.restaurant.name}
+                            </Link>
                             <span className="block font-mono text-2xs text-subtle">
                               {manager.restaurant.slug}
                             </span>
                           </>
                         )}
                       </Td>
+
                       <Td>
                         {/* Suspension outranks assignment: a suspended account cannot
                             sign in, so saying only "Assigned" would be misleading. */}
@@ -256,15 +396,52 @@ function Managers() {
                           </Badge>
                         )}
                       </Td>
-                      <Td className="text-right whitespace-nowrap text-muted">
-                        {formatDate(manager.createdAtUtc)}
+
+                      {/* What their restaurant has done today.
+
+                          The column this replaces was the date the account was
+                          created, which is worth knowing once. Whether the room this
+                          person runs is taking money is worth knowing every day, and
+                          it is the only thing on this screen that says anything about
+                          how the job is going. */}
+                      <Td className="text-right whitespace-nowrap">
+                        {today === undefined || today.ordersToday === 0 ? (
+                          <span className="text-subtle">—</span>
+                        ) : (
+                          <div className="flex flex-col gap-0.5">
+                            <span className="tabular font-medium text-text">
+                              {money(today.takingsToday)}
+                            </span>
+                            <span className="tabular text-2xs text-muted">
+                              {today.ordersToday}{" "}
+                              {today.ordersToday === 1 ? "order" : "orders"}
+                              {today.openOrders > 0 && ` · ${today.openOrders} open`}
+                            </span>
+                          </div>
+                        )}
                       </Td>
+
+                      <Td className="text-right whitespace-nowrap text-muted">
+                        {today === undefined ? (
+                          <span className="text-subtle">—</span>
+                        ) : (
+                          <span
+                            title={`Account created ${formatDate(manager.createdAtUtc)}`}
+                          >
+                            {sinceLabel(today.lastOrderAtUtc, now)}
+                          </span>
+                        )}
+                      </Td>
+
                       <Td className="text-right">
-                        <ManagerActionsDialog
-                          manager={manager}
-                          restaurants={restaurants}
-                          onChanged={refresh}
-                        />
+                        <LinkButton
+                          href={`/admin/managers/${manager.id}`}
+                          variant="secondary"
+                          size="sm"
+                          icon={<Pencil />}
+                        >
+                          Manage
+                        </LinkButton>
                       </Td>
                     </Tr>
                   ))}
@@ -278,17 +455,51 @@ function Managers() {
   );
 }
 
-function formatDate(isoString: string): string {
-  const parsed = new Date(isoString);
+/* -------------------------------------------------------------------------- */
+/* Filtering                                                                  */
+/* -------------------------------------------------------------------------- */
 
-  return Number.isNaN(parsed.getTime())
-    ? "—"
-    : parsed.toLocaleDateString(undefined, {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-      });
+type ManagerBucket = "All" | "Assigned" | "Unassigned" | "Suspended";
+type ManagerSort = "name" | "busiest" | "newest";
+
+/** A manager and, when the pulse answered, what their restaurant has done today. */
+interface ManagerRow {
+  manager: Manager;
+  today: PlatformPulseRestaurant | undefined;
 }
+
+const MANAGER_BUCKETS: {
+  value: ManagerBucket;
+  label: string;
+  tone: "neutral" | "warning" | "danger";
+}[] = [
+  { value: "All", label: "All", tone: "neutral" },
+  { value: "Assigned", label: "Running a restaurant", tone: "neutral" },
+  { value: "Unassigned", label: "Unassigned", tone: "warning" },
+  { value: "Suspended", label: "Suspended", tone: "danger" },
+];
+
+/**
+ * Whether a manager belongs in a bucket.
+ *
+ * Suspended overlaps the other two on purpose. An account that cannot sign in is
+ * still assigned to whatever restaurant it holds - that is exactly the situation
+ * worth finding - so it appears under both rather than being quietly moved out of
+ * the count an admin was reading.
+ */
+function inBucket(row: ManagerRow, bucket: ManagerBucket): boolean {
+  switch (bucket) {
+    case "Assigned":
+      return row.manager.isAssigned;
+    case "Unassigned":
+      return !row.manager.isAssigned;
+    case "Suspended":
+      return !row.manager.isActive;
+    default:
+      return true;
+  }
+}
+
 
 /* -------------------------------------------------------------------------- */
 /* Create                                                                     */
@@ -432,305 +643,6 @@ function CreateManagerDialog({
             </Button>
           </DialogFooter>
         </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-/* -------------------------------------------------------------------------- */
-/* Detail and actions                                                         */
-/* -------------------------------------------------------------------------- */
-
-function ManagerActionsDialog({
-  manager,
-  restaurants,
-  onChanged,
-}: {
-  manager: Manager;
-  restaurants: RestaurantSummary[];
-  onChanged: () => Promise<void>;
-}) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [fullName, setFullName] = useState(manager.fullName);
-  const [email, setEmail] = useState(manager.email);
-  const [restaurantId, setRestaurantId] = useState(manager.restaurant?.id ?? "");
-  const [newPassword, setNewPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
-  const [busy, setBusy] = useState<
-    "none" | "save" | "assign" | "unassign" | "password" | "status"
-  >("none");
-
-  function reset() {
-    setFullName(manager.fullName);
-    setEmail(manager.email);
-    setRestaurantId(manager.restaurant?.id ?? "");
-    setNewPassword("");
-    setError(null);
-    setNotice(null);
-  }
-
-  async function run(
-    action: "save" | "assign" | "unassign" | "password" | "status",
-    work: () => Promise<void>,
-    options?: { keepOpen?: boolean; notice?: string },
-  ) {
-    setError(null);
-    setNotice(null);
-    setBusy(action);
-
-    try {
-      await work();
-      await onChanged();
-
-      // A password reset and a suspension keep the dialog open: there is nothing to
-      // navigate to afterwards, and closing it would leave no confirmation that
-      // anything happened.
-      if (options?.keepOpen === true) {
-        setNotice(options.notice ?? null);
-      } else {
-        setIsOpen(false);
-      }
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "The action failed.");
-    } finally {
-      setBusy("none");
-    }
-  }
-
-  // A manager can be moved to any restaurant that is free, plus the one they
-  // already hold. Occupied restaurants are excluded rather than offered and then
-  // rejected by the server.
-  const selectable = restaurants.filter(
-    (restaurant) =>
-      restaurant.managerId === null || restaurant.managerId === manager.id,
-  );
-
-  const assignmentChanged = restaurantId !== (manager.restaurant?.id ?? "");
-
-  return (
-    <Dialog
-      open={isOpen}
-      onOpenChange={(next) => {
-        setIsOpen(next);
-        if (!next) reset();
-      }}
-    >
-      <DialogTrigger asChild>
-        <Button variant="secondary" size="sm" icon={<Pencil />}>
-          Manage
-        </Button>
-      </DialogTrigger>
-
-      <DialogContent title={manager.fullName} description={manager.email}>
-        <div className="flex flex-col gap-5 px-4 py-4">
-          {error !== null && <FormError message={error} />}
-
-          {notice !== null && (
-            <p
-              role="status"
-              className="rounded-md border border-success-border bg-success-soft px-3 py-2 text-sm text-success"
-            >
-              {notice}
-            </p>
-          )}
-
-          <section className="flex flex-col gap-3">
-            <div className="flex items-center justify-between gap-3">
-              <h3 className="text-sm font-semibold text-text">Current assignment</h3>
-              {manager.isAssigned ? (
-                <Badge tone="success" dot>
-                  Assigned
-                </Badge>
-              ) : (
-                <Badge tone="warning" dot>
-                  Unassigned
-                </Badge>
-              )}
-            </div>
-
-            <p className="text-sm text-muted">
-              {manager.restaurant === null
-                ? "This manager does not run a restaurant yet."
-                : `Currently running ${manager.restaurant.name}.`}
-            </p>
-
-            <Field
-              htmlFor={`assign-${manager.id}`}
-              label="Restaurant"
-              hint="Moving a manager releases their previous restaurant in the same step."
-            >
-              <Select
-                id={`assign-${manager.id}`}
-                value={restaurantId}
-                onChange={setRestaurantId}
-                aria-describedby={describedBy(`assign-${manager.id}`, { hasHint: true })}
-                options={[
-                  { value: "", label: "No restaurant" },
-                  ...selectable.map((restaurant) => ({
-                    value: restaurant.id,
-                    label: restaurant.name,
-                  })),
-                ]}
-              />
-            </Field>
-
-            <div className="flex flex-wrap gap-2">
-              <Button
-                size="sm"
-                disabled={!assignmentChanged || restaurantId === "" || busy !== "none"}
-                onClick={() =>
-                  void run("assign", () =>
-                    assignManagerToRestaurant(manager.id, restaurantId).then(() => undefined),
-                  )
-                }
-              >
-                {busy === "assign"
-                  ? "Saving…"
-                  : manager.isAssigned
-                    ? "Reassign"
-                    : "Assign"}
-              </Button>
-
-              {manager.isAssigned && (
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  disabled={busy !== "none"}
-                  onClick={() =>
-                    void run("unassign", () =>
-                      unassignManager(manager.id).then(() => undefined),
-                    )
-                  }
-                >
-                  {busy === "unassign" ? "Removing…" : "Unassign"}
-                </Button>
-              )}
-            </div>
-          </section>
-
-          <section className="flex flex-col gap-3 border-t border-border pt-4">
-            <h3 className="text-sm font-semibold text-text">Account details</h3>
-
-            <Field htmlFor={`name-${manager.id}`} label="Full name" required>
-              <Input
-                id={`name-${manager.id}`}
-                required
-                minLength={2}
-                value={fullName}
-                onChange={(event) => setFullName(event.target.value)}
-              />
-            </Field>
-
-            <Field htmlFor={`email-${manager.id}`} label="Email" required>
-              <Input
-                id={`email-${manager.id}`}
-                type="email"
-                required
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-              />
-            </Field>
-
-            <Button
-              size="sm"
-              variant="secondary"
-              className="self-start"
-              disabled={
-                busy !== "none" ||
-                (fullName === manager.fullName && email === manager.email)
-              }
-              onClick={() =>
-                void run("save", () =>
-                  updateManager(manager.id, { fullName, email }).then(() => undefined),
-                )
-              }
-            >
-              {busy === "save" ? "Saving…" : "Save changes"}
-            </Button>
-          </section>
-
-          <section className="flex flex-col gap-3 border-t border-border pt-4">
-            <h3 className="text-sm font-semibold text-text">Password</h3>
-            <p className="text-xs text-muted">
-              There is no self-service reset. Setting one here is the only way back in
-              for a manager who has lost theirs.
-            </p>
-
-            <Field htmlFor={`password-${manager.id}`} label="New password">
-              <PasswordInput
-                id={`password-${manager.id}`}
-                autoComplete="new-password"
-                value={newPassword}
-                onChange={(event) => setNewPassword(event.target.value)}
-              />
-            </Field>
-
-            <Button
-              size="sm"
-              variant="secondary"
-              className="self-start"
-              disabled={busy !== "none" || newPassword.trim() === ""}
-              onClick={() =>
-                void run(
-                  "password",
-                  () =>
-                    resetManagerPassword(manager.id, {
-                      password: newPassword,
-                    }).then(() => {
-                      setNewPassword("");
-                    }),
-                  { keepOpen: true, notice: "Password replaced." },
-                )
-              }
-            >
-              {busy === "password" ? "Saving…" : "Replace password"}
-            </Button>
-          </section>
-
-          <section className="flex flex-col gap-3 border-t border-border pt-4">
-            <h3 className="text-sm font-semibold text-text">Account access</h3>
-            <p className="text-xs text-muted">
-              {manager.isActive
-                ? "Suspending revokes their sessions immediately. A manager who still runs a restaurant has to be unassigned first."
-                : "This account is suspended and cannot sign in."}
-            </p>
-
-            <Button
-              size="sm"
-              variant={manager.isActive ? "danger" : "secondary"}
-              className="self-start"
-              disabled={busy !== "none"}
-              onClick={() =>
-                void run(
-                  "status",
-                  () =>
-                    setManagerActive(manager.id, {
-                      isActive: !manager.isActive,
-                    }).then(() => undefined),
-                  {
-                    keepOpen: true,
-                    notice: manager.isActive
-                      ? "Account suspended."
-                      : "Account restored.",
-                  },
-                )
-              }
-            >
-              {busy === "status"
-                ? "Saving…"
-                : manager.isActive
-                  ? "Suspend account"
-                  : "Restore account"}
-            </Button>
-          </section>
-        </div>
-
-        <DialogFooter>
-          <DialogClose asChild>
-            <Button variant="secondary">Close</Button>
-          </DialogClose>
-        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

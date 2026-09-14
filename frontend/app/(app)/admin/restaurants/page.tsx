@@ -1,12 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { forwardRef, useCallback, useEffect, useState } from "react";
 import {
   Ban,
   Pencil,
   Plus,
   RotateCcw,
+  Search,
   Store,
+  TriangleAlert,
   UserMinus,
   UserPlus,
   Users,
@@ -32,8 +36,14 @@ import {
   TableSkeleton,
 } from "@/components/ui/states";
 import { Table, TableWrap, Td, Th, Tr } from "@/components/ui/table";
+import { Tooltip } from "@/components/ui/tooltip";
 import { PageBody, PageHeader } from "@/components/layout/page-header";
+import { cn } from "@/lib/utils/cn";
 import { RequireAuth } from "@/features/auth/require-auth";
+import { getPlatformPulse } from "@/features/platform/api";
+import { FilterChip } from "@/features/platform/filter-chip";
+import { formatDate, money } from "@/features/platform/format";
+import { sinceLabel, timeOf, useNow } from "@/features/platform/since";
 import {
   assignManagerToRestaurant,
   createManager,
@@ -48,6 +58,7 @@ import {
   updateRestaurant,
 } from "@/features/restaurants/api";
 import type { Manager } from "@/types/manager";
+import type { PlatformPulse, PlatformPulseRestaurant } from "@/types/platform";
 import type { RestaurantSummary } from "@/types/restaurant";
 import type { StaffMember } from "@/types/staff";
 
@@ -69,7 +80,13 @@ export default function AdminRestaurantsPage() {
 
 function AdminRestaurants() {
   const [restaurants, setRestaurants] = useState<RestaurantSummary[] | null>(null);
+  const [pulse, setPulse] = useState<PlatformPulse | null>(null);
+  const [pulseFailed, setPulseFailed] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [status, setStatus] = useState<StatusFilter>("All");
+  const [sort, setSort] = useState<SortKey>("name");
+  const now = useNow();
 
   const refresh = useCallback(async () => {
     try {
@@ -80,6 +97,17 @@ function AdminRestaurants() {
       setError(
         caught instanceof Error ? caught.message : "Unable to load restaurants.",
       );
+    }
+
+    // Trading is read separately and allowed to fail separately. It is the one call
+    // on this page that touches every order and payment on the platform, and if it
+    // ever gets slow the list still has to load: assigning a manager to a restaurant
+    // that cannot trade must not depend on a figure about restaurants that can.
+    try {
+      setPulse(await getPlatformPulse());
+      setPulseFailed(false);
+    } catch {
+      setPulseFailed(true);
     }
   }, []);
 
@@ -102,15 +130,90 @@ function AdminRestaurants() {
       }
     }
 
+    async function loadPulse() {
+      try {
+        const loaded = await getPlatformPulse();
+        if (!cancelled) {
+          setPulse(loaded);
+          setPulseFailed(false);
+        }
+      } catch {
+        if (!cancelled) {
+          setPulseFailed(true);
+        }
+      }
+    }
+
     void load();
+    void loadPulse();
 
     return () => {
       cancelled = true;
     };
   }, []);
 
-  const unassignedCount =
-    restaurants?.filter((restaurant) => restaurant.managerEmail === null).length ?? 0;
+  // One row is a restaurant's configuration and its day, joined here rather than on
+  // the server. They come from two endpoints that answer two different questions and
+  // are allowed to fail apart, so the join has to survive either half being missing.
+  const live = new Map(
+    (pulse?.restaurants ?? []).map((row) => [row.id, row] as const),
+  );
+
+  const rows: Row[] = (restaurants ?? []).map((restaurant) => ({
+    restaurant,
+    today: live.get(restaurant.id),
+  }));
+
+  // Searched first, then counted, then filtered. The counts on the chips describe
+  // what the search has left, so narrowing the search narrows the numbers with it —
+  // a chip reading "4 suspended" while the search shows two rows is a chip lying.
+  const term = search.trim().toLowerCase();
+  const searched =
+    term === ""
+      ? rows
+      : rows.filter((row) =>
+          [
+            row.restaurant.name,
+            row.restaurant.slug,
+            row.restaurant.city ?? "",
+            row.restaurant.managerName ?? "",
+            row.restaurant.managerEmail ?? "",
+          ]
+            .join(" ")
+            .toLowerCase()
+            .includes(term),
+        );
+
+  const counts: Record<StatusFilter, number> = {
+    All: searched.length,
+    Trading: searched.filter((row) => matches(row, "Trading")).length,
+    Quiet: searched.filter((row) => matches(row, "Quiet")).length,
+    Unassigned: searched.filter((row) => matches(row, "Unassigned")).length,
+    Suspended: searched.filter((row) => matches(row, "Suspended")).length,
+  };
+
+  const filtered = searched.filter((row) => matches(row, status));
+
+  const sorted = [...filtered].sort((a, b) => {
+    if (sort === "busiest") {
+      return (
+        (b.today?.takingsToday ?? 0) - (a.today?.takingsToday ?? 0) ||
+        (b.today?.ordersToday ?? 0) - (a.today?.ordersToday ?? 0) ||
+        a.restaurant.name.localeCompare(b.restaurant.name)
+      );
+    }
+
+    if (sort === "quietest") {
+      // Never traded sorts first, because timeOf returns 0 for a missing date and
+      // a restaurant nobody has ever ordered from is the longest silence there is.
+      return (
+        timeOf(a.today?.lastOrderAtUtc ?? "") - timeOf(b.today?.lastOrderAtUtc ?? "") ||
+        a.restaurant.name.localeCompare(b.restaurant.name)
+      );
+    }
+
+    return a.restaurant.name.localeCompare(b.restaurant.name);
+  });
 
   return (
     <>
@@ -132,20 +235,69 @@ function AdminRestaurants() {
           </Surface>
         ) : (
           <Surface>
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-2.5">
-              <p className="text-sm text-muted">
-                {restaurants === null
-                  ? "Loading…"
-                  : `${restaurants.length} ${restaurants.length === 1 ? "restaurant" : "restaurants"}`}
-                {unassignedCount > 0 && (
-                  <>
-                    {" · "}
-                    <span className="text-warning">
-                      {unassignedCount} awaiting a manager
-                    </span>
-                  </>
-                )}
-              </p>
+            <div className="flex flex-col gap-3 border-b border-border px-4 py-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="relative sm:max-w-xs sm:flex-1">
+                  <Search
+                    className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-subtle"
+                    aria-hidden="true"
+                  />
+                  <Input
+                    id="restaurant-search"
+                    type="search"
+                    placeholder="Search name, slug, city or manager"
+                    className="pl-8"
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                    aria-label="Search restaurants"
+                  />
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Select
+                    id="restaurant-sort"
+                    className="sm:w-44"
+                    value={sort}
+                    onChange={(next) => setSort(next as SortKey)}
+                    aria-label="Sort restaurants"
+                    options={[
+                      { value: "name", label: "By name" },
+                      { value: "busiest", label: "Busiest today" },
+                      { value: "quietest", label: "Quiet longest" },
+                    ]}
+                  />
+                </div>
+              </div>
+
+              {/* Chips rather than a second dropdown, unlike the managers list next
+                  door. The difference is the numbers: on this page how many
+                  restaurants are trading, silent, unstaffed or suspended is the news
+                  an operator came for, so the control that filters by it is also the
+                  summary of it. A dropdown would hide four figures behind a click. */}
+              <div className="flex flex-wrap gap-1.5">
+                {FILTERS.map((filter) => (
+                  <FilterChip
+                    key={filter.value}
+                    active={status === filter.value}
+                    count={counts[filter.value]}
+                    tone={filter.tone}
+                    onClick={() => setStatus(filter.value)}
+                  >
+                    {filter.label}
+                  </FilterChip>
+                ))}
+              </div>
+
+              {pulseFailed && (
+                <p className="flex items-center gap-2 text-xs text-muted">
+                  <TriangleAlert
+                    className="size-3.5 shrink-0 text-warning"
+                    aria-hidden="true"
+                  />
+                  Today&rsquo;s trading could not be read, so the last three columns
+                  are blank. Everything else on this page still works.
+                </p>
+              )}
             </div>
 
             {error !== null && (
@@ -153,7 +305,7 @@ function AdminRestaurants() {
             )}
 
             {restaurants === null ? (
-              <TableSkeleton rows={4} columns={4} />
+              <TableSkeleton rows={4} columns={6} />
             ) : restaurants.length === 0 ? (
               <EmptyState
                 icon={<Store />}
@@ -165,8 +317,25 @@ function AdminRestaurants() {
                   </LinkButton>
                 }
               />
+            ) : sorted.length === 0 ? (
+              <EmptyState
+                icon={<Search />}
+                title="No restaurants match"
+                description="Try a different search term, or a different filter."
+                action={
+                  <Button
+                    variant="secondary"
+                    onClick={() => {
+                      setSearch("");
+                      setStatus("All");
+                    }}
+                  >
+                    Clear filters
+                  </Button>
+                }
+              />
             ) : (
-              <RestaurantTable restaurants={restaurants} onChanged={refresh} />
+              <RestaurantTable rows={sorted} now={now} onChanged={refresh} />
             )}
           </Surface>
         )}
@@ -176,36 +345,135 @@ function AdminRestaurants() {
 }
 
 /* -------------------------------------------------------------------------- */
+/* Filtering                                                                  */
+/* -------------------------------------------------------------------------- */
+
+type StatusFilter = "All" | "Trading" | "Quiet" | "Unassigned" | "Suspended";
+type SortKey = "name" | "busiest" | "quietest";
+
+/** A restaurant and, when the pulse answered, what it has done today. */
+interface Row {
+  restaurant: RestaurantSummary;
+  today: PlatformPulseRestaurant | undefined;
+}
+
+const FILTERS: {
+  value: StatusFilter;
+  label: string;
+  tone: "neutral" | "warning" | "danger";
+}[] = [
+  { value: "All", label: "All", tone: "neutral" },
+  { value: "Trading", label: "Trading today", tone: "neutral" },
+  { value: "Quiet", label: "Quiet today", tone: "neutral" },
+  { value: "Unassigned", label: "Awaiting a manager", tone: "warning" },
+  { value: "Suspended", label: "Suspended", tone: "danger" },
+];
+
+/**
+ * Whether a row belongs in a bucket.
+ *
+ * The buckets overlap on purpose and are not a status field. A suspended restaurant
+ * with no manager is in two of them, because an admin looking for either would
+ * expect to find it, and inventing a single winning state would hide it from one of
+ * the two searches that were going to be run.
+ */
+function matches(row: Row, filter: StatusFilter): boolean {
+  const { restaurant, today } = row;
+
+  switch (filter) {
+    case "Trading":
+      return today !== undefined && (today.ordersToday > 0 || today.openOrders > 0);
+    case "Quiet":
+      return (
+        restaurant.isActive &&
+        restaurant.managerId !== null &&
+        today !== undefined &&
+        today.ordersToday === 0 &&
+        today.openOrders === 0
+      );
+    case "Unassigned":
+      return restaurant.managerId === null;
+    case "Suspended":
+      return !restaurant.isActive;
+    default:
+      return true;
+  }
+}
+
+/* -------------------------------------------------------------------------- */
 /* Table                                                                      */
 /* -------------------------------------------------------------------------- */
 
 function RestaurantTable({
-  restaurants,
+  rows,
+  now,
   onChanged,
 }: {
-  restaurants: RestaurantSummary[];
+  rows: Row[];
+  now: number | null;
   onChanged: () => Promise<void>;
 }) {
+  const router = useRouter();
+
+  /**
+   * Open the restaurant this row is about.
+   *
+   * A convenience on top of the link in the name cell, not a replacement for it. The
+   * link is what makes the row reachable by keyboard, and what lets a middle click
+   * open a restaurant in a new tab while the list stays where it is; neither is
+   * something a click handler can offer. This only catches the other nine times out
+   * of ten, when somebody clicks the row because the whole row is what they see.
+   *
+   * Two things it deliberately refuses. A click that landed on a control keeps that
+   * control's meaning - suspending a restaurant should not also navigate away from
+   * the confirmation. And a click that ends a text selection is somebody copying a
+   * slug, not somebody asking to leave the page.
+   */
+  function open(event: React.MouseEvent<HTMLTableRowElement>, id: string) {
+    if ((event.target as HTMLElement).closest("a, button, input, select, label")) {
+      return;
+    }
+
+    if ((window.getSelection()?.toString() ?? "") !== "") {
+      return;
+    }
+
+    router.push(`/admin/restaurants/${id}`);
+  }
+
   return (
     <TableWrap>
       <Table>
         <thead>
           <tr>
             <Th>Restaurant</Th>
-            <Th>Location</Th>
             <Th>Manager</Th>
-            <Th className="text-right">Created</Th>
+            <Th className="text-right">Today</Th>
+            <Th className="text-right">Now</Th>
+            <Th className="text-right">Last order</Th>
             <Th>
               <span className="sr-only">Actions</span>
             </Th>
           </tr>
         </thead>
         <tbody>
-          {restaurants.map((restaurant) => (
-            <Tr key={restaurant.id}>
+          {rows.map(({ restaurant, today }) => (
+            <Tr
+              key={restaurant.id}
+              className="cursor-pointer"
+              onClick={(event) => open(event, restaurant.id)}
+            >
               <Td>
                 <div className="flex items-center gap-2">
-                  <span className="font-medium text-text">{restaurant.name}</span>
+                  {/* The name is the way in. Everything this row summarises has a
+                      fuller answer one click away, and a table of restaurants where
+                      nothing is clickable makes a reader hunt for the verb. */}
+                  <Link
+                    href={`/admin/restaurants/${restaurant.id}`}
+                    className="rounded font-medium text-text hover:text-primary hover:underline"
+                  >
+                    {restaurant.name}
+                  </Link>
                   {/* Against the name rather than in the manager column: a suspended
                       restaurant is not trading at all, which outranks who runs it. */}
                   {!restaurant.isActive && (
@@ -214,11 +482,14 @@ function RestaurantTable({
                     </Badge>
                   )}
                 </div>
-                <span className="block font-mono text-2xs text-subtle">
-                  {restaurant.slug}
+                {/* The slug and the city on one line. The slug is what appears in a
+                    guest's URL, the city is how a person says which restaurant they
+                    mean, and neither deserves a column of its own. */}
+                <span className="block text-2xs text-subtle">
+                  <span className="font-mono">{restaurant.slug}</span>
+                  {restaurant.city !== null && ` · ${restaurant.city}`}
                 </span>
               </Td>
-              <Td className="text-muted">{restaurant.city ?? "—"}</Td>
               <Td>
                 {restaurant.managerId === null ? (
                   <Badge tone="warning" dot>
@@ -233,11 +504,66 @@ function RestaurantTable({
                   </div>
                 )}
               </Td>
-              <Td className="text-right whitespace-nowrap text-muted">
-                {formatDate(restaurant.createdAtUtc)}
+
+              {/* What it took today, and what is running right now.
+
+                  This column is the whole reason the page changed. It used to end on
+                  the date the restaurant was created, which answers a question
+                  nobody asks twice; whether a restaurant is trading is the question
+                  an operator has every single day, and this was the one screen
+                  listing every restaurant that could not answer it. */}
+              <Td className="text-right whitespace-nowrap">
+                {today === undefined ? (
+                  <span className="text-subtle">—</span>
+                ) : today.ordersToday === 0 ? (
+                  <span className="text-subtle">—</span>
+                ) : (
+                  <div className="flex flex-col gap-0.5">
+                    <span className="tabular font-medium text-text">
+                      {money(today.takingsToday)}
+                    </span>
+                    <span className="tabular text-2xs text-muted">
+                      {today.ordersToday}{" "}
+                      {today.ordersToday === 1 ? "order" : "orders"}
+                    </span>
+                  </div>
+                )}
               </Td>
+
+              <Td className="text-right whitespace-nowrap">
+                {today === undefined ||
+                (today.openOrders === 0 && today.platesAtPass === 0) ? (
+                  <span className="text-subtle">—</span>
+                ) : (
+                  <div className="flex flex-col gap-0.5">
+                    <span className="tabular text-text">
+                      {today.openOrders} open
+                    </span>
+                    {today.platesAtPass > 0 && (
+                      <span className="tabular text-2xs text-warning">
+                        {today.platesAtPass} at the pass
+                      </span>
+                    )}
+                  </div>
+                )}
+              </Td>
+
+              <Td className="text-right whitespace-nowrap text-muted">
+                {today === undefined ? (
+                  <span className="text-subtle">—</span>
+                ) : (
+                  <span title={`Created ${formatDate(restaurant.createdAtUtc)}`}>
+                    {sinceLabel(today.lastOrderAtUtc, now)}
+                  </span>
+                )}
+              </Td>
+
+              {/* Icon only, with a tooltip and a label for anything that is not a
+                  pointer. Four buttons carrying their own words pushed the table
+                  past the width of the window the moment the trading columns
+                  arrived, and the words were the part that could be given back. */}
               <Td className="text-right">
-                <div className="flex flex-wrap items-center justify-end gap-1.5">
+                <div className="flex items-center justify-end gap-1">
                   {restaurant.managerId === null ? (
                     <AssignManagerDialog
                       restaurant={restaurant}
@@ -250,10 +576,7 @@ function RestaurantTable({
                     />
                   )}
                   <RestaurantStaffDialog restaurant={restaurant} />
-                  <EditRestaurantDialog
-                    restaurant={restaurant}
-                    onSaved={onChanged}
-                  />
+                  <EditRestaurantDialog restaurant={restaurant} onSaved={onChanged} />
                   <RestaurantStatusButton
                     restaurant={restaurant}
                     onChanged={onChanged}
@@ -268,17 +591,56 @@ function RestaurantTable({
   );
 }
 
-function formatDate(isoString: string): string {
-  const parsed = new Date(isoString);
+/**
+ * One icon button in a row of them.
+ *
+ * The words came off these four buttons when the trading columns went on. What the
+ * words were doing is still done: the tooltip says it to a pointer, the aria-label
+ * says it to everything else, and the label is the long form - "Suspend JanakHotel",
+ * not "Suspend" - because a screen reader moving through a table of forty rows has
+ * no column header to tell it which restaurant this button belongs to.
+ *
+ * Forwarded, because Radix passes the trigger props through asChild and drops them
+ * on the floor if the child cannot take a ref.
+ */
+const RowAction = forwardRef<
+  HTMLButtonElement,
+  {
+    label: string;
+    tip: string;
+    tone?: "neutral" | "danger";
+    children: React.ReactNode;
+  } & React.ButtonHTMLAttributes<HTMLButtonElement>
+>(function RowAction(
+  { label, tip, tone = "neutral", className, children, ...rest },
+  ref,
+) {
+  return (
+    <Tooltip content={tip} side="top">
+      <button
+        ref={ref}
+        type="button"
+        aria-label={label}
+        {...rest}
+        // Merged rather than replaced: asChild hands the trigger its own classes
+        // through this prop, and overwriting them takes the open state with it.
+        className={cn(
+          "inline-flex size-9 items-center justify-center rounded-md border border-border",
+          "text-muted transition-colors [&_svg]:size-4",
+          "focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+          tone === "danger"
+            ? "hover:border-danger-border hover:bg-danger-soft hover:text-danger"
+            : "hover:bg-surface-3 hover:text-text",
+          className,
+        )}
+      >
+        {children}
+      </button>
+    </Tooltip>
+  );
+});
 
-  return Number.isNaN(parsed.getTime())
-    ? "—"
-    : parsed.toLocaleDateString(undefined, {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-      });
-}
+
 /* -------------------------------------------------------------------------- */
 /* Assign manager                                                             */
 /* -------------------------------------------------------------------------- */
@@ -382,9 +744,9 @@ function AssignManagerDialog({
       }}
     >
       <DialogTrigger asChild>
-        <Button variant="secondary" size="sm" icon={<UserPlus />}>
-          Assign
-        </Button>
+        <RowAction label={`Assign a manager to ${restaurant.name}`} tip="Assign a manager">
+          <UserPlus />
+        </RowAction>
       </DialogTrigger>
 
       <DialogContent
@@ -618,9 +980,9 @@ function EditRestaurantDialog({
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
-        <Button variant="secondary" size="sm" icon={<Pencil />}>
-          Edit
-        </Button>
+        <RowAction label={`Edit ${restaurant.name}`} tip="Edit">
+          <Pencil />
+        </RowAction>
       </DialogTrigger>
 
       <DialogContent
@@ -777,13 +1139,13 @@ function RestaurantStatusButton({
       }}
     >
       <DialogTrigger asChild>
-        <Button
-          variant="secondary"
-          size="sm"
-          icon={suspending ? <Ban /> : <RotateCcw />}
+        <RowAction
+          label={`${suspending ? "Suspend" : "Restore"} ${restaurant.name}`}
+          tip={suspending ? "Suspend" : "Restore"}
+          tone={suspending ? "danger" : "neutral"}
         >
-          {suspending ? "Suspend" : "Restore"}
-        </Button>
+          {suspending ? <Ban /> : <RotateCcw />}
+        </RowAction>
       </DialogTrigger>
 
       <DialogContent
@@ -885,9 +1247,9 @@ function RestaurantStaffDialog({ restaurant }: { restaurant: RestaurantSummary }
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
-        <Button variant="secondary" size="sm" icon={<Users />}>
-          Staff
-        </Button>
+        <RowAction label={`Staff at ${restaurant.name}`} tip="Staff">
+          <Users />
+        </RowAction>
       </DialogTrigger>
 
       <DialogContent
@@ -981,9 +1343,12 @@ function UnassignManagerButton({
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
-        <Button variant="secondary" size="sm" icon={<UserMinus />}>
-          Unassign
-        </Button>
+        <RowAction
+          label={`Remove ${restaurant.managerName} from ${restaurant.name}`}
+          tip="Remove the manager"
+        >
+          <UserMinus />
+        </RowAction>
       </DialogTrigger>
 
       <DialogContent
