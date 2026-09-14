@@ -113,11 +113,6 @@ function PlatformRestaurant() {
       <>
         <PageHeader
           title="Restaurant"
-          crumbs={[
-            { label: "Platform", href: "/dashboard" },
-            { label: "Restaurants", href: "/admin/restaurants" },
-            { label: "Restaurant" },
-          ]}
         />
         <PageBody>
           <Surface>
@@ -136,10 +131,6 @@ function PlatformRestaurant() {
       <>
         <PageHeader
           title="Loading…"
-          crumbs={[
-            { label: "Platform", href: "/dashboard" },
-            { label: "Restaurants", href: "/admin/restaurants" },
-          ]}
         />
         <PageBody>
           <Surface className="flex flex-col gap-3 p-4">
@@ -165,11 +156,7 @@ function PlatformRestaurant() {
             .filter((part) => part !== null && part !== "")
             .join(", ") || "No address on file."
         }
-        crumbs={[
-          { label: "Platform", href: "/dashboard" },
-          { label: "Restaurants", href: "/admin/restaurants" },
-          { label: detail.name },
-        ]}
+        crumb={detail.name}
         actions={
           <LinkButton href="/admin/restaurants" variant="secondary">
             Back to restaurants

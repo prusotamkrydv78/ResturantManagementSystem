@@ -214,11 +214,7 @@ function BillingOrderDetail() {
       <PageHeader
         title={`Table ${order.tableName}`}
         description={`Order #${order.orderNumber} · opened ${formatTime(order.createdAtUtc)} by ${order.placedByName}`}
-        crumbs={[
-          { label: "Workspace", href: "/dashboard" },
-          { label: "Billing", href: "/billing" },
-          { label: `#${order.orderNumber}` },
-        ]}
+        crumb={`#${order.orderNumber}`}
         actions={
           <div className="flex items-center gap-2">
             <Badge

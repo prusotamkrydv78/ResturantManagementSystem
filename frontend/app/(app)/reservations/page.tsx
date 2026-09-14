@@ -139,10 +139,6 @@ function Reservations() {
       <PageHeader
         title="Reservations"
         description="Who is coming and when. Seating a party records that they arrived; the order a waiter opens is what puts the table in use."
-        crumbs={[
-          { label: "Workspace", href: "/dashboard" },
-          { label: "Reservations" },
-        ]}
         actions={<ReservationDialog onSaved={refresh} />}
       />
 

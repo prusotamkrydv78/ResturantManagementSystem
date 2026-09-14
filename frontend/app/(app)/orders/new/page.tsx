@@ -277,7 +277,6 @@ function NewOrder() {
       <PageHeader
         title="New order"
         description="Pick a table, add what the guests asked for, then place the order."
-        crumbs={[{ label: "Workspace", href: "/dashboard" }, { label: "New order" }]}
       />
 
       <PageBody>
@@ -572,7 +571,6 @@ function OrderPlaced({ order, onNext }: { order: Order; onNext: () => void }) {
       <PageHeader
         title={`Order #${order.orderNumber} placed`}
         description={`Table ${order.tableName} · ${order.itemCount} ${order.itemCount === 1 ? "item" : "items"}`}
-        crumbs={[{ label: "Workspace", href: "/dashboard" }, { label: "New order" }]}
         actions={
           <div className="flex flex-wrap gap-2">
             <LinkButton href={`/orders/${order.id}`} icon={<Send />}>

@@ -221,7 +221,6 @@ function AdminRestaurants() {
       <PageHeader
         title="Restaurants"
         description="Create restaurants and assign the manager who will run each one."
-        crumbs={[{ label: "Platform", href: "/dashboard" }, { label: "Restaurants" }]}
         actions={
           <LinkButton href="/admin/restaurants/new" icon={<Plus />}>
             New restaurant

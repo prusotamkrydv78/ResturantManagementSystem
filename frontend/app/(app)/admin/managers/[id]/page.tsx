@@ -99,7 +99,7 @@ function ManagerEdit() {
   if (loadError !== null) {
     return (
       <>
-        <PageHeader title="Manager" crumbs={CRUMBS} />
+        <PageHeader title="Manager" />
         <PageBody>
           <Surface>
             <ErrorState
@@ -115,7 +115,7 @@ function ManagerEdit() {
   if (manager === null) {
     return (
       <>
-        <PageHeader title="Loading…" crumbs={CRUMBS} />
+        <PageHeader title="Loading…" />
         <PageBody>
           <Surface className="flex flex-col gap-3 p-4">
             <Skeleton className="h-4 w-40" />
@@ -132,7 +132,7 @@ function ManagerEdit() {
       <PageHeader
         title={manager.fullName}
         description={manager.email}
-        crumbs={[...CRUMBS, { label: manager.fullName }]}
+        crumb={manager.fullName}
         actions={
           <LinkButton href="/admin/managers" variant="secondary">
             Back to managers
@@ -200,11 +200,6 @@ function ManagerEdit() {
     </>
   );
 }
-
-const CRUMBS = [
-  { label: "Platform", href: "/dashboard" },
-  { label: "Managers", href: "/admin/managers" },
-];
 
 /* -------------------------------------------------------------------------- */
 /* Sections                                                                   */

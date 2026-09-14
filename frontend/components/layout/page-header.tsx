@@ -1,12 +1,10 @@
-import Link from "next/link";
-import { ChevronRight } from "lucide-react";
-import { cn } from "@/lib/utils/cn";
+"use client";
 
-export interface Crumb {
-  label: string;
-  /** Omit for the current page. */
-  href?: string;
-}
+import Link from "next/link";
+import { useParams, usePathname } from "next/navigation";
+import { ChevronRight } from "lucide-react";
+import { crumbsFor } from "@/lib/navigation/breadcrumbs";
+import { cn } from "@/lib/utils/cn";
 
 /**
  * The top of every page inside the shell: breadcrumb, title, optional lede, and
@@ -22,42 +20,63 @@ export interface Crumb {
  * one at a time, which is the sign that a default is wrong rather than that those
  * screens are special. What genuinely needs a measure is prose, and prose caps
  * itself where it appears.
+ *
+ * The breadcrumb is not passed in. It is read off the route, because the route already
+ * knows: every screen used to type out its own trail, and forty-one hand-written copies
+ * of the same trunk drifted exactly as far apart as you would expect. A screen supplies
+ * only what the URL cannot say - the name of the record it is showing - and only when it
+ * has one; until then the trail says "Order" rather than flickering or vanishing.
  */
 export function PageHeader({
   title,
   description,
-  crumbs,
+  crumb,
   actions,
 }: {
   title: string;
   description?: string;
-  crumbs?: Crumb[];
+  /**
+   * What this page calls the thing it is showing, for the last step of the trail.
+   *
+   * Only for a record with a name of its own: a list screen, a form, anything whose
+   * label is a property of the route rather than of the data, is already named in the
+   * route table and should not be named twice.
+   */
+  crumb?: string;
   actions?: React.ReactNode;
 }) {
+  const pathname = usePathname();
+  const params = useParams();
+
+  const crumbs = crumbsFor(pathname, params, crumb);
+
   return (
     <header className="border-b border-border bg-surface">
       <div className="flex flex-col gap-3 px-4 py-3.5">
-        {crumbs !== undefined && crumbs.length > 0 && (
+        {crumbs.length > 0 && (
           <nav aria-label="Breadcrumb">
             <ol className="flex flex-wrap items-center gap-1 text-xs text-muted">
-              {crumbs.map((crumb, index) => (
-                <li key={crumb.label} className="flex items-center gap-1">
+              {crumbs.map((step, index) => (
+                // Keyed by position: the trail is derived fresh from the route every
+                // render, and a record named after its own section would otherwise
+                // collide with the section above it.
+                <li key={index} className="flex items-center gap-1">
                   {index > 0 && (
                     <ChevronRight
                       className="size-3 shrink-0 text-subtle"
                       aria-hidden="true"
                     />
                   )}
-                  {crumb.href === undefined ? (
+                  {step.href === undefined ? (
                     <span aria-current="page" className="text-muted">
-                      {crumb.label}
+                      {step.label}
                     </span>
                   ) : (
                     <Link
-                      href={crumb.href}
+                      href={step.href}
                       className="rounded text-muted transition-colors hover:text-text"
                     >
-                      {crumb.label}
+                      {step.label}
                     </Link>
                   )}
                 </li>

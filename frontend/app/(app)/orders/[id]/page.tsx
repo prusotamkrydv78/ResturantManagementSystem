@@ -742,11 +742,7 @@ function OrderDetail() {
         // the top of every order in the product.
         title={order.tableName}
         description={`Order #${order.orderNumber} · opened ${formatTime(order.createdAtUtc)} by ${order.createdByName}`}
-        crumbs={[
-          { label: "Workspace", href: "/dashboard" },
-          { label: "Orders", href: "/orders" },
-          { label: `#${order.orderNumber}` },
-        ]}
+        crumb={`#${order.orderNumber}`}
         actions={
           <div className="flex items-center gap-2">
             {order.needsConfirmation ? (

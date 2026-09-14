@@ -237,7 +237,6 @@ function Pass() {
       <PageHeader
         title="The pass"
         description="Food the kitchen has finished. Take it to the table, then tick it off."
-        crumbs={[{ label: "Workspace", href: "/dashboard" }, { label: "Pass" }]}
         actions={
           waiting > 0 ? (
             <Badge tone="warning" dot>

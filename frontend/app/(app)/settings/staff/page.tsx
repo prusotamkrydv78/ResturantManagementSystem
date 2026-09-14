@@ -95,11 +95,6 @@ function StaffRoster() {
       <PageHeader
         title="Staff"
         description="The people working in your restaurant, and what they do."
-        crumbs={[
-          { label: "Workspace", href: "/dashboard" },
-          { label: "Settings", href: "/settings" },
-          { label: "Staff" },
-        ]}
         actions={<CreateStaffDialog onCreated={refresh} />}
       />
 

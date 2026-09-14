@@ -108,12 +108,7 @@ function StaffMemberView() {
             ? undefined
             : `${member.role} · ${member.isActive ? "Active" : "Inactive"} · ${member.email}`
         }
-        crumbs={[
-          { label: "Workspace", href: "/dashboard" },
-          { label: "Settings", href: "/settings" },
-          { label: "Staff", href: "/settings/staff" },
-          { label: member?.fullName ?? "Staff member" },
-        ]}
+        crumb={member?.fullName}
         actions={
           <LinkButton
             href="/settings/staff"

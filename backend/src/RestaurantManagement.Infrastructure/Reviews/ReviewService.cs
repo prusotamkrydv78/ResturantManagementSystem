@@ -20,6 +20,23 @@ namespace RestaurantManagement.Infrastructure.Reviews;
 /// </summary>
 public sealed class ReviewService : IReviewService
 {
+    /// <summary>
+    /// How far back "lately" reaches, and how far back the period it is read against.
+    ///
+    /// Thirty days rather than seven: reviews are rarer than orders, and a week of them
+    /// at most restaurants is a handful - a mean over a handful moves by half a star
+    /// when one table is in a bad mood, which is noise dressed up as a trend.
+    /// </summary>
+    private const int TrendDays = 30;
+
+    /// <summary>
+    /// How many members of staff appear in the breakdown.
+    ///
+    /// The heaviest few, because this is a place to notice a pattern rather than a
+    /// leaderboard, and a full roster of one-review averages is neither.
+    /// </summary>
+    private const int ServerLimit = 8;
+
     private readonly ApplicationDbContext _dbContext;
     private readonly ILogger<ReviewService> _logger;
 
@@ -211,13 +228,115 @@ public sealed class ReviewService : IReviewService
                         .FirstOrDefault()))
             .ToListAsync(cancellationToken);
 
+        // The shape behind the mean. Four point zero is every table saying four, or half
+        // of them delighted and half of them furious, and those are different restaurants
+        // with the same headline figure. Grouped in the database: five rows back,
+        // whatever the volume.
+        var counted = await mine
+            .GroupBy(review => review.Rating)
+            .Select(group => new { Rating = group.Key, Count = group.Count() })
+            .ToListAsync(cancellationToken);
+
+        var distribution = Enumerable
+            .Range(1, 5)
+            .Select(score => new ReviewBucketResponse(
+                score,
+                counted.FirstOrDefault(row => row.Rating == score)?.Count ?? 0))
+            .ToList();
+
+        var withComment = await mine
+            .CountAsync(review => review.Comment != null, cancellationToken);
+
+        // Two periods of the same length, read against each other. Projected down to a
+        // score and a timestamp and split here rather than grouped in SQL, because sixty
+        // days of reviews is a small number of very small rows and this stays one read
+        // whichever way the periods are later cut.
+        var now = DateTimeOffset.UtcNow;
+        var recentFrom = now.AddDays(-TrendDays);
+        var previousFrom = recentFrom.AddDays(-TrendDays);
+
+        var trend = await mine
+            .Where(review => review.SubmittedAtUtc >= previousFrom)
+            .Select(review => new { review.Rating, review.SubmittedAtUtc })
+            .ToListAsync(cancellationToken);
+
+        var recentScores = trend
+            .Where(row => row.SubmittedAtUtc >= recentFrom)
+            .Select(row => (decimal)row.Rating)
+            .ToList();
+
+        var previousScores = trend
+            .Where(row => row.SubmittedAtUtc < recentFrom)
+            .Select(row => (decimal)row.Rating)
+            .ToList();
+
+        // Who was on the table. The point of holding the staff member against the order
+        // rather than against the review: a run of poor scores on one section is the
+        // thing a manager can actually act on, and no single review ever shows it.
+        var byStaff = await mine
+            .Where(review => review.Order.CreatedByStaffId != null)
+            .GroupBy(review => review.Order.CreatedByStaffId)
+            .Select(group => new
+            {
+                StaffId = group.Key,
+                Count = group.Count(),
+                Average = group.Average(review => (decimal)review.Rating),
+            })
+            .OrderByDescending(row => row.Count)
+            .Take(ServerLimit)
+            .ToListAsync(cancellationToken);
+
+        // Unwrapped here rather than in the query: the null was already excluded by the
+        // clause above, and asking the provider to translate a Nullable.Value in a group
+        // key buys nothing over doing it once the rows are in hand.
+        var staff = byStaff
+            .Where(row => row.StaffId != null)
+            .Select(row => new
+            {
+                StaffId = row.StaffId!.Value,
+                row.Count,
+                row.Average,
+            })
+            .ToList();
+
+        var staffIds = staff.Select(row => row.StaffId).ToList();
+
+        var names = await _dbContext.Users
+            .AsNoTracking()
+            .Where(user => staffIds.Contains(user.Id))
+            .Select(user => new { user.Id, user.FullName })
+            .ToDictionaryAsync(row => row.Id, row => row.FullName, cancellationToken);
+
+        var byServer = staff
+            .Select(row => new ReviewServerResponse(
+                row.StaffId,
+                names.GetValueOrDefault(row.StaffId) ?? "Unknown",
+                row.Count,
+                Round(row.Average) ?? 0m))
+            .ToList();
+
         return Result.Success(new ReviewSummaryResponse(
             reviews,
             totals?.Count ?? 0,
             Round(totals?.Rating),
             Round(totals?.Food),
-            Round(totals?.Service)));
+            Round(totals?.Service),
+            withComment,
+            distribution,
+            Period(recentScores),
+            Period(previousScores),
+            byServer));
     }
+
+    /// <summary>
+    /// A period as a count and a mean, with the mean null when nobody reviewed.
+    ///
+    /// Null rather than zero here too, and for the same reason as everywhere else on
+    /// this screen: a quiet month is not a month of one-star visits, and a zero would
+    /// turn a comparison against it into an invented collapse.
+    /// </summary>
+    private static ReviewPeriodResponse Period(IReadOnlyList<decimal> scores) =>
+        new(scores.Count, scores.Count == 0 ? null : Round(scores.Average()));
 
     /// <summary>
     /// To one decimal place, which is how a rating is read.

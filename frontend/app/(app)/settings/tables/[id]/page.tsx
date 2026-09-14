@@ -113,12 +113,7 @@ function TableView() {
                 table.isActive ? "In service" : "Out of service"
               } · Guest ordering ${table.isOrderingEnabled ? "on" : "off"}`
         }
-        crumbs={[
-          { label: "Workspace", href: "/dashboard" },
-          { label: "Settings", href: "/settings" },
-          { label: "Tables", href: "/settings/tables" },
-          { label: table?.name ?? "Table" },
-        ]}
+        crumb={table?.name}
         actions={
           <LinkButton
             href="/settings/tables"

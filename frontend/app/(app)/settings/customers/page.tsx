@@ -108,11 +108,6 @@ function CustomerList() {
       <PageHeader
         title="Customers"
         description="Regulars, bookings and anyone worth remembering. Nobody signs in here; these are your own records."
-        crumbs={[
-          { label: "Workspace", href: "/dashboard" },
-          { label: "Settings", href: "/settings" },
-          { label: "Customers" },
-        ]}
         actions={<CustomerDialog onSaved={refresh} />}
       />
 

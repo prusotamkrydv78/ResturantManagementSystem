@@ -96,7 +96,6 @@ function Billing() {
       <PageHeader
         title="Billing"
         description="Settle a table and close its order. Recording a payment does not connect to any payment provider."
-        crumbs={[{ label: "Workspace", href: "/dashboard" }, { label: "Billing" }]}
         actions={
           <div className="flex items-center gap-2">
             {/* First, because a table that has asked to pay is a person waiting rather

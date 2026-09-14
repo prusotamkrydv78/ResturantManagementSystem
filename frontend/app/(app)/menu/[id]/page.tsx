@@ -105,11 +105,7 @@ function MenuItemView() {
             ? undefined
             : `${item.categoryName} · ${item.price.toFixed(2)}`
         }
-        crumbs={[
-          { label: "Workspace", href: "/dashboard" },
-          { label: "Menu", href: "/menu" },
-          { label: item?.name ?? "Item" },
-        ]}
+        crumb={item?.name}
         actions={
           <div className="flex items-center gap-2">
             {item !== null && <AvailabilityBadge item={item} />}

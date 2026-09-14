@@ -111,9 +111,63 @@ public sealed record RestaurantReviewResponse(
 /// </param>
 /// <param name="AverageFoodRating">The mean food score, over those who gave one.</param>
 /// <param name="AverageServiceRating">The mean service score, over those who gave one.</param>
+/// <param name="WithCommentCount">
+/// How many left words as well as a score, over every review rather than over the page.
+/// </param>
+/// <param name="Distribution">Five buckets, one per score, always all five.</param>
+/// <param name="Recent">The last thirty days.</param>
+/// <param name="Previous">The thirty days before those, to read the last thirty against.</param>
+/// <param name="ByServer">
+/// The members of staff carrying the most reviewed orders, heaviest first.
+/// </param>
 public sealed record ReviewSummaryResponse(
     IReadOnlyList<RestaurantReviewResponse> Reviews,
     int Count,
     decimal? AverageRating,
     decimal? AverageFoodRating,
-    decimal? AverageServiceRating);
+    decimal? AverageServiceRating,
+    int WithCommentCount,
+    IReadOnlyList<ReviewBucketResponse> Distribution,
+    ReviewPeriodResponse Recent,
+    ReviewPeriodResponse Previous,
+    IReadOnlyList<ReviewServerResponse> ByServer);
+
+/// <summary>
+/// How many tables gave a particular score.
+///
+/// The shape a mean throws away. Four point zero is every table saying four, or half of
+/// them delighted and half of them furious, and a manager needs to know which.
+/// </summary>
+/// <param name="Rating">One through five.</param>
+/// <param name="Count">How many said it. Present at zero.</param>
+public sealed record ReviewBucketResponse(int Rating, int Count);
+
+/// <summary>
+/// A stretch of time as a count and a mean.
+///
+/// Thin on purpose: the comparison period only ever appears on screen as a direction.
+/// </summary>
+/// <param name="Count">Reviews left in the period.</param>
+/// <param name="AverageRating">
+/// The mean over them, or null when nobody reviewed. Null rather than zero, so a quiet
+/// month does not read as a month of one-star visits.
+/// </param>
+public sealed record ReviewPeriodResponse(int Count, decimal? AverageRating);
+
+/// <summary>
+/// How the tables one member of staff took scored.
+///
+/// This is the point of holding the staff member against the order rather than against
+/// the review: a run of poor scores on one section is the thing a manager can act on,
+/// and no single review ever shows it. Orders a customer placed themselves have nobody
+/// to name and are left out rather than pooled under a stand-in.
+/// </summary>
+/// <param name="StaffId">Who.</param>
+/// <param name="Name">Their name at the time of reading.</param>
+/// <param name="Count">Reviewed orders they took.</param>
+/// <param name="AverageRating">The mean overall score across them.</param>
+public sealed record ReviewServerResponse(
+    Guid StaffId,
+    string Name,
+    int Count,
+    decimal AverageRating);

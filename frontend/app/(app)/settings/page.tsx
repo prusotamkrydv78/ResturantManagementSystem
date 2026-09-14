@@ -22,7 +22,6 @@ export default function SettingsPage() {
       <PageHeader
         title="Settings"
         description="The parts of the restaurant you set up once and revisit occasionally."
-        crumbs={[{ label: "Workspace", href: "/dashboard" }, { label: "Settings" }]}
       />
 
       <PageBody>

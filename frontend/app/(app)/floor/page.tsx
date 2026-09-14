@@ -157,7 +157,6 @@ function FloorOverviewScreen() {
             ? "Every table and what is happening at it. Occupancy follows the orders."
             : "Every table and what is happening at it. Tap a free table to seat guests."
         }
-        crumbs={[{ label: "Workspace", href: "/dashboard" }, { label: "Floor" }]}
         actions={
           <div className="flex items-center gap-2">
             {floor !== null && (

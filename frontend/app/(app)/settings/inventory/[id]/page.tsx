@@ -221,12 +221,7 @@ function ItemDetail() {
       <PageHeader
         title={item.name}
         description={`Measured in ${item.unit.toLowerCase()}. Every change below says why it happened.`}
-        crumbs={[
-          { label: "Workspace", href: "/dashboard" },
-          { label: "Settings", href: "/settings" },
-          { label: "Inventory", href: "/settings/inventory" },
-          { label: item.name },
-        ]}
+        crumb={item.name}
         actions={
           <div className="flex items-center gap-2">
             {!item.isActive && <Badge tone="neutral">Archived</Badge>}

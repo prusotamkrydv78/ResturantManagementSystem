@@ -99,11 +99,7 @@ function MenuCategoryView() {
                 category.activeItemCount
               } on the menu`
         }
-        crumbs={[
-          { label: "Workspace", href: "/dashboard" },
-          { label: "Menu", href: "/menu" },
-          { label: category?.name ?? "Section" },
-        ]}
+        crumb={category?.name}
         actions={
           <div className="flex items-center gap-2">
             {category !== null &&

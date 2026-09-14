@@ -75,11 +75,6 @@ function OrderHistory() {
       <PageHeader
         title="Order history"
         description="Orders that have ended, newest first. Nothing here can be changed."
-        crumbs={[
-          { label: "Workspace", href: "/dashboard" },
-          { label: "Billing", href: "/billing" },
-          { label: "History" },
-        ]}
         actions={
           <LinkButton href="/billing" variant="secondary" icon={<ArrowLeft />}>
             Billing

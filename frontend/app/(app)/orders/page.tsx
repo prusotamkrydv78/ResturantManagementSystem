@@ -93,7 +93,6 @@ function Orders() {
       <PageHeader
         title="Open orders"
         description="Tables with an order running. Tap one to add to it, change it, or send it to the kitchen."
-        crumbs={[{ label: "Workspace", href: "/dashboard" }, { label: "Orders" }]}
         actions={
           <LinkButton href="/orders/new" icon={<Plus />}>
             New order

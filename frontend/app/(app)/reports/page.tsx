@@ -107,7 +107,6 @@ function Reports() {
       <PageHeader
         title="Reports"
         description="What the restaurant took, and what it did not. Counted in the restaurant own days."
-        crumbs={[{ label: "Workspace", href: "/dashboard" }, { label: "Reports" }]}
       />
 
       <PageBody>

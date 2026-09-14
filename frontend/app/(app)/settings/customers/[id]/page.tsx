@@ -83,12 +83,7 @@ function CustomerView() {
                   "bookings",
                 )}`
         }
-        crumbs={[
-          { label: "Workspace", href: "/dashboard" },
-          { label: "Settings", href: "/settings" },
-          { label: "Customers", href: "/settings/customers" },
-          { label: customer?.name ?? "Customer" },
-        ]}
+        crumb={customer?.name}
         actions={
           <LinkButton href="/settings/customers" variant="secondary">
             All customers

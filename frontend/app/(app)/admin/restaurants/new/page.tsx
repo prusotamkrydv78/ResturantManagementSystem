@@ -136,11 +136,6 @@ function NewRestaurant() {
       <PageHeader
         title="New restaurant"
         description="Create the restaurant and hand it to a manager in one step."
-        crumbs={[
-          { label: "Platform", href: "/dashboard" },
-          { label: "Restaurants", href: "/admin/restaurants" },
-          { label: "New" },
-        ]}
       />
 
       <PageBody>

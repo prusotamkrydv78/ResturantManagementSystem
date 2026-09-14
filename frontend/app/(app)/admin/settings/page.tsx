@@ -76,7 +76,6 @@ function PlatformSettingsView() {
       <PageHeader
         title="Platform settings"
         description="Your account, what new restaurants inherit, what has been done, and whether the deployment is healthy."
-        crumbs={[{ label: "Platform", href: "/dashboard" }, { label: "Settings" }]}
       />
 
       <PageBody>

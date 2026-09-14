@@ -219,7 +219,6 @@ function Managers() {
       <PageHeader
         title="Managers"
         description="Restaurant managers on the platform, and the restaurant each one runs."
-        crumbs={[{ label: "Platform", href: "/dashboard" }, { label: "Managers" }]}
         actions={
           <CreateManagerDialog
             restaurants={unassignedRestaurants}

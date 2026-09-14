@@ -150,11 +150,6 @@ function InventoryList() {
       <PageHeader
         title="Inventory"
         description="What is on the shelves. Stock moves through deliveries, corrections and cooking, never by editing a number."
-        crumbs={[
-          { label: "Workspace", href: "/dashboard" },
-          { label: "Settings", href: "/settings" },
-          { label: "Inventory" },
-        ]}
         actions={
           <div className="flex items-center gap-2">
             {/* Pressable, because a count nobody can act on is decoration. Each one

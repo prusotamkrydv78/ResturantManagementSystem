@@ -182,7 +182,7 @@ export default function WebsitePage() {
   if (isLoading) {
     return (
       <>
-        <PageHeader title="Website" crumbs={CRUMBS} />
+        <PageHeader title="Website" />
         <PageBody>
           <Surface className="flex flex-col gap-3 p-4">
             <Skeleton className="h-4 w-1/3" />
@@ -197,7 +197,7 @@ export default function WebsitePage() {
   if (missingRestaurant) {
     return (
       <>
-        <PageHeader title="Website" crumbs={CRUMBS} />
+        <PageHeader title="Website" />
         <PageBody>
           <NoRestaurantAssigned />
         </PageBody>
@@ -208,7 +208,7 @@ export default function WebsitePage() {
   if (loadError !== null || site === null) {
     return (
       <>
-        <PageHeader title="Website" crumbs={CRUMBS} />
+        <PageHeader title="Website" />
         <PageBody>
           <Surface>
             <ErrorState
@@ -232,7 +232,6 @@ export default function WebsitePage() {
       <PageHeader
         title="Website"
         description="A single page for your restaurant. You choose the design and write everything on it."
-        crumbs={CRUMBS}
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone={site.isPublished ? "success" : "neutral"} dot>
@@ -1300,12 +1299,6 @@ export default function WebsitePage() {
     </>
   );
 }
-
-const CRUMBS = [
-  { label: "Workspace", href: "/dashboard" },
-  { label: "Settings", href: "/settings" },
-  { label: "Website" },
-];
 
 /**
  * One block of the form, matching the section of the page it edits.

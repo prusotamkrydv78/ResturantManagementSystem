@@ -71,11 +71,6 @@ function ReceiptView() {
         <PageHeader
           title="Receipt"
           description="A record of money already taken. Nothing here can be changed."
-          crumbs={[
-            { label: "Workspace", href: "/dashboard" },
-            { label: "Billing", href: "/billing" },
-            { label: "Receipt" },
-          ]}
           actions={
             <div className="flex items-center gap-2">
               <LinkButton

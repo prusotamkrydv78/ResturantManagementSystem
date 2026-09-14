@@ -137,7 +137,6 @@ function PlatformReports() {
       <PageHeader
         title="Platform reports"
         description="What every restaurant took, cut along time, tender and restaurant. One service day boundary for the whole estate, so these totals are the sum of what each manager sees."
-        crumbs={[{ label: "Platform", href: "/dashboard" }, { label: "Reports" }]}
         actions={
           report !== null ? (
             <Button

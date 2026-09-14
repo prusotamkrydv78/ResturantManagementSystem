@@ -166,7 +166,6 @@ function MenuManager() {
       <PageHeader
         title="Menu"
         description="Categories and the items inside them. Guests never see this screen."
-        crumbs={[{ label: "Workspace", href: "/dashboard" }, { label: "Menu" }]}
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <CategoryDialog categories={categories ?? []} onSaved={refresh} />

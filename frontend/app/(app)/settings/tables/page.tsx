@@ -91,11 +91,6 @@ function Tables() {
       <PageHeader
         title="Tables"
         description="The tables in your restaurant and how many people each one seats."
-        crumbs={[
-          { label: "Workspace", href: "/dashboard" },
-          { label: "Settings", href: "/settings" },
-          { label: "Tables" },
-        ]}
         actions={<CreateTableDialog onCreated={refresh} />}
       />
 
