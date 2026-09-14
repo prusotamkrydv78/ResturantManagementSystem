@@ -18,11 +18,18 @@ export function useElapsed(sinceIsoString: string | null): string | null {
   const [now, setNow] = useState<number | null>(null);
 
   useEffect(() => {
-    setNow(Date.now());
+    const tick = () => setNow(Date.now());
 
-    const timer = setInterval(() => setNow(Date.now()), 30_000);
+    // Scheduled rather than read straight out of the effect body, so the first
+    // reading lands after the browser has painted and the server markup and the
+    // browser markup cannot disagree about what time it is.
+    const first = setTimeout(tick, 0);
+    const timer = setInterval(tick, 30_000);
 
-    return () => clearInterval(timer);
+    return () => {
+      clearTimeout(first);
+      clearInterval(timer);
+    };
   }, []);
 
   if (now === null || sinceIsoString === null) {
