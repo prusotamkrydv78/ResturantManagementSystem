@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
   ChevronRight,
@@ -17,6 +17,7 @@ import { EmptyState, ErrorState, Skeleton } from "@/components/ui/states";
 import { PageBody, PageHeader } from "@/components/layout/page-header";
 import { RequireAuth } from "@/features/auth/require-auth";
 import { listBillingOrders } from "@/features/billing/api";
+import { useRealtimeEvent } from "@/lib/realtime/realtime-context";
 import { cn } from "@/lib/utils/cn";
 import type { BillingOrderSummary } from "@/types/billing";
 
@@ -41,6 +42,20 @@ function Billing() {
   const [orders, setOrders] = useState<BillingOrderSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+
+  const reload = useCallback(() => setReloadKey((key) => key + 1), []);
+
+  // The list of what can be settled changes without this screen doing anything: a
+  // waiter sends the last ticket, the kitchen finishes it, somebody settles a bill on
+  // another till. All three used to need a reload to see.
+  useRealtimeEvent("orderPlaced", reload);
+  useRealtimeEvent("ticketQueued", reload);
+  useRealtimeEvent("ticketReady", reload);
+  useRealtimeEvent("ticketRecalled", reload);
+  useRealtimeEvent("ticketServed", reload);
+  useRealtimeEvent("billRequested", reload);
+  useRealtimeEvent("orderSettled", reload);
+  useRealtimeEvent("orderCancelled", reload);
 
   useEffect(() => {
     let cancelled = false;

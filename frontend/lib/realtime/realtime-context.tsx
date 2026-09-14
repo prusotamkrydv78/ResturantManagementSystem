@@ -61,6 +61,13 @@ export const REALTIME_EVENTS = [
   "ticketQueued",
   "ticketStarted",
   "ticketReady",
+  // Omitted for a long time, and invisibly: the provider registers one handler per
+  // name in this list, so an event the server sends and this list forgets is dropped
+  // without a word. A recalled ticket therefore never reached the floor or the rail,
+  // which was investigated as a server bug and reported fixed twice before anybody
+  // looked here. The unit test beside this file now reads the names out of the C# so
+  // the two cannot drift apart again.
+  "ticketRecalled",
   "ticketServed",
   "billRequested",
 ] as const;

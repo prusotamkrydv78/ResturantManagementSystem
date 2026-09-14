@@ -50,7 +50,11 @@ function Orders() {
   useRealtimeEvent("orderPlaced", reload);
   useRealtimeEvent("orderConfirmed", reload);
   useRealtimeEvent("ticketQueued", reload);
+  useRealtimeEvent("ticketReady", reload);
+  useRealtimeEvent("ticketServed", reload);
   useRealtimeEvent("billRequested", reload);
+  useRealtimeEvent("orderSettled", reload);
+  useRealtimeEvent("orderCancelled", reload);
 
   useEffect(() => {
     let cancelled = false;
