@@ -332,19 +332,44 @@ public sealed class KitchenService : IKitchenService
         Guid staffUserId,
         CancellationToken cancellationToken)
     {
+        // A manager and a chef belong to a restaurant in two different places, and
+        // this used to look in only one of them.
+        //
+        // Staff carry RestaurantId on the account. A manager does not: ownership is a
+        // single foreign key the other way round, Restaurant.ManagerId, so a manager
+        // account has a null RestaurantId and always will. When the policy above was
+        // widened to let managers work the rail, this query was left asking for a
+        // column that is never set for them - so the API accepted the request and then
+        // refused it, with a message saying the account could not work the kitchen.
         var rows = await _dbContext.Users
             .AsNoTracking()
-            .Where(user =>
-                user.Id == staffUserId &&
-                user.IsActive &&
-                user.RestaurantId != null &&
-                (user.PlatformRole == PlatformRole.RestaurantManager ||
-                    (user.PlatformRole == PlatformRole.Staff &&
-                        user.StaffRole == StaffRole.Chef)))
-            .Select(user => user.RestaurantId!.Value)
+            .Where(user => user.Id == staffUserId && user.IsActive)
+            .Select(user => new
+            {
+                user.PlatformRole,
+                user.StaffRole,
+                StaffRestaurantId = user.RestaurantId,
+                ManagedRestaurantId = _dbContext.Restaurants
+                    .Where(restaurant => restaurant.ManagerId == user.Id)
+                    .Select(restaurant => (Guid?)restaurant.Id)
+                    .FirstOrDefault(),
+            })
             .ToListAsync(cancellationToken);
 
-        return rows.Count == 0 ? null : rows[0];
+        if (rows.Count == 0)
+        {
+            return null;
+        }
+
+        var account = rows[0];
+
+        return account.PlatformRole switch
+        {
+            PlatformRole.RestaurantManager => account.ManagedRestaurantId,
+            PlatformRole.Staff when account.StaffRole == StaffRole.Chef =>
+                account.StaffRestaurantId,
+            _ => null,
+        };
     }
 
     /// <summary>

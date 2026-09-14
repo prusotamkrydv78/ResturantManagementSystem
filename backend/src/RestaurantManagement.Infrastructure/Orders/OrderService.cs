@@ -1304,19 +1304,39 @@ public sealed class OrderService : IOrderService
         Guid staffUserId,
         CancellationToken cancellationToken)
     {
+        // Two roles, two places to look. Staff carry RestaurantId on the account; a
+        // manager does not, because ownership is Restaurant.ManagerId pointing the
+        // other way. Asking only for the column staff use meant a manager passed the
+        // policy on the pass endpoints and was then refused by this lookup.
         var rows = await _dbContext.Users
             .AsNoTracking()
-            .Where(user =>
-                user.Id == staffUserId &&
-                user.IsActive &&
-                user.RestaurantId != null &&
-                (user.PlatformRole == PlatformRole.RestaurantManager ||
-                    (user.PlatformRole == PlatformRole.Staff &&
-                        user.StaffRole == StaffRole.Waiter)))
-            .Select(user => user.RestaurantId!.Value)
+            .Where(user => user.Id == staffUserId && user.IsActive)
+            .Select(user => new
+            {
+                user.PlatformRole,
+                user.StaffRole,
+                StaffRestaurantId = user.RestaurantId,
+                ManagedRestaurantId = _dbContext.Restaurants
+                    .Where(restaurant => restaurant.ManagerId == user.Id)
+                    .Select(restaurant => (Guid?)restaurant.Id)
+                    .FirstOrDefault(),
+            })
             .ToListAsync(cancellationToken);
 
-        return rows.Count == 0 ? null : rows[0];
+        if (rows.Count == 0)
+        {
+            return null;
+        }
+
+        var account = rows[0];
+
+        return account.PlatformRole switch
+        {
+            PlatformRole.RestaurantManager => account.ManagedRestaurantId,
+            PlatformRole.Staff when account.StaffRole == StaffRole.Waiter =>
+                account.StaffRestaurantId,
+            _ => null,
+        };
     }
 
     private async Task<WaiterContext?> ResolveWaiterAsync(
