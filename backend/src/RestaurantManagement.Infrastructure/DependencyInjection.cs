@@ -19,7 +19,6 @@ using RestaurantManagement.Application.PublicOrdering;
 using RestaurantManagement.Application.Reports;
 using RestaurantManagement.Application.Reservations;
 using RestaurantManagement.Application.Restaurants;
-using RestaurantManagement.Application.Sites;
 using RestaurantManagement.Application.Staff;
 using RestaurantManagement.Application.Tables;
 using RestaurantManagement.Domain.Identity;
@@ -42,7 +41,6 @@ using RestaurantManagement.Infrastructure.Platform;
 using RestaurantManagement.Infrastructure.Reports;
 using RestaurantManagement.Infrastructure.Reservations;
 using RestaurantManagement.Infrastructure.Restaurants;
-using RestaurantManagement.Infrastructure.Sites;
 using RestaurantManagement.Infrastructure.Staff;
 using RestaurantManagement.Infrastructure.Tables;
 
@@ -96,7 +94,6 @@ public static class DependencyInjection
         // Serves a manager editing their restaurant page and a visitor reading it.
         // One service because both read the same row; the audiences are separated at
         // the controllers, not here.
-        services.AddScoped<ISiteService, SiteService>();
         // Serves the platform administrator, who owns no restaurant. The only service
         // here that reads across all of them, which is why the role gate sits on its
         // controller rather than on a restaurant lookup.

@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { AnimatePresence, motion, MotionConfig } from "motion/react";
-import Link from "next/link";
 import {
   ArrowLeft,
   Check,
@@ -717,7 +716,6 @@ const [celebrating, setCelebrating] = useState(false);
     return (
       <>
         <TopBar
-          slug={slug}
           restaurantName={restaurant.restaurantName}
           eyebrow={table?.name ?? "Your order"}
         />
@@ -1040,14 +1038,6 @@ onDone={stopCelebrating}
             icon={<UtensilsCrossed />}
             title="Not taking orders online"
             description={`${restaurant.restaurantName} is not accepting website orders at the moment. Please order with a member of staff.`}
-            action={
-              <Link
-                href={`/r/${slug}`}
-                className="text-sm font-medium text-primary hover:underline"
-              >
-                Back to the website
-              </Link>
-            }
           />
         </Surface>
       </Centre>
@@ -1064,7 +1054,6 @@ onDone={stopCelebrating}
           saying what the line above it already said - a diagram of a journey with two
           stops in it. The steps themselves stay; only the picture of them is gone. */}
       <TopBar
-        slug={slug}
         restaurantName={restaurant.restaurantName}
         eyebrow={
           adding
@@ -1421,8 +1410,10 @@ function BillWaitedFor({ since }: { since: string }) {
  * The bar across the top of every state of this page.
  *
  * There was one of these, written inline, and only the menu had it. The receipt - the
- * screen a guest sits with for the rest of the meal - had no bar at all, which meant no
- * way back to the restaurant's site short of the browser's own button.
+ * screen a guest sits with for the rest of the meal - had no bar at all.
+ *
+ * The back control is now shown only when there is somewhere inside the page to go.
+ * It used to fall back to the restaurant's marketing page, which no longer exists.
  *
  * The restaurant's name is the heading but no longer the loudest thing on the screen.
  * At the old size it truncated on any phone and shouted the one fact a guest already
@@ -1431,13 +1422,11 @@ function BillWaitedFor({ since }: { since: string }) {
  * Sticky, because on the menu it is the way back and the menu is long.
  */
 function TopBar({
-  slug,
   restaurantName,
   eyebrow,
   backLabel = "Back",
   onBack,
 }: {
-  slug: string;
   restaurantName: string;
   /** The small line above the name: the table, or what this screen is for. */
   eyebrow: string;
@@ -1449,15 +1438,7 @@ function TopBar({
   return (
     <header className="sticky top-0 z-30 border-b border-border bg-surface/90 backdrop-blur">
       <div className="mx-auto flex max-w-2xl items-center gap-3 px-4 py-3">
-        {onBack === undefined ? (
-          <Link
-            href={`/r/${slug}`}
-            aria-label="Back to the website"
-            className="shrink-0 rounded-md p-1.5 text-muted transition-colors hover:bg-surface-3 hover:text-text"
-          >
-            <ArrowLeft className="size-5" aria-hidden="true" />
-          </Link>
-        ) : (
+        {onBack === undefined ? null : (
           <button
             type="button"
             onClick={onBack}

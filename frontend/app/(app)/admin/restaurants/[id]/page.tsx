@@ -186,7 +186,6 @@ function PlatformRestaurant() {
                   No manager
                 </Badge>
               )}
-              {setup.sitePublished && <Badge tone="neutral">Site live</Badge>}
             </div>
 
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted">

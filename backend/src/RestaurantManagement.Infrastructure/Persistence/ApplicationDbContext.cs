@@ -10,7 +10,6 @@ using RestaurantManagement.Domain.Payments;
 using RestaurantManagement.Domain.Platform;
 using RestaurantManagement.Domain.Restaurants;
 using RestaurantManagement.Domain.Reviews;
-using RestaurantManagement.Domain.Sites;
 
 namespace RestaurantManagement.Infrastructure.Persistence;
 
@@ -90,17 +89,11 @@ public class ApplicationDbContext : IdentityUserContext<ApplicationUser, Guid>
     /// <summary>What a table thought, left after they had paid.</summary>
     public DbSet<Review> Reviews => Set<Review>();
 
-    /// <summary>The public one-page website belonging to each restaurant.</summary>
-    public DbSet<RestaurantSite> RestaurantSites => Set<RestaurantSite>();
-
     /// <summary>What platform administrators have done, append-only.</summary>
     public DbSet<AdminActivity> AdminActivities => Set<AdminActivity>();
 
     /// <summary>The single row of platform-wide defaults.</summary>
     public DbSet<PlatformSettings> PlatformSettings => Set<PlatformSettings>();
-
-    /// <summary>Photographs uploaded for those websites.</summary>
-    public DbSet<SiteImage> SiteImages => Set<SiteImage>();
 
     /// <inheritdoc />
     protected override void OnModelCreating(ModelBuilder modelBuilder)

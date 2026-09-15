@@ -115,12 +115,12 @@ export default function ReviewPage() {
     };
   }, [slug]);
 
-  /** Closes the visit off and goes back to the restaurant. */
+  /** Closes the visit off. */
   const finish = useCallback(() => {
     // The meal is over and the review is in. Keeping the key would mean the next visit
     // opens on a settled receipt from last time.
     clearReceipt(slug);
-    router.push(`/r/${slug}`);
+    router.push(`/r/${slug}/order`);
   }, [router, slug]);
 
   /** Back to the receipt, with the key, so the timeline and the bill are still there. */
@@ -168,11 +168,6 @@ export default function ReviewPage() {
             icon={<UtensilsCrossed />}
             title="We could not find your visit"
             description="A review is tied to an order, and this browser is not holding one. If you still have the page from your meal open, you can leave a review from there."
-            action={
-              <LinkButton variant="secondary" href={`/r/${slug}`}>
-                Go to {restaurant?.restaurantName ?? "the restaurant"}
-              </LinkButton>
-            }
           />
         </Surface>
       </Shell>

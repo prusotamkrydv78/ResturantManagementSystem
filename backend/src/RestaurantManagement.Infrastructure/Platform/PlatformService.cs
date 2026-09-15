@@ -533,9 +533,7 @@ public sealed class PlatformService : IPlatformService
                     item.RestaurantId == restaurantId),
                 _dbContext.Users.Count(user =>
                     user.RestaurantId == restaurantId &&
-                    user.PlatformRole == PlatformRole.Staff),
-                _dbContext.RestaurantSites.Any(site =>
-                    site.RestaurantId == restaurantId && site.IsPublished)))
+                    user.PlatformRole == PlatformRole.Staff)))
             .FirstAsync(cancellationToken);
 
         // The fortnight, read once and cut several ways - the same shape the platform

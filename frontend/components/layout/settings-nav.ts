@@ -42,8 +42,7 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
         label: "Website",
         href: "/settings/website",
         icon: Globe,
-        description:
-          "Your public one-page site: pick a design, write every section, and publish it.",
+        description: "The design your public page is built on.",
       },
     ],
   },

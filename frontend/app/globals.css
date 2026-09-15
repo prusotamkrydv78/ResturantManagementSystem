@@ -295,6 +295,13 @@
     "Segoe UI", Roboto, Arial, sans-serif;
   --font-mono: var(--font-mono-face), ui-monospace, "SFMono-Regular", Menlo,
     Consolas, monospace;
+
+  /* The display serif, for restaurant pages only.
+     Loaded by the (preview) layout rather than the root one, so the application never
+     downloads it; the fallback is what a page gets if it is ever rendered outside
+     that layout, and it is a real serif rather than the sans above. */
+  --font-display: var(--font-display-face), ui-serif, Georgia, "Times New Roman",
+    serif;
 }
 
 /* ---------------------------------------------------------------------------
@@ -336,6 +343,20 @@ h4 {
 ::selection {
   background: var(--primary-soft);
   color: var(--text);
+}
+
+/* A restaurant's own page is not the application, and its focus ring should not be
+   the application's either.
+
+   The rule above paints the brand ring on every focusable thing in the product, which
+   is right everywhere except here: a guest tabbing through a restaurant's website was
+   getting the platform's green drawn around the booking link on a page that has never
+   heard of it. Each template sets --site-focus to its own accent and marks its root
+   with this class; the offset is wider because these pages have no borders to clear
+   and the ring is otherwise hard to see against a photograph. */
+.site-page :focus-visible {
+  outline-color: var(--site-focus, currentColor);
+  outline-offset: 3px;
 }
 
 /* ---------------------------------------------------------------------------

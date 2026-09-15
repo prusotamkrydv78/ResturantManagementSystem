@@ -218,7 +218,6 @@ export interface PlatformRestaurantSetup {
   menuItemsActive: number;
   inventoryItems: number;
   staff: number;
-  sitePublished: boolean;
 }
 
 /** One order on the restaurant page. */

@@ -330,7 +330,6 @@ public sealed record PlatformRestaurantPersonResponse(
 /// <param name="MenuItemsActive">Dishes a guest can currently order.</param>
 /// <param name="InventoryItems">Stock lines being tracked.</param>
 /// <param name="Staff">Staff accounts attached to the restaurant.</param>
-/// <param name="SitePublished">Whether its public page is live.</param>
 public sealed record PlatformRestaurantSetupResponse(
     int Tables,
     int TablesInService,
@@ -339,8 +338,7 @@ public sealed record PlatformRestaurantSetupResponse(
     int MenuItems,
     int MenuItemsActive,
     int InventoryItems,
-    int Staff,
-    bool SitePublished);
+    int Staff);
 
 /// <summary>
 /// One order on the restaurant detail page.
