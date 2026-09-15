@@ -16,6 +16,7 @@
  * equally.
  */
 
+import type { PageMotion } from "./motion";
 import type { PhotoTone } from "./photos";
 
 export interface SampleDish {
@@ -61,6 +62,8 @@ export interface SampleContent {
   };
   /** Which plate leads the hero. The rest of the set follows it. */
   heroPhoto: PhotoTone;
+  /** How the page moves: what each section does on arrival, and how fast. */
+  motion: PageMotion;
   accolades: string[];
   story: { title: string; body: string[] };
   dishes: SampleDish[];
@@ -122,6 +125,26 @@ export function sampleContent(): SampleContent {
       secondaryHref: "#menu",
     },
     heroPhoto: "room",
+
+    // Everything rises, unhurriedly, and the hero photograph drifts. A page where
+    // each band entered a different way would read as restless rather than designed,
+    // so the sample sets them all the same and leaves a manager to break the pattern
+    // deliberately if they want to.
+    motion: {
+      photos: "drift",
+      pace: "calm",
+      sections: {
+        accolades: "fade",
+        story: "rise",
+        menu: "rise",
+        spotlight: "rise",
+        reasons: "fade",
+        gallery: "rise",
+        quotes: "fade",
+        visit: "rise",
+        closing: "fade",
+      },
+    },
 
     accolades: [
       "Two rosettes, four years running",

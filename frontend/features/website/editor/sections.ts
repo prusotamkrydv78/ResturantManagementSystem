@@ -1,4 +1,9 @@
 import type { DesignId } from "@/features/website/designs";
+import {
+  ARRIVAL_OPTIONS,
+  PACE_OPTIONS,
+  PHOTO_OPTIONS,
+} from "@/features/website/motion";
 import type { ContentPath } from "./draft";
 
 /**
@@ -32,6 +37,14 @@ export type Field =
   | { kind: "photo"; path: ContentPath; label: string; hint?: string }
   /** Where a button goes: one of this design's own sections. */
   | { kind: "link"; path: ContentPath; label: string; hint?: string }
+  /** One of a fixed set: how a section arrives, how fast, whether photographs move. */
+  | {
+      kind: "choice";
+      path: ContentPath;
+      label: string;
+      hint?: string;
+      options: { value: string; label: string }[];
+    }
   /** A list of plain lines: accolades, paragraphs of a story. */
   | {
       kind: "strings";
@@ -99,6 +112,23 @@ export function destinationsFor(design: DesignId): Destination[] {
 }
 
 /**
+ * How one section arrives, as a field.
+ *
+ * Written once and called per section rather than repeated ten times: the label, the
+ * hint and the options are the same everywhere, and only the path differs. Ten copies
+ * of this would be ten places to change the wording.
+ */
+function arrival(id: string): Field {
+  return {
+    kind: "choice",
+    path: `motion.sections.${id}`,
+    label: "How it arrives",
+    hint: "What this band does when it is scrolled into view.",
+    options: ARRIVAL_OPTIONS,
+  };
+}
+
+/**
  * Aurora, in full.
  *
  * Ten sections, in the order they appear down the page, so the panel's list and the
@@ -146,6 +176,20 @@ const AURORA: EditableSection[] = [
         label: "Leading photograph",
         hint: "The first of the four the hero fades between.",
       },
+      {
+        kind: "choice",
+        path: "motion.photos",
+        label: "Large photographs",
+        hint: "Whether the hero picture moves very slowly while it is on screen.",
+        options: PHOTO_OPTIONS,
+      },
+      {
+        kind: "choice",
+        path: "motion.pace",
+        label: "Movement speed",
+        hint: "Applies to every section on the page, not only this one.",
+        options: PACE_OPTIONS,
+      },
     ],
   },
 
@@ -162,6 +206,7 @@ const AURORA: EditableSection[] = [
         itemLabel: "Accolade",
         max: 6,
       },
+      arrival("accolades"),
     ],
   },
 
@@ -180,6 +225,7 @@ const AURORA: EditableSection[] = [
         long: true,
         max: 3,
       },
+      arrival("story"),
     ],
   },
 
@@ -204,6 +250,7 @@ const AURORA: EditableSection[] = [
           { kind: "photo", path: "photo", label: "Photograph" },
         ],
       },
+      arrival("menu"),
     ],
   },
 
@@ -223,6 +270,7 @@ const AURORA: EditableSection[] = [
       },
       { kind: "text", path: "spotlight.price", label: "Price", max: 12 },
       { kind: "photo", path: "spotlight.photo", label: "Photograph" },
+      arrival("spotlight"),
     ],
   },
 
@@ -245,6 +293,7 @@ const AURORA: EditableSection[] = [
           { kind: "lines", path: "body", label: "One sentence", max: 120 },
         ],
       },
+      arrival("reasons"),
     ],
   },
 
@@ -273,6 +322,7 @@ const AURORA: EditableSection[] = [
           { kind: "photo", path: "photo", label: "Photograph" },
         ],
       },
+      arrival("gallery"),
     ],
   },
 
@@ -294,6 +344,7 @@ const AURORA: EditableSection[] = [
           { kind: "text", path: "author", label: "Who said it", max: 48 },
         ],
       },
+      arrival("quotes"),
     ],
   },
 
@@ -316,6 +367,7 @@ const AURORA: EditableSection[] = [
           { kind: "text", path: "time", label: "Hours", max: 32 },
         ],
       },
+      arrival("visit"),
     ],
   },
 
@@ -326,6 +378,7 @@ const AURORA: EditableSection[] = [
     fields: [
       { kind: "text", path: "closing.title", label: "Heading", max: 70 },
       { kind: "lines", path: "closing.body", label: "One sentence", max: 200 },
+      arrival("closing"),
     ],
   },
 ];

@@ -162,6 +162,19 @@ function FieldInput({
     return <LinkField design={design} field={field} value={value} onChange={onChange} />;
   }
 
+  if (field.kind === "choice") {
+    return (
+      <FieldRow htmlFor={id} label={field.label} hint={field.hint}>
+        <Select
+          id={id}
+          value={typeof value === "string" ? value : ""}
+          onChange={onChange}
+          options={field.options}
+        />
+      </FieldRow>
+    );
+  }
+
   if (field.kind === "strings") {
     return <StringsField field={field} value={value} onChange={onChange} />;
   }

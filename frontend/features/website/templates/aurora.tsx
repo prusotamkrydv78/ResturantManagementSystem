@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useReducedMotion } from "motion/react";
+import { MotionConfig, useReducedMotion } from "motion/react";
 import { ArrowRight, Clock, Mail, MapPin, Phone } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { sampleContent, type SampleContent } from "@/features/website/sample-content";
 import { Editable } from "@/features/website/editor/editable";
+import { Drift, Reveal } from "@/features/website/motion";
 import { GRAIN, PHOTO_GROUND, photoUrl, type PhotoTone } from "@/features/website/photos";
 import type { Restaurant } from "@/types/restaurant";
 
@@ -57,6 +58,9 @@ export function AuroraTemplate({
     .join(", ");
 
   return (
+    // reducedMotion="user" rather than the product's CSS clamp: these are JavaScript
+    // transforms, and a rule that shortens animation-duration cannot reach them.
+    <MotionConfig reducedMotion="user">
     <div
       className={cn(
         "aurora site-page selection:bg-[var(--accent)] selection:text-white",
@@ -73,33 +77,52 @@ export function AuroraTemplate({
         <Hero restaurant={restaurant} content={content} />
       </Editable>
       <Editable id="accolades" label="Accolades">
-        <Marquee items={content.accolades} />
+        <Reveal id="accolades" page={content.motion}>
+          <Marquee items={content.accolades} />
+        </Reveal>
       </Editable>
       <Editable id="story" label="Story">
-        <Story content={content} />
+        <Reveal id="story" page={content.motion}>
+          <Story content={content} />
+        </Reveal>
       </Editable>
       <Editable id="menu" label="Dishes">
-        <Menu content={content} />
+        <Reveal id="menu" page={content.motion}>
+          <Menu content={content} />
+        </Reveal>
       </Editable>
       <Editable id="spotlight" label="Dish of the moment">
-        <Spotlight content={content} />
+        <Reveal id="spotlight" page={content.motion}>
+          <Spotlight content={content} />
+        </Reveal>
       </Editable>
       <Editable id="reasons" label="Why visit">
-        <Reasons content={content} />
+        <Reveal id="reasons" page={content.motion}>
+          <Reasons content={content} />
+        </Reveal>
       </Editable>
       <Editable id="gallery" label="Gallery">
-        <Gallery content={content} />
+        <Reveal id="gallery" page={content.motion}>
+          <Gallery content={content} />
+        </Reveal>
       </Editable>
       <Editable id="quotes" label="Quotes">
-        <Quote content={content} />
+        <Reveal id="quotes" page={content.motion}>
+          <Quote content={content} />
+        </Reveal>
       </Editable>
       <Editable id="visit" label="Opening hours">
-        <Visit restaurant={restaurant} content={content} where={where} />
+        <Reveal id="visit" page={content.motion}>
+          <Visit restaurant={restaurant} content={content} where={where} />
+        </Reveal>
       </Editable>
       <Editable id="closing" label="Closing">
-        <Footer restaurant={restaurant} content={content} where={where} />
+        <Reveal id="closing" page={content.motion}>
+          <Footer restaurant={restaurant} content={content} where={where} />
+        </Reveal>
       </Editable>
     </div>
+    </MotionConfig>
   );
 }
 
@@ -140,16 +163,18 @@ function Hero({
             out of it, so picking a new lead never shows the same picture twice in the
             fade. Keyed on the choice: a slideshow whose list changes underneath it
             would otherwise carry on from whatever index it had reached. */}
-        <Slideshow
-          key={content.heroPhoto}
-          tones={[
-            content.heroPhoto,
-            ...HERO_SUPPORT.filter((tone) => tone !== content.heroPhoto),
-          ]}
-          width={2400}
-          height={1600}
-          className="h-full w-full"
-        />
+        <Drift page={content.motion}>
+          <Slideshow
+            key={content.heroPhoto}
+            tones={[
+              content.heroPhoto,
+              ...HERO_SUPPORT.filter((tone) => tone !== content.heroPhoto),
+            ]}
+            width={2400}
+            height={1600}
+            className="h-full w-full"
+          />
+        </Drift>
       </div>
 
       {/* Two washes, and both had to get heavier.
