@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useDeferredValue, useEffect, useState } from "react";
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { Eye, ExternalLink, Globe, Pencil, Save } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button, LinkButton } from "@/components/ui/button";
@@ -11,6 +17,7 @@ import { ErrorState, FormError, FormSuccess, Skeleton } from "@/components/ui/st
 import { PageBody, PageHeader } from "@/components/layout/page-header";
 import { NoRestaurantAssigned } from "@/features/restaurants/no-restaurant";
 import { ImageField } from "@/features/site/editor/image-field";
+import { ImageLibrary, withoutImage } from "@/features/site/editor/image-library";
 import { PreviewPane, type DeviceId } from "@/features/site/editor/preview-pane";
 import { SectionNav } from "@/features/site/editor/section-nav";
 import { type SiteFeature, supports } from "@/types/site-capabilities";
@@ -24,6 +31,8 @@ import {
   setSitePublished,
 } from "@/features/site/api";
 import { ApiError, isMissingRestaurant } from "@/lib/api/client";
+import { useUnsavedGuard } from "@/lib/hooks/use-unsaved-guard";
+import { revalidateSite } from "./actions";
 import { emptySiteContent } from "@/types/site";
 import type {
   Site,
@@ -63,6 +72,27 @@ export default function WebsitePage() {
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [device, setDevice] = useState<DeviceId>("desktop");
   const [focused, setFocused] = useState<string | null>(null);
+
+  // Whether anything on screen differs from what the server holds.
+  //
+  // Compared against the loaded record rather than tracked with a flag, because a
+  // flag has to be cleared in every path that resets the form and one of them always
+  // gets missed. Serialising a page of text on each keystroke is cheap next to the
+  // preview repaint happening beside it.
+  const isDirty = useMemo(() => {
+    if (site === null) {
+      return false;
+    }
+
+    return (
+      template !== site.template ||
+      JSON.stringify(content) !== JSON.stringify(site.content)
+    );
+  }, [site, template, content]);
+
+  // The backstop. The editor holds a whole page of writing in state, and closing the
+  // tab used to discard it without a word.
+  useUnsavedGuard(isDirty);
 
   // The preview redraws a whole restaurant page, which is far more work than the
   // keystroke that caused it. Deferring it lets React paint the input first and
@@ -139,6 +169,13 @@ export default function WebsitePage() {
       setSite(updated);
       setContent(updated.content);
       setSavedAt(Date.now());
+
+      // There is one content record, not a draft beside a published copy, so a save
+      // on a live page IS the live page. The cached copy has to go with it or the
+      // manager checks their own site and sees the version from before the edit.
+      if (updated.isPublished) {
+        await revalidateSite(updated.slug);
+      }
     } catch (caught) {
       setSaveError(
         caught instanceof ApiError || caught instanceof Error
@@ -162,8 +199,14 @@ export default function WebsitePage() {
         setContent(saved.content);
       }
 
-      setSite(await setSitePublished(next));
+      const updated = await setSitePublished(next);
+
+      setSite(updated);
       setSavedAt(Date.now());
+
+      // Both directions. Publishing has to replace whatever is cached, and taking a
+      // page down has to stop the cache serving it after it stopped existing.
+      await revalidateSite(updated.slug);
     } catch (caught) {
       setSaveError(
         caught instanceof ApiError || caught instanceof Error
@@ -177,6 +220,23 @@ export default function WebsitePage() {
 
   function addImage(image: SiteImage) {
     setImages((current) => [image, ...current]);
+  }
+
+  /**
+   * Drops a deleted picture out of the list and off the page.
+   *
+   * Both halves matter. The file is gone from the server either way, so a field
+   * still naming it would render a broken image on a live site - the page has to
+   * stop pointing at it in the same movement.
+   */
+  function removeImage(id: string) {
+    const gone = images.find((image) => image.id === id);
+
+    setImages((current) => current.filter((image) => image.id !== id));
+
+    if (gone !== undefined) {
+      setContent((current) => withoutImage(current, gone.url));
+    }
   }
 
   if (isLoading) {
@@ -238,6 +298,14 @@ export default function WebsitePage() {
               {site.isPublished ? "Live" : "Not published"}
             </Badge>
 
+            {/* Says which of the two states the page is in, rather than leaving it to
+                be inferred from whether Save happens to be enabled. */}
+            {isDirty && (
+              <Badge tone="warning" dot>
+                Unsaved changes
+              </Badge>
+            )}
+
             <Button
               variant="secondary"
               size="sm"
@@ -248,8 +316,13 @@ export default function WebsitePage() {
               {isPreviewing ? "Back to editing" : "Preview"}
             </Button>
 
-            <Button size="sm" icon={<Save />} disabled={isSaving} onClick={() => void handleSave()}>
-              {isSaving ? "Saving…" : "Save"}
+            <Button
+              size="sm"
+              icon={<Save />}
+              disabled={isSaving || !isDirty}
+              onClick={() => void handleSave()}
+            >
+              {isSaving ? "Saving…" : isDirty ? "Save" : "Saved"}
             </Button>
 
             <Button
@@ -291,10 +364,18 @@ export default function WebsitePage() {
           <FormSuccess message="Your website has been saved." />
         )}
 
-        {site.isPublished && site.hasUnpublishedChanges && (
+        {/* This used to read "You have saved changes that visitors cannot see yet.
+            Publish again to put them live." That was not true. There is one content
+            record and the public route reads it directly, gated only on the published
+            flag - so on a live page, saving IS publishing, and a manager saving a
+            half-finished edit was told the public could not see something they could
+            already see. What the flag actually marks is that the page has been edited
+            since the button was last pressed, which is worth saying and is a
+            different sentence. */}
+        {site.isPublished && isDirty && (
           <p className="rounded-lg border border-warning-border bg-warning-soft px-4 py-3 text-sm text-warning">
-            You have saved changes that visitors cannot see yet. Publish again to put
-            them live.
+            This page is live. Anything you save here is what visitors get, straight
+            away.
           </p>
         )}
 
@@ -304,16 +385,39 @@ export default function WebsitePage() {
           <div className="flex min-w-0 flex-col">
             <span className="text-xs text-muted">Your page address</span>
             <span className="truncate font-mono text-sm text-text">{publicPath}</span>
+            {!site.isPublished && (
+              <span className="text-2xs text-subtle">
+                Nothing answers here until you publish.
+              </span>
+            )}
           </div>
-          <LinkButton
-            href={publicPath}
-            target="_blank"
-            variant="secondary"
-            size="sm"
-            icon={<ExternalLink />}
-          >
-            {site.isPublished ? "Visit" : "Preview in a tab"}
-          </LinkButton>
+
+          {/* Only offered once there is something at the other end. This button used
+              to say "Preview in a tab" on an unpublished page and open the public
+              address, which serves a not-found - the public query requires the
+              published flag. A button that promises a preview and delivers a 404 is
+              worse than no button, so an unpublished page gets the preview that
+              actually works: the real renderer, in this tab. */}
+          {site.isPublished ? (
+            <LinkButton
+              href={publicPath}
+              target="_blank"
+              variant="secondary"
+              size="sm"
+              icon={<ExternalLink />}
+            >
+              Visit
+            </LinkButton>
+          ) : (
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={<Eye />}
+              onClick={() => setIsPreviewing(true)}
+            >
+              Preview full width
+            </Button>
+          )}
         </Surface>
 
         {isPreviewing ? (
@@ -1217,6 +1321,15 @@ export default function WebsitePage() {
                 )}
               />
             </Section>
+
+            {/* Every picture, and the only way to remove one. Placed after the
+                sections that use them, because that is the order the work happens
+                in: fill the page, then tidy what it left behind. */}
+            <ImageLibrary
+              images={images}
+              content={content}
+              onDeleted={removeImage}
+            />
 
             <Section
               template={template}

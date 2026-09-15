@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Pencil } from "lucide-react";
+import { Pencil, TriangleAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Field, describedBy } from "@/components/ui/field";
@@ -26,6 +26,12 @@ import type { Restaurant } from "@/types/restaurant";
  * Neither the read nor the write carries a restaurant id: the API resolves the
  * record from the access token. The name and the slug are shown, but the slug is
  * not editable here because it is a platform-level identifier.
+ *
+ * The page keeps one shape in both of its modes. Editing used to replace all three
+ * panels with a single form, so the manager, the restaurant id and the dates simply
+ * left the screen the moment somebody clicked Edit - two thirds of the page vanishing
+ * to change a phone number. The column on the right is the same in both modes now,
+ * and only the panel being edited changes.
  */
 export default function MyRestaurantPage() {
   return (
@@ -34,6 +40,15 @@ export default function MyRestaurantPage() {
     </RequireAuth>
   );
 }
+
+/**
+ * How long the confirmation stays up.
+ *
+ * It used to stay forever: it was set on a successful save and cleared only when
+ * somebody clicked Edit again, so "Restaurant details saved." sat at the top of the
+ * page for the rest of the session, still claiming a save that happened an hour ago.
+ */
+const SAVED_FOR_MS = 6_000;
 
 /** The editable fields, matching the update payload exactly. */
 interface FormState {
@@ -115,6 +130,18 @@ function MyRestaurant() {
     };
   }, [reloadKey]);
 
+  // The confirmation withdraws itself. Keyed on the timestamp so a second save
+  // restarts the clock rather than inheriting the first one's remaining time.
+  useEffect(() => {
+    if (savedAt === null) {
+      return;
+    }
+
+    const timer = setTimeout(() => setSavedAt(null), SAVED_FOR_MS);
+
+    return () => clearTimeout(timer);
+  }, [savedAt]);
+
   function startEditing() {
     if (restaurant !== null) {
       setForm(toForm(restaurant));
@@ -178,20 +205,50 @@ function MyRestaurant() {
   const update = (key: keyof FormState) => (value: string) =>
     setForm((current) => (current === null ? current : { ...current, [key]: value }));
 
+  /** One field, wired the same way every time. */
+  const field = (name: keyof FormState) => ({
+    id: name,
+    value: form?.[name] ?? "",
+    onChange: (event: React.ChangeEvent<HTMLInputElement>) =>
+      update(name)(event.target.value),
+    "aria-invalid": hasError(fieldErrors, name),
+    // Every field, not only the name. The others set aria-invalid and pointed at
+    // nothing, so a screen reader announced "invalid" and never read the reason.
+    "aria-describedby": describedBy(name, {
+      hasError: hasError(fieldErrors, name),
+    }),
+  });
+
   return (
     <>
       <PageHeader
         title={restaurant?.name ?? "My restaurant"}
         description="Your restaurant profile. Guests see this information."
         actions={
-          restaurant !== null && !isEditing ? (
+          restaurant !== null ? (
             <div className="flex items-center gap-2">
-              <Badge tone="success" dot>
-                Active
-              </Badge>
-              <Button variant="secondary" size="sm" icon={<Pencil />} onClick={startEditing}>
-                Edit details
-              </Button>
+              {/* Read from the record rather than asserted. This badge said "Active"
+                  unconditionally, so a suspended restaurant - one that can take no
+                  order from staff or guest - told its manager it was trading. */}
+              {restaurant.isActive ? (
+                <Badge tone="success" dot>
+                  In service
+                </Badge>
+              ) : (
+                <Badge tone="danger" dot>
+                  Suspended
+                </Badge>
+              )}
+              {!isEditing && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon={<Pencil />}
+                  onClick={startEditing}
+                >
+                  Edit details
+                </Button>
+              )}
             </div>
           ) : undefined
         }
@@ -199,202 +256,226 @@ function MyRestaurant() {
 
       <PageBody>
         {isLoading ? (
-          <Surface className="flex flex-col gap-3 p-4">
-            <Skeleton className="h-4 w-1/3" />
-            <Skeleton className="h-4 w-1/2" />
-            <Skeleton className="h-4 w-1/4" />
-          </Surface>
+          // Shaped like the two columns that arrive, rather than three grey bars in
+          // one box, so the page does not rearrange itself when the data lands.
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(22rem,1fr)] xl:items-start">
+            <div className="flex flex-col gap-4">
+              <PanelSkeleton rows={5} />
+              <PanelSkeleton rows={2} />
+            </div>
+            <PanelSkeleton rows={4} />
+          </div>
         ) : error !== null ? (
           <Surface>
             <ErrorState message={error} onRetry={retry} />
           </Surface>
         ) : restaurant === null ? (
           <NoRestaurantAssigned />
-        ) : isEditing && form !== null ? (
-          <Surface>
-            <SurfaceHeader
-              title="Edit details"
-              description="The slug and the manager assignment are managed by the platform admin."
-            />
-
-            <form onSubmit={handleSubmit}>
-              <div className="flex flex-col gap-4 px-4 py-4">
-                {saveError !== null && <FormError message={saveError} />}
-
-                <Field
-                  htmlFor="name"
-                  label="Restaurant name"
-                  required
-                  error={firstError(fieldErrors, "name")}
-                >
-                  <Input
-                    id="name"
-                    required
-                    minLength={2}
-                    maxLength={200}
-                    autoFocus
-                    value={form.name}
-                    onChange={(event) => update("name")(event.target.value)}
-                    aria-invalid={hasError(fieldErrors, "name")}
-                    aria-describedby={describedBy("name", {
-                      hasError: hasError(fieldErrors, "name"),
-                    })}
-                  />
-                </Field>
-
-                <Field
-                  htmlFor="addressLine"
-                  label="Address"
-                  error={firstError(fieldErrors, "addressLine")}
-                >
-                  <Input
-                    id="addressLine"
-                    maxLength={256}
-                    value={form.addressLine}
-                    onChange={(event) => update("addressLine")(event.target.value)}
-                    aria-invalid={hasError(fieldErrors, "addressLine")}
-                  />
-                </Field>
-
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <Field
-                    htmlFor="city"
-                    label="City"
-                    error={firstError(fieldErrors, "city")}
-                  >
-                    <Input
-                      id="city"
-                      maxLength={100}
-                      value={form.city}
-                      onChange={(event) => update("city")(event.target.value)}
-                      aria-invalid={hasError(fieldErrors, "city")}
-                    />
-                  </Field>
-
-                  <Field
-                    htmlFor="country"
-                    label="Country"
-                    error={firstError(fieldErrors, "country")}
-                  >
-                    <Input
-                      id="country"
-                      maxLength={100}
-                      value={form.country}
-                      onChange={(event) => update("country")(event.target.value)}
-                      aria-invalid={hasError(fieldErrors, "country")}
-                    />
-                  </Field>
-                </div>
-
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <Field
-                    htmlFor="contactEmail"
-                    label="Contact email"
-                    error={firstError(fieldErrors, "contactEmail")}
-                  >
-                    <Input
-                      id="contactEmail"
-                      type="email"
-                      maxLength={256}
-                      value={form.contactEmail}
-                      onChange={(event) => update("contactEmail")(event.target.value)}
-                      aria-invalid={hasError(fieldErrors, "contactEmail")}
-                    />
-                  </Field>
-
-                  <Field
-                    htmlFor="contactPhone"
-                    label="Contact phone"
-                    error={firstError(fieldErrors, "contactPhone")}
-                  >
-                    <Input
-                      id="contactPhone"
-                      type="tel"
-                      maxLength={32}
-                      value={form.contactPhone}
-                      onChange={(event) => update("contactPhone")(event.target.value)}
-                      aria-invalid={hasError(fieldErrors, "contactPhone")}
-                    />
-                  </Field>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border bg-surface-2 px-4 py-3">
-                <Button variant="secondary" onClick={cancelEditing} disabled={isSaving}>
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={isSaving}>
-                  {isSaving ? "Saving…" : "Save changes"}
-                </Button>
-              </div>
-            </form>
-          </Surface>
         ) : (
           <>
+            {/* What suspension actually means, said once, where it is discovered.
+                The badge alone names the state; a manager whose restaurant stopped
+                taking orders this morning needs the sentence as well, and this is
+                the only screen of theirs that knows. */}
+            {!restaurant.isActive && (
+              <Surface className="border-danger-border bg-danger-soft">
+                <p className="flex items-start gap-2.5 px-4 py-3 text-sm text-text">
+                  <TriangleAlert
+                    className="mt-0.5 size-4 shrink-0 text-danger"
+                    aria-hidden="true"
+                  />
+                  <span>
+                    This restaurant is suspended, so no new order can be opened by
+                    staff or by a guest. Your details below can still be edited. Only
+                    the platform administrator can put it back into service.
+                  </span>
+                </p>
+              </Surface>
+            )}
+
             {savedAt !== null && <FormSuccess message="Restaurant details saved." />}
 
-            <Surface>
-              <SurfaceHeader title="Profile" description="Identity and location" />
-              <dl className="divide-y divide-border">
-                <DetailRow label="Name">{restaurant.name}</DetailRow>
-                <DetailRow label="Slug" mono>
-                  {restaurant.slug}
-                </DetailRow>
-                <DetailRow label="Address">
-                  {restaurant.addressLine ?? <Unset />}
-                </DetailRow>
-                <DetailRow label="City">{restaurant.city ?? <Unset />}</DetailRow>
-                <DetailRow label="Country">
-                  {restaurant.country ?? <Unset />}
-                </DetailRow>
-              </dl>
-            </Surface>
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(22rem,1fr)] xl:items-start">
+              <div className="flex flex-col gap-4">
+                {isEditing && form !== null ? (
+                  <Surface>
+                    <SurfaceHeader
+                      title="Edit details"
+                      description="The slug and the manager assignment are set by the platform admin."
+                    />
 
-            <Surface>
-              <SurfaceHeader title="Contact" description="How guests reach you" />
-              <dl className="divide-y divide-border">
-                <DetailRow label="Email">
-                  {restaurant.contactEmail ?? <Unset />}
-                </DetailRow>
-                <DetailRow label="Phone">
-                  {restaurant.contactPhone ?? <Unset />}
-                </DetailRow>
-              </dl>
-            </Surface>
+                    <form onSubmit={handleSubmit}>
+                      <div className="flex flex-col gap-4 px-4 py-4">
+                        {saveError !== null && <FormError message={saveError} />}
 
-            <Surface>
-              <SurfaceHeader
-                title="Management"
-                description="Set by the platform admin"
-              />
-              <dl className="divide-y divide-border">
-                <DetailRow label="Manager">
-                  {restaurant.manager === null ? (
-                    <Unset />
-                  ) : (
-                    <span className="flex flex-col">
-                      <span>{restaurant.manager.fullName}</span>
-                      <span className="text-xs text-muted">
-                        {restaurant.manager.email}
+                        <Field
+                          htmlFor="name"
+                          label="Restaurant name"
+                          required
+                          error={firstError(fieldErrors, "name")}
+                        >
+                          <Input
+                            {...field("name")}
+                            required
+                            minLength={2}
+                            maxLength={200}
+                            autoFocus
+                          />
+                        </Field>
+
+                        <Field
+                          htmlFor="addressLine"
+                          label="Address"
+                          error={firstError(fieldErrors, "addressLine")}
+                        >
+                          <Input {...field("addressLine")} maxLength={256} />
+                        </Field>
+
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                          <Field
+                            htmlFor="city"
+                            label="City"
+                            error={firstError(fieldErrors, "city")}
+                          >
+                            <Input {...field("city")} maxLength={100} />
+                          </Field>
+
+                          <Field
+                            htmlFor="country"
+                            label="Country"
+                            error={firstError(fieldErrors, "country")}
+                          >
+                            <Input {...field("country")} maxLength={100} />
+                          </Field>
+                        </div>
+
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                          <Field
+                            htmlFor="contactEmail"
+                            label="Contact email"
+                            error={firstError(fieldErrors, "contactEmail")}
+                          >
+                            <Input
+                              {...field("contactEmail")}
+                              type="email"
+                              maxLength={256}
+                            />
+                          </Field>
+
+                          <Field
+                            htmlFor="contactPhone"
+                            label="Contact phone"
+                            error={firstError(fieldErrors, "contactPhone")}
+                          >
+                            <Input
+                              {...field("contactPhone")}
+                              type="tel"
+                              maxLength={32}
+                            />
+                          </Field>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border bg-surface-2 px-4 py-3">
+                        <Button
+                          variant="secondary"
+                          onClick={cancelEditing}
+                          disabled={isSaving}
+                        >
+                          Cancel
+                        </Button>
+                        <Button type="submit" disabled={isSaving}>
+                          {isSaving ? "Saving…" : "Save changes"}
+                        </Button>
+                      </div>
+                    </form>
+                  </Surface>
+                ) : (
+                  <>
+                    <Surface>
+                      <SurfaceHeader title="Profile" description="Identity and location" />
+                      <dl className="divide-y divide-border">
+                        <DetailRow label="Name">{restaurant.name}</DetailRow>
+                        <DetailRow label="Slug" mono>
+                          {restaurant.slug}
+                        </DetailRow>
+                        <DetailRow label="Address">
+                          {restaurant.addressLine ?? <Unset />}
+                        </DetailRow>
+                        <DetailRow label="City">{restaurant.city ?? <Unset />}</DetailRow>
+                        <DetailRow label="Country">
+                          {restaurant.country ?? <Unset />}
+                        </DetailRow>
+                      </dl>
+                    </Surface>
+
+                    <Surface>
+                      <SurfaceHeader title="Contact" description="How guests reach you" />
+                      <dl className="divide-y divide-border">
+                        <DetailRow label="Email">
+                          {restaurant.contactEmail ?? <Unset />}
+                        </DetailRow>
+                        <DetailRow label="Phone">
+                          {restaurant.contactPhone ?? <Unset />}
+                        </DetailRow>
+                      </dl>
+                    </Surface>
+                  </>
+                )}
+              </div>
+
+              {/* Stays put through both modes. None of it is editable here, which is
+                  exactly why it should not disappear the moment editing starts. */}
+              <Surface>
+                <SurfaceHeader title="Management" description="Set by the platform admin" />
+                <dl className="divide-y divide-border">
+                  <DetailRow label="Manager">
+                    {restaurant.manager === null ? (
+                      <Unset />
+                    ) : (
+                      <span className="flex flex-col">
+                        <span>{restaurant.manager.fullName}</span>
+                        <span className="text-xs text-muted">
+                          {restaurant.manager.email}
+                        </span>
                       </span>
-                    </span>
-                  )}
-                </DetailRow>
-                <DetailRow label="Restaurant ID" mono>
-                  {restaurant.id}
-                </DetailRow>
-                <DetailRow label="Created">
-                  {formatDateTime(restaurant.createdAtUtc)}
-                </DetailRow>
-                <DetailRow label="Last updated">
-                  {formatDateTime(restaurant.updatedAtUtc)}
-                </DetailRow>
-              </dl>
-            </Surface>
+                    )}
+                  </DetailRow>
+                  <DetailRow label="Restaurant ID" mono>
+                    {restaurant.id}
+                  </DetailRow>
+                  <DetailRow label="Created">
+                    {formatDateTime(restaurant.createdAtUtc)}
+                  </DetailRow>
+                  <DetailRow label="Last updated">
+                    {formatDateTime(restaurant.updatedAtUtc)}
+                  </DetailRow>
+                </dl>
+              </Surface>
+            </div>
           </>
         )}
       </PageBody>
     </>
+  );
+}
+
+/** A panel of label/value rows, before it has any. */
+function PanelSkeleton({ rows }: { rows: number }) {
+  return (
+    <Surface>
+      <div className="border-b border-border px-4 py-3">
+        <Skeleton className="h-5 w-28" />
+      </div>
+      <div className="flex flex-col divide-y divide-border">
+        {Array.from({ length: rows }, (_, index) => (
+          <div key={index} className="flex items-center justify-between gap-4 px-4 py-3">
+            <Skeleton className="h-3.5 w-24" />
+            <Skeleton className="h-3.5 w-32" />
+          </div>
+        ))}
+      </div>
+    </Surface>
   );
 }
 
