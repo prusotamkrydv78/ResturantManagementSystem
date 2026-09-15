@@ -5,6 +5,7 @@ import { useReducedMotion } from "motion/react";
 import { ArrowRight, Clock, Mail, MapPin, Phone } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { sampleContent, type SampleContent } from "@/features/website/sample-content";
+import { Editable } from "@/features/website/editor/editable";
 import { GRAIN, PHOTO_GROUND, photoUrl, type PhotoTone } from "@/features/website/photos";
 import type { Restaurant } from "@/types/restaurant";
 
@@ -65,16 +66,39 @@ export function AuroraTemplate({
       )}
       style={{ backgroundColor: "var(--paper)", color: "var(--ink)" }}
     >
-      <Hero restaurant={restaurant} content={content} />
-      <Marquee items={content.accolades} />
-      <Story content={content} />
-      <Menu content={content} />
-      <Spotlight content={content} />
-      <Reasons content={content} />
-      <Gallery content={content} />
-      <Quote content={content} />
-      <Visit restaurant={restaurant} content={content} where={where} />
-      <Footer restaurant={restaurant} content={content} where={where} />
+      {/* One wrapper per section, and the ids match the entries in the editor's
+          section list. Outside edit mode each of these renders its children and
+          nothing else, so a published page carries no trace of the editor. */}
+      <Editable id="hero" label="Hero">
+        <Hero restaurant={restaurant} content={content} />
+      </Editable>
+      <Editable id="accolades" label="Accolades">
+        <Marquee items={content.accolades} />
+      </Editable>
+      <Editable id="story" label="Story">
+        <Story content={content} />
+      </Editable>
+      <Editable id="menu" label="Dishes">
+        <Menu content={content} />
+      </Editable>
+      <Editable id="spotlight" label="Dish of the moment">
+        <Spotlight content={content} />
+      </Editable>
+      <Editable id="reasons" label="Why visit">
+        <Reasons content={content} />
+      </Editable>
+      <Editable id="gallery" label="Gallery">
+        <Gallery content={content} />
+      </Editable>
+      <Editable id="quotes" label="Quotes">
+        <Quote content={content} />
+      </Editable>
+      <Editable id="visit" label="Opening hours">
+        <Visit restaurant={restaurant} content={content} where={where} />
+      </Editable>
+      <Editable id="closing" label="Closing">
+        <Footer restaurant={restaurant} content={content} where={where} />
+      </Editable>
     </div>
   );
 }
@@ -112,8 +136,16 @@ function Hero({
           the flow, and the hero renders with no picture at all. A positioned wrapper
           keeps both rules where they belong. */}
       <div className="absolute inset-0">
+        {/* The chosen plate first, then the rest of the set with the chosen one taken
+            out of it, so picking a new lead never shows the same picture twice in the
+            fade. Keyed on the choice: a slideshow whose list changes underneath it
+            would otherwise carry on from whatever index it had reached. */}
         <Slideshow
-          tones={["room", "pass", "fire", "plated"]}
+          key={content.heroPhoto}
+          tones={[
+            content.heroPhoto,
+            ...HERO_SUPPORT.filter((tone) => tone !== content.heroPhoto),
+          ]}
           width={2400}
           height={1600}
           className="h-full w-full"
@@ -186,10 +218,10 @@ function Hero({
 
         <div className="mt-9 flex flex-wrap items-center gap-x-3 gap-y-3">
           <a
-            href="#visit"
+            href={content.actions.primaryHref}
             className="group inline-flex items-center gap-2.5 rounded-full bg-[var(--accent)] px-7 py-3.5 text-sm font-medium text-white transition-colors hover:bg-[#a04830]"
           >
-            Reserve a table
+            {content.actions.primary}
             <ArrowRight
               className="size-4 transition-transform group-hover:translate-x-0.5"
               aria-hidden="true"
@@ -199,10 +231,10 @@ function Hero({
               beside a filled one still has to be findable, and a tint of white on an
               unpredictable photograph is the first thing to disappear. */}
           <a
-            href="#menu"
+            href={content.actions.secondaryHref}
             className="rounded-full border border-white/45 px-6 py-3.5 text-sm font-medium text-white transition-colors hover:bg-white hover:text-[var(--ink)]"
           >
-            Read the menu
+            {content.actions.secondary}
           </a>
 
           {restaurant.city !== null && restaurant.city.trim() !== "" && (
@@ -216,6 +248,9 @@ function Hero({
     </section>
   );
 }
+
+/** The plates the hero fades through, after whichever one the manager put first. */
+const HERO_SUPPORT: PhotoTone[] = ["room", "pass", "fire", "plated"];
 
 const NAV = [
   { label: "Menu", href: "#menu" },

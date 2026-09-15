@@ -52,6 +52,15 @@ export interface SampleContent {
   eyebrow: string;
   headline: string;
   standfirst: string;
+  /** What the two buttons under the opening say, and where each one goes. */
+  actions: {
+    primary: string;
+    primaryHref: string;
+    secondary: string;
+    secondaryHref: string;
+  };
+  /** Which plate leads the hero. The rest of the set follows it. */
+  heroPhoto: PhotoTone;
   accolades: string[];
   story: { title: string; body: string[] };
   dishes: SampleDish[];
@@ -105,6 +114,14 @@ export function sampleContent(): SampleContent {
     headline: "Cooked over fire, eaten without hurry",
     standfirst:
       "A twelve-table room where the menu is written after the delivery rather than before it. Nothing reaches the plate that does not need to be there.",
+
+    actions: {
+      primary: "Reserve a table",
+      primaryHref: "#visit",
+      secondary: "Read the menu",
+      secondaryHref: "#menu",
+    },
+    heroPhoto: "room",
 
     accolades: [
       "Two rosettes, four years running",

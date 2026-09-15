@@ -37,6 +37,24 @@ export type PhotoTone =
   | "pass";
 
 /**
+ * Every plate, in one array.
+ *
+ * The picker in the editor offers exactly what a template can draw, read from the
+ * same place the templates read. A second list would be a second answer to "which
+ * pictures exist", and the two would disagree the first time one was added.
+ */
+export const PHOTO_TONES: PhotoTone[] = [
+  "hall",
+  "room",
+  "fire",
+  "greens",
+  "plated",
+  "dessert",
+  "wine",
+  "pass",
+];
+
+/**
  * Where the photographs live.
  *
  * Unsplash's image CDN, addressed by photo id. No key, no account, no API call: the
