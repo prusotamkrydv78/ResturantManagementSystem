@@ -359,6 +359,23 @@ h4 {
   outline-offset: 3px;
 }
 
+/* Nothing on a restaurant page may scroll the document sideways.
+
+   These designs are built out of full-bleed bands, and a band is one careless
+   negative margin, hover scale or drifting photograph away from hanging a few
+   pixels off the right edge — which the browser answers with a horizontal scrollbar
+   under the entire page. Each of those is a bug worth fixing where it happens, and
+   this is the floor under them.
+
+   The value is clip rather than hidden, and the difference matters: hidden would
+   make this element a scroll container, and every position:sticky inside these
+   templates — Slate's spine, the headers on the other three — would then stick to
+   it rather than to the window, which is to say stop working. clip crops without
+   creating one. */
+.site-page {
+  overflow-x: clip;
+}
+
 /* ---------------------------------------------------------------------------
    Landing page entrance.
 

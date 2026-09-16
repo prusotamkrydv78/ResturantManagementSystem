@@ -7,7 +7,13 @@ import { cn } from "@/lib/utils/cn";
 import { sampleContent, type SampleContent } from "@/features/website/sample-content";
 import { Editable } from "@/features/website/editor/editable";
 import { Drift, Reveal } from "@/features/website/motion";
-import { GRAIN, PHOTO_GROUND, photoUrl, type PhotoTone } from "@/features/website/photos";
+import {
+  GRAIN,
+  mediaIdOf,
+  photoGround,
+  photoSrc,
+  type PhotoRef,
+} from "@/features/website/photos";
 import type { Restaurant } from "@/types/restaurant";
 
 /**
@@ -149,7 +155,11 @@ function Hero({
   content: SampleContent;
 }) {
   return (
-    <section className="relative isolate flex min-h-svh flex-col">
+    // overflow-hidden, which Slate and Atrium have had all along and this did not.
+    // The drifting photograph below is scaled to 108%, and with nothing clipping it
+    // the extra eight per cent hung off the right edge of the document and put a
+    // horizontal scrollbar under the whole page.
+    <section className="relative isolate flex min-h-svh flex-col overflow-hidden">
       {/* Wrapped rather than given `absolute inset-0` directly.
  
           Both Photo and Slideshow declare `relative` on themselves, because the image
@@ -166,10 +176,7 @@ function Hero({
         <Drift page={content.motion}>
           <Slideshow
             key={content.heroPhoto}
-            tones={[
-              content.heroPhoto,
-              ...HERO_SUPPORT.filter((tone) => tone !== content.heroPhoto),
-            ]}
+            tones={heroSequence(content.heroPhoto)}
             width={2400}
             height={1600}
             className="h-full w-full"
@@ -274,8 +281,27 @@ function Hero({
   );
 }
 
-/** The plates the hero fades through, after whichever one the manager put first. */
-const HERO_SUPPORT: PhotoTone[] = ["room", "pass", "fire", "plated"];
+/** The samples the hero falls back to, after whichever one the manager put first. */
+const HERO_SUPPORT: PhotoRef[] = ["room", "pass", "fire", "plated"];
+
+/**
+ * What the hero fades through.
+ *
+ * A restaurant still on the samples gets all four, because one still photograph of a
+ * room nobody has photographed yet is a poorer hero than four.
+ *
+ * The moment a manager puts their own picture here, the filler stops. Their room
+ * alternating with three stock dining rooms is not a slideshow of their restaurant, it
+ * is a slideshow of somebody else's with theirs in it — and a single real photograph
+ * is worth more to a visitor than four where three are borrowed.
+ */
+function heroSequence(chosen: PhotoRef): PhotoRef[] {
+  if (mediaIdOf(chosen) !== null) {
+    return [chosen];
+  }
+
+  return [chosen, ...HERO_SUPPORT.filter((tone) => tone !== chosen)];
+}
 
 const NAV = [
   { label: "Menu", href: "#menu" },
@@ -833,7 +859,7 @@ function Photo({
   className,
   priority = false,
 }: {
-  tone: PhotoTone;
+  tone: PhotoRef;
   /** What to ask the source for. Roughly twice the painted size. */
   width: number;
   height: number;
@@ -845,7 +871,7 @@ function Photo({
     <div
       aria-hidden="true"
       className={cn("relative overflow-hidden", className)}
-      style={{ backgroundImage: PHOTO_GROUND[tone], backgroundSize: "cover" }}
+      style={{ backgroundImage: photoGround(tone), backgroundSize: "cover" }}
     >
       <Frame tone={tone} width={width} height={height} priority={priority} />
     </div>
@@ -864,7 +890,7 @@ function Frame({
   height,
   priority = false,
 }: {
-  tone: PhotoTone;
+  tone: PhotoRef;
   width: number;
   height: number;
   priority?: boolean;
@@ -878,7 +904,7 @@ function Frame({
   return (
     // eslint-disable-next-line @next/next/no-img-element
     <img
-      src={photoUrl(tone, width, height)}
+      src={photoSrc(tone, width, height)}
       alt=""
       loading={priority ? "eager" : "lazy"}
       decoding="async"
@@ -912,7 +938,7 @@ function Slideshow({
   className,
   holdMs = 6000,
 }: {
-  tones: PhotoTone[];
+  tones: PhotoRef[];
   width: number;
   height: number;
   className?: string;
@@ -941,7 +967,7 @@ function Slideshow({
           key={tone}
           className="absolute inset-0 transition-opacity duration-[1500ms] ease-in-out"
           style={{
-            backgroundImage: PHOTO_GROUND[tone],
+            backgroundImage: photoGround(tone),
             backgroundSize: "cover",
             opacity: index === shown ? 1 : 0,
           }}

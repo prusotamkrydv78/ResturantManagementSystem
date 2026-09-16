@@ -5,7 +5,7 @@ import { motion, MotionConfig } from "motion/react";
 import { ArrowUpRight, Mail, MapPin, Phone } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { sampleContent, type SampleContent } from "@/features/website/sample-content";
-import { GRAIN, PHOTO_GROUND, photoUrl, type PhotoTone } from "@/features/website/photos";
+import { GRAIN, photoGround, photoSrc, type PhotoRef } from "@/features/website/photos";
 import type { Restaurant } from "@/types/restaurant";
 
 /**
@@ -827,7 +827,7 @@ function Photo({
   className,
   priority = false,
 }: {
-  tone: PhotoTone;
+  tone: PhotoRef;
   width: number;
   height: number;
   className?: string;
@@ -840,12 +840,12 @@ function Photo({
     <div
       aria-hidden="true"
       className={cn("relative overflow-hidden", className)}
-      style={{ backgroundImage: PHOTO_GROUND[tone], backgroundSize: "cover" }}
+      style={{ backgroundImage: photoGround(tone), backgroundSize: "cover" }}
     >
       {!failed && (
         // eslint-disable-next-line @next/next/no-img-element
         <img
-          src={photoUrl(tone, width, height)}
+          src={photoSrc(tone, width, height)}
           alt=""
           loading={priority ? "eager" : "lazy"}
           decoding="async"

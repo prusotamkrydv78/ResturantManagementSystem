@@ -1,5 +1,8 @@
+import { env } from "@/lib/config/env";
+
 /**
- * The pictures a design uses before a restaurant has uploaded any.
+ * The pictures a design uses before a restaurant has uploaded any, and the one type
+ * every photograph slot in every design speaks.
  *
  * NAMED PHOTOGRAPHS, NOT A SEARCH
  *
@@ -21,8 +24,9 @@
  * a firewall, on a plane, or the day the host stops answering. The page degrades to
  * the composition it had rather than to a column of broken images.
  *
- * All of it is demonstration only. Real uploads replace `photoUrl` and nothing else
- * in any template changes.
+ * All of it is demonstration only. A restaurant that uploads its own pictures stops
+ * seeing any of this: see {@link PhotoRef} below, which is how the two live in one
+ * field without a template ever knowing which it has been handed.
  */
 
 /** Which picture a slot wants. Names the subject, not the colour. */
@@ -138,3 +142,93 @@ export const PHOTO_GROUND: Record<PhotoTone, string> = {
  */
 export const GRAIN =
   "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E\")";
+
+/* -------------------------------------------------------------------------- */
+/* What a photograph slot actually holds                                      */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * A photograph, as stored in a page.
+ *
+ * Either the name of one of the samples above, or `media:<id>` naming a picture the
+ * restaurant uploaded. One string, one field, one picker — a design does not have a
+ * "sample photograph" slot and an "uploaded photograph" slot, it has a photograph
+ * slot, and what goes in it is the manager's business.
+ *
+ * WHY THE IDENTIFIER AND NOT THE ADDRESS
+ *
+ * The library hands back a URL, and storing that URL in the page would have been one
+ * line shorter. It would also have baked `/api/media/...` into every saved page on
+ * the platform, so the day that route moves, gains a CDN in front of it or starts
+ * serving resized variants, every page written before the change points at the old
+ * one. The identifier is the fact; the address is a rendering of it, and rendering
+ * belongs at the point of use.
+ *
+ * It is also what makes the two kinds distinguishable at a glance: no sample is
+ * called `media:something`, so no migration and no discriminator field are needed.
+ */
+export type PhotoRef = PhotoTone | `media:${string}`;
+
+const MEDIA_PREFIX = "media:";
+
+/** How an uploaded picture is written into a page. */
+export function mediaRef(id: string): PhotoRef {
+  return `${MEDIA_PREFIX}${id}`;
+}
+
+/** The picture's identifier, or null if this slot holds one of the samples. */
+export function mediaIdOf(ref: string): string | null {
+  return ref.startsWith(MEDIA_PREFIX) ? ref.slice(MEDIA_PREFIX.length) : null;
+}
+
+/** Whether a stored value names one of the samples. */
+export function isPhotoTone(ref: string): ref is PhotoTone {
+  return (PHOTO_TONES as string[]).includes(ref);
+}
+
+/**
+ * Where an uploaded picture is served from.
+ *
+ * Composed against the API's own origin rather than the page's. In development those
+ * are two ports, and a bare `/api/media/...` in an image tag would be asked of the
+ * Next server, which does not have it.
+ */
+export function mediaSrc(id: string): string {
+  return `${env.apiUrl}/api/media/${id}`;
+}
+
+/**
+ * The address for whatever a slot holds, at the size it will be drawn.
+ *
+ * The size is a request, not a promise: the sample CDN crops to it, and an uploaded
+ * picture is served as it was uploaded because the server keeps one copy of it. That
+ * asymmetry is deliberate for now — resizing on upload is a real feature with real
+ * decisions in it, and guessing at them here would be worse than serving the original.
+ *
+ * Anything unrecognised falls back to a sample rather than to a broken image. A page
+ * pointing at a picture that has since been deleted is a case that will happen, and
+ * the right answer to it is a photograph.
+ */
+export function photoSrc(ref: string, width: number, height: number): string {
+  const id = mediaIdOf(ref);
+
+  if (id !== null) {
+    return mediaSrc(id);
+  }
+
+  return photoUrl(isPhotoTone(ref) ? ref : FALLBACK, width, height);
+}
+
+/**
+ * The ground under whatever a slot holds.
+ *
+ * An uploaded picture has no known palette, so it gets the neutral warm ground rather
+ * than a guess. See the note on {@link PHOTO_GROUND} for why anything is painted here
+ * at all.
+ */
+export function photoGround(ref: string): string {
+  return isPhotoTone(ref) ? PHOTO_GROUND[ref] : PHOTO_GROUND[FALLBACK];
+}
+
+/** What an unknown or deleted picture becomes. Warm, dark, and safe under type. */
+const FALLBACK: PhotoTone = "room";

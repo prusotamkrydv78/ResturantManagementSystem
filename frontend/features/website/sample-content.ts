@@ -17,13 +17,13 @@
  */
 
 import type { PageMotion } from "./motion";
-import type { PhotoTone } from "./photos";
+import type { PhotoRef } from "./photos";
 
 export interface SampleDish {
   name: string;
   description: string;
   price: string;
-  photo: PhotoTone;
+  photo: PhotoRef;
 }
 
 /** One line on a printed menu. No picture: a bill of fare is read, not browsed. */
@@ -61,7 +61,7 @@ export interface SampleContent {
     secondaryHref: string;
   };
   /** Which plate leads the hero. The rest of the set follows it. */
-  heroPhoto: PhotoTone;
+  heroPhoto: PhotoRef;
   /** How the page moves: what each section does on arrival, and how fast. */
   motion: PageMotion;
   accolades: string[];
@@ -72,10 +72,10 @@ export interface SampleContent {
     name: string;
     description: string;
     price: string;
-    photo: PhotoTone;
+    photo: PhotoRef;
   };
   reasons: { title: string; body: string }[];
-  gallery: { caption: string; photo: PhotoTone }[];
+  gallery: { caption: string; photo: PhotoRef }[];
   hours: { days: string; time: string }[];
   quotes: { quote: string; author: string }[];
   closing: { title: string; body: string };

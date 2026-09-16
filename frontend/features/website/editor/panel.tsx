@@ -1,11 +1,28 @@
 "use client";
 
-import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Plus, Trash2, X } from "lucide-react";
+import { useRef } from "react";
+import {
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronUp,
+  Images,
+  ImageUp,
+  Loader2,
+  Plus,
+  SquarePen,
+  Trash2,
+  X,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Field as FieldRow } from "@/components/ui/field";
 import { Input, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { useMediaLibrary } from "@/features/website/media/library";
+import { MediaTab } from "@/features/website/media/media-tab";
 import {
+  mediaRef,
+  mediaSrc,
   PHOTO_GROUND,
   photoUrl,
   PHOTO_TONES,
@@ -26,39 +43,87 @@ import { destinationsFor, type EditableSection, type Field } from "./sections";
  * are looking at, and they would be typing at a preview they cannot see. The page is
  * given a margin while this is open, so nothing they are editing is ever behind it.
  *
- * NO SAVE BUTTON, AND NO APPLY
+ * NO APPLY BUTTON IN HERE
  *
- * Every keystroke reaches the page and the draft together. An editor with an Apply
- * button asks somebody to hold a change in their head between typing it and seeing
- * it, which is exactly the work a live preview exists to remove. What the panel does
- * carry is the truth about where the work is kept — on this device, until publishing
- * is built.
+ * Every keystroke reaches the page. An editor with an Apply button asks somebody to
+ * hold a change in their head between typing it and seeing it, which is exactly the
+ * work a live preview exists to remove. Keeping it is a separate act, and it lives on
+ * the toolbar where the rest of the page-level decisions are.
+ *
+ * TWO TABS
+ *
+ * The fields for the section being read, and the restaurant's pictures. The second is
+ * here rather than on a settings screen because uploading a photograph is almost never
+ * the job — the job is "this dish needs a picture", and that should not mean leaving
+ * the page, finding an upload screen and coming back to hunt for the dish again.
  */
+export type PanelTab = "section" | "media";
+
 export function EditorPanel({
   design,
   section,
   sections,
   content,
+  tab,
+  onTab,
   onPatch,
   onClose,
 }: {
   design: DesignId;
-  section: EditableSection;
+  /** Undefined when the panel was opened for the library alone, with nothing selected. */
+  section?: EditableSection;
   /** Every section of this design, so the panel can say where in the page you are. */
   sections: EditableSection[];
   content: SampleContent;
+  tab: PanelTab;
+  onTab: (tab: PanelTab) => void;
   onPatch: (path: ContentPath, value: unknown) => void;
   onClose: () => void;
 }) {
-  const index = sections.findIndex((entry) => entry.id === section.id);
+  const index =
+    section === undefined ? -1 : sections.findIndex((entry) => entry.id === section.id);
   const previous = index > 0 ? sections[index - 1] : undefined;
   const next = index >= 0 && index < sections.length - 1 ? sections[index + 1] : undefined;
 
   return (
     <aside
-      aria-label={`Edit ${section.label.toLowerCase()}`}
+      aria-label={tab === "media" ? "Your pictures" : "Edit page"}
       className="fixed inset-y-0 right-0 z-50 flex w-full flex-col border-l border-border bg-surface shadow-lg sm:w-[24rem]"
     >
+      {/* The two halves of the panel, and the way out of it. One strip, always in the
+          same place, so the library is never more than one press from any field. */}
+      <div className="flex items-center gap-1 border-b border-border px-2 py-1.5">
+        <TabButton
+          isActive={tab === "section"}
+          isDisabled={section === undefined}
+          onClick={() => onTab("section")}
+          icon={<SquarePen className="size-3.5" aria-hidden="true" />}
+        >
+          {section?.label ?? "This section"}
+        </TabButton>
+
+        <TabButton
+          isActive={tab === "media"}
+          onClick={() => onTab("media")}
+          icon={<Images className="size-3.5" aria-hidden="true" />}
+        >
+          Pictures
+        </TabButton>
+
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close"
+          className="ml-auto shrink-0 rounded-md p-1.5 text-muted transition-colors hover:bg-surface-3 hover:text-text"
+        >
+          <X className="size-4" aria-hidden="true" />
+        </button>
+      </div>
+
+      {tab === "media" || section === undefined ? (
+        <MediaTab />
+      ) : (
+        <>
       {/* Where in the page this is, and the way to the next one.
 
           The panel follows the scroll, so a manager who wants the next section can
@@ -91,20 +156,9 @@ export function EditorPanel({
         </button>
       </div>
 
-      <header className="flex items-start justify-between gap-3 border-b border-border px-4 py-3.5">
-        <div className="flex min-w-0 flex-col gap-0.5">
-          <h2 className="text-lg font-semibold text-text">{section.label}</h2>
-          <p className="text-xs text-muted">{section.note}</p>
-        </div>
-
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Stop editing"
-          className="-mt-0.5 -mr-1 shrink-0 rounded-md p-1.5 text-muted transition-colors hover:bg-surface-3 hover:text-text"
-        >
-          <X className="size-4" aria-hidden="true" />
-        </button>
+      <header className="flex flex-col gap-0.5 border-b border-border px-4 py-3.5">
+        <h2 className="text-lg font-semibold text-text">{section.label}</h2>
+        <p className="text-xs text-muted">{section.note}</p>
       </header>
 
       <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-4 py-4">
@@ -121,12 +175,47 @@ export function EditorPanel({
 
       <footer className="border-t border-border bg-surface-2 px-4 py-3">
         <p className="text-2xs leading-relaxed text-muted">
-          Scroll the page to move through the sections. Changes appear as you type and
-          are kept in this browser — nothing is published, and nothing has left this
-          device.
+          Scroll the page to move through the sections. Changes show on the page as you
+          type; press Save to keep them, and Publish when you want visitors to see them.
         </p>
       </footer>
+        </>
+      )}
     </aside>
+  );
+}
+
+/** One of the panel's two halves. Truncates rather than wraps: the strip is one line. */
+function TabButton({
+  isActive,
+  isDisabled = false,
+  onClick,
+  icon,
+  children,
+}: {
+  isActive: boolean;
+  isDisabled?: boolean;
+  onClick: () => void;
+  icon: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={isDisabled}
+      onClick={onClick}
+      aria-current={isActive ? "true" : undefined}
+      className={cn(
+        "inline-flex min-w-0 items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors",
+        "disabled:pointer-events-none disabled:opacity-35",
+        isActive
+          ? "bg-surface-3 text-text"
+          : "text-muted hover:bg-surface-3 hover:text-text",
+      )}
+    >
+      {icon}
+      <span className="truncate">{children}</span>
+    </button>
   );
 }
 
@@ -209,7 +298,24 @@ function FieldInput({
   );
 }
 
-/** Which of the plates. Thumbnails, because nobody picks a photograph by its name. */
+/**
+ * Which picture goes in this slot.
+ *
+ * The restaurant's own first, then the samples, and an upload tile at the front of the
+ * first group. Thumbnails throughout, because nobody picks a photograph by its name.
+ *
+ * WHY BOTH GROUPS EXIST AT ONCE
+ *
+ * The obvious alternative — uploads replace the samples entirely, and a restaurant
+ * with one photograph gets one photograph and eleven empty slots — makes a page look
+ * broken at exactly the moment a manager is first trying it. The samples stay, clearly
+ * labelled as samples, and a restaurant replaces them at whatever pace it takes
+ * pictures. What matters is that the manager can always tell which is which, which is
+ * what the two headings are for.
+ *
+ * Uploading from inside a field selects the picture that arrives. Nobody opens this
+ * picker, uploads a photograph and then wants to go looking for it.
+ */
 function PhotoField({
   field,
   value,
@@ -219,43 +325,152 @@ function PhotoField({
   value: unknown;
   onChange: (value: unknown) => void;
 }) {
+  const library = useMediaLibrary();
+  const input = useRef<HTMLInputElement>(null);
+  const current = typeof value === "string" ? value : "";
+
+  async function receive(list: FileList | null) {
+    if (list === null) {
+      return;
+    }
+
+    const files = Array.from(list).filter((file) => file.type.startsWith("image/"));
+
+    if (files.length === 0) {
+      return;
+    }
+
+    const added = await library.upload(files);
+    const first = added[0];
+
+    if (first !== undefined) {
+      onChange(mediaRef(first.id));
+    }
+  }
+
   return (
     <fieldset className="flex flex-col gap-2">
       <legend className="text-sm font-medium text-text">{field.label}</legend>
       {field.hint !== undefined && <p className="text-xs text-muted">{field.hint}</p>}
 
-      <div className="mt-1 grid grid-cols-4 gap-2">
+      <input
+        ref={input}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(event) => {
+          void receive(event.target.files);
+          event.target.value = "";
+        }}
+      />
+
+      <p className="mt-1 text-2xs font-medium tracking-wide text-subtle uppercase">
+        Your pictures
+      </p>
+
+      <div className="grid grid-cols-4 gap-2">
+        {/* The upload tile sits with the restaurant's own pictures rather than above
+            the whole picker, so "add one" reads as part of the same group as "use one
+            of mine" — which is the same decision, a moment apart. */}
+        <button
+          type="button"
+          disabled={library.isUploading || library.isFull}
+          onClick={() => input.current?.click()}
+          aria-label="Upload a picture"
+          className={cn(
+            "flex aspect-square flex-col items-center justify-center gap-0.5 rounded-md",
+            "border border-dashed border-border-strong bg-surface-2 text-subtle transition-colors",
+            "hover:border-primary hover:text-primary",
+            "disabled:pointer-events-none disabled:opacity-40",
+          )}
+        >
+          {library.isUploading ? (
+            <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+          ) : (
+            <ImageUp className="size-4" aria-hidden="true" />
+          )}
+          <span className="text-[0.5rem] font-medium">Upload</span>
+        </button>
+
+        {library.items.map((item) => (
+          <PhotoTile
+            key={item.id}
+            src={mediaSrc(item.id)}
+            label={item.fileName}
+            isSelected={current === mediaRef(item.id)}
+            onClick={() => onChange(mediaRef(item.id))}
+          />
+        ))}
+      </div>
+
+      {library.items.length === 0 && (
+        <p className="text-2xs leading-relaxed text-muted">
+          Nothing uploaded yet. Anything you add here joins the{" "}
+          <span className="font-medium text-text">Pictures</span> tab and can be used
+          anywhere on the page.
+        </p>
+      )}
+
+      <p className="mt-2 text-2xs font-medium tracking-wide text-subtle uppercase">
+        Samples
+      </p>
+
+      <div className="grid grid-cols-4 gap-2">
         {PHOTO_TONES.map((tone) => (
-          <button
+          <PhotoTile
             key={tone}
-            type="button"
+            src={photoUrl(tone, 160, 160)}
+            ground={PHOTO_GROUND[tone as PhotoTone]}
+            label={tone}
+            isSelected={current === tone}
             onClick={() => onChange(tone)}
-            aria-pressed={value === tone}
-            aria-label={tone}
-            className={cn(
-              "relative aspect-square overflow-hidden rounded-md border-2 transition-colors",
-              "focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
-              value === tone
-                ? "border-primary"
-                : "border-transparent hover:border-border-strong",
-            )}
-            style={{
-              backgroundImage: PHOTO_GROUND[tone as PhotoTone],
-              backgroundSize: "cover",
-            }}
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={photoUrl(tone, 160, 160)}
-              alt=""
-              loading="lazy"
-              decoding="async"
-              className="absolute inset-0 block h-full w-full object-cover"
-            />
-          </button>
+          />
         ))}
       </div>
     </fieldset>
+  );
+}
+
+/** One choosable picture. The same tile for an upload and for a sample. */
+function PhotoTile({
+  src,
+  ground,
+  label,
+  isSelected,
+  onClick,
+}: {
+  src: string;
+  ground?: string;
+  label: string;
+  isSelected: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={isSelected}
+      aria-label={label}
+      title={label}
+      className={cn(
+        "relative aspect-square overflow-hidden rounded-md border-2 transition-colors",
+        isSelected ? "border-primary" : "border-transparent hover:border-border-strong",
+      )}
+      style={
+        ground === undefined
+          ? undefined
+          : { backgroundImage: ground, backgroundSize: "cover" }
+      }
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={src}
+        alt=""
+        loading="lazy"
+        decoding="async"
+        className="absolute inset-0 block h-full w-full object-cover"
+      />
+    </button>
   );
 }
 

@@ -1,124 +1,229 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { getSite, saveSiteDraft, setSitePublished, type Site } from "@/features/website/api";
 import { sampleContent, type SampleContent } from "@/features/website/sample-content";
+import { useUnsavedGuard } from "@/lib/hooks/use-unsaved-guard";
+import { conformContent } from "./conform";
+import type { DesignId } from "@/features/website/designs";
 
 /**
- * What a manager has written, before anything is published.
+ * What a manager has written, and where it is kept.
  *
- * WHERE IT LIVES, AND WHY THAT IS TEMPORARY
+ * ON THE SERVER
  *
- * This browser, keyed by restaurant. The site service was taken out to be rebuilt, so
- * there is nowhere on the server to put a draft yet — and an editor whose work
- * vanishes on refresh is not an editor, it is a demonstration of one. Local storage is
- * the honest middle: the work survives, and every screen that shows it says plainly
- * that it has not left this device.
+ * The first version of this put the draft in local storage, because the site service
+ * had been taken out and there was nowhere else. That was honest but it was not a
+ * feature: a draft in local storage lives in one browser profile on one machine, under
+ * one origin, and disappears when somebody clears their site data or visits by
+ * 127.0.0.1 instead of localhost. It is scratch paper presented as saved work. It is a
+ * row now.
  *
- * The shape is deliberately the one the server will take: a whole content record,
- * written whole and read whole. When the API returns, `load` and `save` below become
- * two fetches and nothing else in the editor changes.
+ * SAVED WHEN ASKED, NOT AS YOU TYPE
  *
- * WHY A PATH RATHER THAN A SETTER PER FIELD
+ * This wrote after every pause at first, on the argument that a Save button makes
+ * somebody hold a change in their head between typing it and seeing it. That argument
+ * was wrong here, for a reason the live preview creates rather than removes: what a
+ * manager types is already on the page in front of them, so nothing is being held in
+ * the head at all. What autosaving actually did was write to the server on every
+ * sentence and take the decision about when a change becomes real away from the person
+ * making it.
  *
- * A section editor is generated from a list of fields, and a field is a label and a
- * place in the record. Giving each one its own setter would mean the field list and
- * the setters were two descriptions of the same thing, free to disagree. One `patch`
- * that takes "hero.headline" keeps it to one.
+ * So editing is local and Save is a button. The page still updates on every keystroke —
+ * that was never the same question.
+ *
+ * SAVING IS STILL NOT PUBLISHING
+ *
+ * Save writes the draft column and nothing else. The public copy only moves when
+ * Publish is pressed, so editing a live page remains safe.
  */
-
-const KEY_PREFIX = "rms.site.draft.";
 
 /** A dotted path into the content record, as written in a field definition. */
 export type ContentPath = string;
 
+export type SaveStatus = "idle" | "saving" | "saved" | "failed";
+
 export interface SiteDraft {
+  /** The page, with anything unwritten filled in from the sample restaurant. */
   content: SampleContent;
-  /** Writes one field. The path is the same string the field list uses. */
+  /** Changes one field, in this browser only, until Save is pressed. */
   patch: (path: ContentPath, value: unknown) => void;
-  /** True once anything differs from the sample the draft started as. */
-  isEdited: boolean;
-  /** Throws the draft away and returns to the sample restaurant. */
-  reset: () => void;
-  /** False until local storage has been read, so the first paint matches the server. */
+  /** The record as the server holds it, for publication state. Null until loaded. */
+  site: Site | null;
+  /** Whether the manager has written anything at all, or is still seeing the sample. */
+  hasOwnContent: boolean;
+  /** Whether anything on screen differs from what the server holds. */
+  isDirty: boolean;
+  status: SaveStatus;
+  /** Set when loading failed outright, as opposed to a save failing. */
+  loadError: string | null;
+  saveError: string | null;
   isReady: boolean;
+  /** Writes the draft. */
+  save: () => Promise<void>;
+  /** Throws away unsaved changes and goes back to the last saved version. */
+  discard: () => void;
+  /** Goes back to the sample restaurant. Unsaved, like any other change. */
+  reset: () => void;
+  /** Publishes the draft, saving first if there is anything to save. */
+  publish: (next: boolean) => Promise<void>;
+  reload: () => void;
 }
 
-export function useSiteDraft(slug: string): SiteDraft {
+export function useSiteDraft(design: DesignId): SiteDraft {
   const sample = useMemo(() => sampleContent(), []);
-  const [content, setContent] = useState<SampleContent>(sample);
+
+  /** What is on screen. */
+  const [stored, setStored] = useState<Partial<SampleContent>>({});
+  /** What the server last confirmed, so unsaved changes can be thrown away. */
+  const [saved, setSaved] = useState<Partial<SampleContent>>({});
+
+  const [site, setSite] = useState<Site | null>(null);
+  const [isDirty, setIsDirty] = useState(false);
+  const [status, setStatus] = useState<SaveStatus>("idle");
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [isReady, setIsReady] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
 
-  const storageKey = `${KEY_PREFIX}${slug}`;
+  // Read at the moment of a write rather than closed over, so Save always sends the
+  // design being looked at and the content as it stands. Assigned in an effect: a ref
+  // written during render is a value React has not agreed to re-render for.
+  const latest = useRef({ design, stored });
 
-  // Read after mount rather than during render: the server has no local storage, and
-  // reading it while rendering would make the first client paint disagree with the
-  // markup React sent.
+  useEffect(() => {
+    latest.current = { design, stored };
+  }, [design, stored]);
+
   useEffect(() => {
     let cancelled = false;
 
-    const read = () => {
-      if (cancelled) {
-        return;
-      }
-
+    async function load() {
       try {
-        const stored = window.localStorage.getItem(storageKey);
+        const loaded = await getSite();
 
-        if (stored !== null) {
-          // Merged over the sample rather than used as-is. A draft written by an
-          // earlier build is missing whatever has been added since, and a template
-          // reading an absent field would take the page down rather than fall back.
-          setContent({ ...sample, ...(JSON.parse(stored) as Partial<SampleContent>) });
-        }
-      } catch {
-        // Unreadable or unparseable. The sample stands, which is a working page.
+        if (cancelled) return;
+
+        const content = loaded.content ?? {};
+
+        setSite(loaded);
+        setStored(content);
+        setSaved(content);
+        setIsDirty(false);
+        setLoadError(null);
+      } catch (caught) {
+        if (cancelled) return;
+
+        setLoadError(
+          caught instanceof Error ? caught.message : "Unable to load your page.",
+        );
+      } finally {
+        if (!cancelled) setIsReady(true);
       }
+    }
 
-      setIsReady(true);
-    };
-
-    const timer = setTimeout(read, 0);
+    void load();
 
     return () => {
       cancelled = true;
-      clearTimeout(timer);
     };
-  }, [storageKey, sample]);
+  }, [reloadKey]);
 
-  const patch = useCallback(
-    (path: ContentPath, value: unknown) => {
-      setContent((current) => {
-        const next = writeAt(current, path, value);
+  const patch = useCallback((path: ContentPath, value: unknown) => {
+    setStored((current) =>
+      writeAt(conformContent(sampleContent(), current), path, value),
+    );
+    setIsDirty(true);
+    // Clears a "Saved" badge left over from the last write, which would otherwise sit
+    // there claiming something about work that has since moved on.
+    setStatus("idle");
+  }, []);
 
-        try {
-          window.localStorage.setItem(storageKey, JSON.stringify(next));
-        } catch {
-          // Storage full or blocked. The edit still applies to the page in front of
-          // them; it simply will not survive a reload, and the editor says so.
-        }
+  const save = useCallback(async () => {
+    const { design: chosen, stored: current } = latest.current;
 
-        return next;
-      });
-    },
-    [storageKey],
-  );
+    setStatus("saving");
+
+    try {
+      // The design goes with the content. Editing a page while looking at a design is
+      // what chooses it — which is also why merely opening one saves nothing.
+      const result = await saveSiteDraft(
+        chosen,
+        conformContent(sampleContent(), current),
+      );
+
+      setSite(result);
+      setSaved(current);
+      setIsDirty(false);
+      setSaveError(null);
+      setStatus("saved");
+    } catch (caught) {
+      // The edit is still on the page and still unsaved. Nothing is lost; the button
+      // simply stays available.
+      setSaveError(
+        caught instanceof Error ? caught.message : "Could not save your page.",
+      );
+      setStatus("failed");
+    }
+  }, []);
+
+  const discard = useCallback(() => {
+    setStored(saved);
+    setIsDirty(false);
+    setStatus("idle");
+    setSaveError(null);
+  }, [saved]);
 
   const reset = useCallback(() => {
-    try {
-      window.localStorage.removeItem(storageKey);
-    } catch {
-      // Nothing to clear, or storage unavailable. The state reset below is what matters.
-    }
+    // Unsaved like any other change, so it can be thought better of before it counts.
+    setStored({});
+    setIsDirty(true);
+    setStatus("idle");
+  }, []);
 
-    setContent(sample);
-  }, [storageKey, sample]);
+  const publish = useCallback(
+    async (next: boolean) => {
+      // Anything unsaved goes first, or Publish would put the last saved version in
+      // front of the public rather than the one on screen.
+      if (isDirty) {
+        await save();
+      }
 
-  const isEdited = useMemo(
-    () => JSON.stringify(content) !== JSON.stringify(sample),
-    [content, sample],
+      try {
+        setSite(await setSitePublished(next));
+        setSaveError(null);
+      } catch (caught) {
+        setSaveError(
+          caught instanceof Error
+            ? caught.message
+            : "Could not change whether the page is public.",
+        );
+      }
+    },
+    [isDirty, save],
   );
 
-  return { content, patch, isEdited, reset, isReady };
+  // Now that a change can sit unsaved indefinitely, this is the backstop that matters.
+  useUnsavedGuard(isDirty || status === "saving");
+
+  const content = useMemo(() => conformContent(sample, stored), [sample, stored]);
+
+  return {
+    content,
+    patch,
+    site,
+    hasOwnContent: Object.keys(stored).length > 0,
+    isDirty,
+    status,
+    loadError,
+    saveError,
+    isReady,
+    save,
+    discard,
+    reset,
+    publish,
+    reload: () => setReloadKey((key) => key + 1),
+  };
 }
 
 /** Reads a dotted path out of the content record. */

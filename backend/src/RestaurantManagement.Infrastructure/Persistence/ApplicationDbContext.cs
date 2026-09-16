@@ -4,6 +4,8 @@ using RestaurantManagement.Domain.Identity;
 using RestaurantManagement.Domain.Customers;
 using RestaurantManagement.Domain.Inventory;
 using RestaurantManagement.Domain.Reservations;
+using RestaurantManagement.Domain.Media;
+using RestaurantManagement.Domain.Sites;
 using RestaurantManagement.Domain.Menu;
 using RestaurantManagement.Domain.Orders;
 using RestaurantManagement.Domain.Payments;
@@ -88,6 +90,12 @@ public class ApplicationDbContext : IdentityUserContext<ApplicationUser, Guid>
 
     /// <summary>What a table thought, left after they had paid.</summary>
     public DbSet<Review> Reviews => Set<Review>();
+
+    /// <summary>Pictures a restaurant has uploaded, for use anywhere on its website.</summary>
+    public DbSet<RestaurantMedia> RestaurantMedia => Set<RestaurantMedia>();
+
+    /// <summary>The public one-page website belonging to each restaurant.</summary>
+    public DbSet<RestaurantSite> RestaurantSites => Set<RestaurantSite>();
 
     /// <summary>What platform administrators have done, append-only.</summary>
     public DbSet<AdminActivity> AdminActivities => Set<AdminActivity>();

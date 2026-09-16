@@ -3,8 +3,20 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { Eye, Globe, Info, LayoutGrid, Pencil, RotateCcw } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import {
+  CircleAlert,
+  CircleCheck,
+  Eye,
+  Globe,
+  Images,
+  LayoutGrid,
+  Loader2,
+  Pencil,
+  RefreshCw,
+  RotateCcw,
+  Save,
+  Undo2,
+} from "lucide-react";
 import { Tooltip } from "@/components/ui/tooltip";
 import { ErrorState, Spinner } from "@/components/ui/states";
 import { Surface } from "@/components/ui/surface";
@@ -12,9 +24,10 @@ import { NoRestaurantAssigned } from "@/features/restaurants/no-restaurant";
 import { getMyRestaurant } from "@/features/restaurants/api";
 import { designById, type Design } from "@/features/website/designs";
 import { SiteRenderer } from "@/features/website/templates";
-import { useSiteDraft } from "@/features/website/editor/draft";
+import { useSiteDraft, type SiteDraft } from "@/features/website/editor/draft";
 import { EditorProvider } from "@/features/website/editor/editable";
-import { EditorPanel } from "@/features/website/editor/panel";
+import { EditorPanel, type PanelTab } from "@/features/website/editor/panel";
+import { MediaLibraryProvider } from "@/features/website/media/library";
 import { sectionOf, sectionsFor } from "@/features/website/editor/sections";
 import { isMissingRestaurant } from "@/lib/api/client";
 import { cn } from "@/lib/utils/cn";
@@ -135,14 +148,23 @@ const QUIET_AFTER_EDIT_MS = 700;
  * The page and its editor.
  *
  * Split from the loader above so the draft is only ever opened once there is a
- * restaurant to key it on — a draft is stored per restaurant, and a hook that ran
- * before the slug arrived would read and write the wrong drawer.
+ * restaurant to load it for.
  */
 function Page({ design, restaurant }: { design: Design; restaurant: Restaurant }) {
-  const draft = useSiteDraft(restaurant.slug);
+  const draft = useSiteDraft(design.id);
 
   const [isEditing, setIsEditing] = useState(false);
   const [openSection, setOpenSection] = useState<string | null>(null);
+
+  /**
+   * Which half of the panel is showing.
+   *
+   * Held here rather than in the panel because the toolbar opens the library directly,
+   * and a tab the panel owned would be unreachable from outside it. It also means the
+   * library survives the panel closing and reopening, which is what somebody
+   * uploading a set of photographs expects.
+   */
+  const [tab, setTab] = useState<PanelTab>("section");
 
   /** When the draft last changed, which is the only moment a scroll report is suspect. */
   const typedAt = useRef(0);
@@ -195,6 +217,29 @@ function Page({ design, restaurant }: { design: Design; restaurant: Restaurant }
   function stopEditing() {
     setIsEditing(false);
     setOpenSection(null);
+    setTab("section");
+  }
+
+  /**
+   * The library, from the toolbar.
+   *
+   * A press with it already open closes it, because the button is the only way in and
+   * a one-way door is how a panel ends up covering a page somebody is trying to look
+   * at. Opening it does not start an edit: browsing and tidying pictures is a job of
+   * its own, and it should not require putting the page into a mode first.
+   */
+  function toggleMedia() {
+    if (tab === "media") {
+      setTab("section");
+
+      if (!isEditing) {
+        setOpenSection(null);
+      }
+
+      return;
+    }
+
+    setTab("media");
   }
 
   // Opening the editor opens a section with it. Which one is decided by the sections
@@ -220,45 +265,56 @@ function Page({ design, restaurant }: { design: Design; restaurant: Restaurant }
     return () => clearTimeout(timer);
   }, [isEditing, sections]);
 
+  // Open for the fields of a section, or for the library on its own.
+  const isPanelOpen = open !== undefined || tab === "media";
+
   return (
-    <div className="min-h-svh">
-      <div
-        className={cn(
-          "transition-[margin] duration-300 ease-out",
-          open !== undefined && "sm:mr-[24rem]",
-        )}
-      >
-        <EditorProvider value={{ isEditing, openSection, open: setOpenSection, sight }}>
-          <SiteRenderer
+    // The library is provided around the whole page rather than around the panel, so
+    // one load serves the media tab, every photograph picker in it, and anything the
+    // templates grow later. See the note in library.tsx.
+    <MediaLibraryProvider>
+      <div className="min-h-svh">
+        <div
+          className={cn(
+            "transition-[margin] duration-300 ease-out",
+            isPanelOpen && "sm:mr-[24rem]",
+          )}
+        >
+          <EditorProvider value={{ isEditing, openSection, open: setOpenSection, sight }}>
+            <SiteRenderer
+              design={design.id}
+              restaurant={restaurant}
+              content={draft.content}
+            />
+          </EditorProvider>
+        </div>
+
+        {isPanelOpen && (
+          <EditorPanel
             design={design.id}
-            restaurant={restaurant}
+            section={open}
+            sections={sections}
             content={draft.content}
+            tab={open === undefined ? "media" : tab}
+            onTab={setTab}
+            onPatch={patch}
+            onClose={stopEditing}
           />
-        </EditorProvider>
-      </div>
+        )}
 
-      {open !== undefined && (
-        <EditorPanel
-          design={design.id}
-          section={open}
-          sections={sections}
-          content={draft.content}
-          onPatch={patch}
-          onClose={stopEditing}
+        <Toolbar
+          name={design.name}
+          canEdit={canEdit}
+          isEditing={isEditing}
+          isMediaOpen={tab === "media"}
+          draft={draft}
+          isPanelOpen={isPanelOpen}
+          onEdit={() => setIsEditing(true)}
+          onDone={stopEditing}
+          onMedia={toggleMedia}
         />
-      )}
-
-      <Toolbar
-        name={design.name}
-        canEdit={canEdit}
-        isEditing={isEditing}
-        isEdited={draft.isEdited}
-        isPanelOpen={open !== undefined}
-        onEdit={() => setIsEditing(true)}
-        onDone={stopEditing}
-        onReset={draft.reset}
-      />
-    </div>
+      </div>
+    </MediaLibraryProvider>
   );
 }
 
@@ -268,26 +324,43 @@ function Page({ design, restaurant }: { design: Design; restaurant: Restaurant }
  * At the bottom and centred, because the top of a landing page is the part whose
  * composition matters most and a bar across it would be judged as part of the design.
  * It slides with the panel so it is never underneath it.
+ *
+ * GLYPHS, WITH THE WORDS ON HOVER
+ *
+ * This carried eight labelled controls and two badges, which is a sentence laid across
+ * the bottom of somebody's restaurant. A bar sitting on a page that is being judged for
+ * its looks should be the smallest thing that still works, and these are five controls
+ * a manager uses often enough to learn in an afternoon.
+ *
+ * The words are not gone. Each control unfolds its own name under the pointer, and
+ * keeps a real accessible name whether or not anybody hovers it. Unfolded rather than
+ * shown in a tooltip beside the bar, so the name stays attached to the button it
+ * belongs to and the bar remains one object rather than two.
  */
 function Toolbar({
   name,
   canEdit,
   isEditing,
-  isEdited,
+  isMediaOpen,
+  draft,
   isPanelOpen,
   onEdit,
   onDone,
-  onReset,
+  onMedia,
 }: {
   name: string;
   canEdit: boolean;
   isEditing: boolean;
-  isEdited: boolean;
+  isMediaOpen: boolean;
+  draft: SiteDraft;
   isPanelOpen: boolean;
   onEdit: () => void;
   onDone: () => void;
-  onReset: () => void;
+  onMedia: () => void;
 }) {
+  const isLive = draft.site?.isPublished === true;
+  const isSaving = draft.status === "saving";
+
   return (
     <div
       className={cn(
@@ -296,84 +369,286 @@ function Toolbar({
         isPanelOpen && "sm:pr-[25rem]",
       )}
     >
-      <div className="pointer-events-auto flex flex-wrap items-center gap-2 rounded-full border border-border bg-surface/95 p-1.5 pl-4 shadow-lg backdrop-blur">
-        <span className="text-sm font-semibold text-text">{name}</span>
-
-        {/* What is real and what is not, one tap away. Once a manager has started
-            editing, the sentence changes: some of it is now theirs. */}
-        <Tooltip
-          content={
-            isEdited
-              ? "Your name, address, phone and email are real, and so is anything you have edited. The rest is still sample copy."
-              : "Your name, address, phone and email are real. The headline, menu, photographs, hours and quotes are sample copy."
-          }
-        >
-          <span className="inline-flex cursor-help items-center gap-1 rounded-full bg-surface-3 px-2.5 py-1 text-2xs font-medium text-muted">
-            <Info className="size-3" aria-hidden="true" />
-            {isEdited ? "Edited · this device" : "Sample content"}
+      <div className="pointer-events-auto flex items-center gap-1 rounded-full border border-border bg-surface/95 p-1.5 pl-4 shadow-lg backdrop-blur">
+        {/* The design's name, and beside it one mark for everything a manager might
+            ask about the state of their work. Two badges sat here before, saying two
+            halves of the same thing. */}
+        <Tooltip content={stateOf(draft)} side="top" className="max-w-72 whitespace-normal!">
+          <span className="flex cursor-help items-center gap-1.5 pr-1 text-sm font-semibold text-text">
+            {name}
+            <StateMark draft={draft} />
           </span>
         </Tooltip>
 
-        <span className="mx-0.5 h-5 w-px bg-border" aria-hidden="true" />
+        <span className="mx-1 h-5 w-px bg-border" aria-hidden="true" />
 
-        {isEdited && (
-          <Tooltip content="Throw away your changes and go back to the sample restaurant.">
-            <button
-              type="button"
-              onClick={onReset}
-              className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium text-muted transition-colors hover:bg-surface-3 hover:text-text"
-            >
-              <RotateCcw className="size-3.5" aria-hidden="true" />
-              Reset
-            </button>
-          </Tooltip>
+        {/* A page that never arrived is the only thing here worth a control of its
+            own, so it takes this slot. Unsaved changes otherwise have somewhere to go
+            back to; saved ones have only the sample. Never more than one at a time. */}
+        {draft.loadError !== null ? (
+          <IconAction
+            label="Try loading again"
+            icon={<RefreshCw className="size-4" aria-hidden="true" />}
+            onClick={draft.reload}
+          />
+        ) : draft.isDirty ? (
+          <IconAction
+            label="Discard changes"
+            icon={<Undo2 className="size-4" aria-hidden="true" />}
+            onClick={draft.discard}
+          />
+        ) : (
+          draft.hasOwnContent && (
+            <IconAction
+              label="Back to the sample"
+              icon={<RotateCcw className="size-4" aria-hidden="true" />}
+              onClick={draft.reset}
+            />
+          )
         )}
 
-        <Link
+        <IconAction
+          label="All designs"
+          icon={<LayoutGrid className="size-4" aria-hidden="true" />}
           href="/settings/website"
-          className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium text-muted transition-colors hover:bg-surface-3 hover:text-text"
-        >
-          <LayoutGrid className="size-3.5" aria-hidden="true" />
-          All designs
-        </Link>
+        />
 
         {/* Editing is offered only where there is something to edit. A design whose
             sections have not been wired yet says so rather than opening a mode in
             which nothing on the page responds. */}
-        {canEdit ? (
-          isEditing ? (
-            <Button size="sm" variant="secondary" icon={<Eye />} onClick={onDone}>
-              Done
-            </Button>
-          ) : (
-            <Button size="sm" variant="secondary" icon={<Pencil />} onClick={onEdit}>
-              Edit page
-            </Button>
-          )
-        ) : (
-          <Tooltip content="This design cannot be edited yet. Aurora is the one that can.">
-            <span>
-              <Button size="sm" variant="secondary" icon={<Pencil />} disabled>
-                Edit
-              </Button>
-            </span>
-          </Tooltip>
-        )}
+        <IconAction
+          label={
+            !canEdit
+              ? "Only Aurora can be edited so far"
+              : isEditing
+                ? "Done editing"
+                : "Edit page"
+          }
+          icon={
+            isEditing ? (
+              <Eye className="size-4" aria-hidden="true" />
+            ) : (
+              <Pencil className="size-4" aria-hidden="true" />
+            )
+          }
+          isActive={isEditing}
+          isDisabled={!canEdit}
+          onClick={isEditing ? onDone : onEdit}
+        />
 
-        {/* Disabled and labelled, which is how this product treats anything not yet
-            built. There is nowhere to publish to: the site service was taken out to
-            be rebuilt, and a button that appeared to work would be the one thing on
-            this screen that lied. */}
-        <Tooltip content="Publishing arrives with the server side of this. Nothing can be made public yet.">
-          <span>
-            <Button size="sm" icon={<Globe />} disabled>
-              Publish
-            </Button>
-          </span>
-        </Tooltip>
+        {/* The library, reachable without first putting the page into edit mode.
+            Sorting through photographs is a job of its own and often the one that
+            happens first. */}
+        <IconAction
+          label="Pictures"
+          icon={<Images className="size-4" aria-hidden="true" />}
+          isActive={isMediaOpen}
+          onClick={onMedia}
+        />
+
+        {/* Nothing reaches the server until this is pressed. Off when there is nothing
+            to send, so the button is also the answer to "is my work in". */}
+        <IconAction
+          label={isSaving ? "Saving" : draft.isDirty ? "Save" : "Nothing to save"}
+          icon={
+            isSaving ? (
+              <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+            ) : (
+              <Save className="size-4" aria-hidden="true" />
+            )
+          }
+          isDisabled={!draft.isDirty || isSaving}
+          onClick={() => void draft.save()}
+        />
+
+        {/* Publishing takes a copy of the draft. Saving does not, which is why a
+            manager can edit a live page all afternoon without anybody seeing it. The
+            one control here that changes what strangers see, so the one that is
+            filled rather than quiet. */}
+        <IconAction
+          label={isLive ? "Publish changes" : "Publish"}
+          icon={<Globe className="size-4" aria-hidden="true" />}
+          isPrimary
+          isDisabled={!draft.isReady || draft.loadError !== null}
+          onClick={() => void draft.publish(true)}
+        />
       </div>
     </div>
   );
+}
+
+/**
+ * One control: a glyph that unfolds its name under the pointer.
+ *
+ * A tooltip was the first answer and it was the wrong one. A tooltip is a second
+ * object — it appears somewhere else, on a delay, over the page being judged — when
+ * all this needs is for the button to say what it is. Unfolding keeps the name
+ * attached to the thing it names, and the bar stays one object.
+ *
+ * The width is animated as a grid track from 0fr to 1fr, which is the only way to
+ * transition to a size nobody has measured. The obvious max-width version is what was
+ * here first and it is never smooth: the label is around a hundred pixels and the cap
+ * has to be set well above the longest one, so the text finishes arriving in the first
+ * third of the animation and the remaining two thirds are spent widening empty space.
+ * Closing reads worse still — a long pause, then a snap.
+ *
+ * Three hundred milliseconds on a curve that covers most of the distance early and
+ * settles into the last of it: long enough to read as unfolding rather than appearing,
+ * short enough that somebody moving along the row is never waiting on it. The text
+ * fades and slides the last few pixels in with it, so the name arrives as one movement
+ * instead of a box opening and a word landing in it.
+ *
+ * The icon never moves inside the button, and the button never stops being under the
+ * pointer that opened it — it grows to the right of a fixed glyph, and the whole bar
+ * being centred only pulls it left by half of what it gained.
+ *
+ * Opens on focus as well as hover, so the name is not something only a mouse can
+ * reach. Every control carries a real accessible name regardless.
+ *
+ * An anchor or a button depending on what it does, because a thing that navigates
+ * should be a link — middle-click and open-in-new-tab are not worth losing to make a
+ * row uniform.
+ *
+ * Unavailable is `aria-disabled` rather than `disabled`, so the control still takes
+ * a pointer and can still unfold to say why it is unavailable. A greyed glyph that
+ * refuses to name itself is a riddle.
+ */
+function IconAction({
+  label,
+  icon,
+  href,
+  onClick,
+  isDisabled = false,
+  isPrimary = false,
+  isActive = false,
+}: {
+  label: string;
+  icon: React.ReactNode;
+  href?: string;
+  onClick?: () => void;
+  isDisabled?: boolean;
+  isPrimary?: boolean;
+  isActive?: boolean;
+}) {
+  // The hover styles are withheld rather than overridden when the control is
+  // unavailable: cn() is a plain join, so two competing hover:bg-* classes would be
+  // settled by the order Tailwind happened to emit them in, not by the order here.
+  const className = cn(
+    "group inline-flex h-9 shrink-0 items-center justify-center rounded-full px-2.5",
+    // 200 rather than the product's usual 100, so the fill arriving and the name
+    // unfolding read as one gesture instead of two of different lengths.
+    "pressable transition-colors duration-200",
+    isPrimary
+      ? "bg-primary-solid text-primary-fg"
+      : isActive
+        ? "bg-primary-soft text-primary"
+        : "text-muted",
+    !isDisabled &&
+      (isPrimary
+        ? "hover:bg-primary-hover active:bg-primary-active"
+        : "hover:bg-surface-3 hover:text-text"),
+    isDisabled && "cursor-not-allowed opacity-40",
+  );
+
+  const body = (
+    <>
+      {icon}
+
+      {/* aria-hidden because the accessible name is on the control itself. Without
+          it a screen reader is told the name twice, once as the label and once as
+          the text inside. */}
+      <span
+        aria-hidden="true"
+        className={cn(
+          "grid grid-cols-[0fr] ease-[cubic-bezier(0.22,1,0.36,1)]",
+          "transition-[grid-template-columns] duration-300 motion-reduce:transition-none",
+          "group-hover:grid-cols-[1fr] group-focus-visible:grid-cols-[1fr]",
+        )}
+      >
+        {/* The clip. A grid track can go to zero; the text inside it cannot, so this
+            is what hides the overflow while the track closes. */}
+        <span className="overflow-hidden">
+          <span
+            className={cn(
+              "block translate-x-1 pl-1.5 text-sm font-medium whitespace-nowrap opacity-0",
+              "transition-[opacity,transform] duration-300 ease-out",
+              "motion-reduce:transition-none",
+              "group-hover:translate-x-0 group-hover:opacity-100",
+              "group-focus-visible:translate-x-0 group-focus-visible:opacity-100",
+            )}
+          >
+            {label}
+          </span>
+        </span>
+      </span>
+    </>
+  );
+
+  return href === undefined ? (
+    <button
+      type="button"
+      aria-label={label}
+      aria-disabled={isDisabled || undefined}
+      onClick={isDisabled ? undefined : onClick}
+      className={className}
+    >
+      {body}
+    </button>
+  ) : (
+    <Link href={href} aria-label={label} className={className}>
+      {body}
+    </Link>
+  );
+}
+
+/**
+ * The state of the work, as one mark beside the name.
+ *
+ * Silent when there is nothing to say. A badge that permanently reads "Saved" is
+ * furniture and stops being read, which is the moment it would have been worth
+ * reading. The words behind each mark are in the hover on the name.
+ */
+function StateMark({ draft }: { draft: SiteDraft }) {
+  if (draft.loadError !== null || draft.status === "failed") {
+    return <CircleAlert className="size-3.5 text-danger" aria-hidden="true" />;
+  }
+
+  if (draft.status === "saving") {
+    return <Loader2 className="size-3.5 animate-spin text-muted" aria-hidden="true" />;
+  }
+
+  if (draft.isDirty) {
+    return <span className="size-2 rounded-full bg-warning" aria-hidden="true" />;
+  }
+
+  if (draft.status === "saved") {
+    return <CircleCheck className="size-3.5 text-success" aria-hidden="true" />;
+  }
+
+  return null;
+}
+
+/** Everything the mark stands for, in the words the hover shows. */
+function stateOf(draft: SiteDraft): string {
+  if (draft.loadError !== null) {
+    return draft.loadError + " Nothing you change here can be kept until it loads.";
+  }
+
+  if (draft.status === "failed") {
+    return draft.saveError ?? "The last save did not reach the server. Try again.";
+  }
+
+  if (draft.status === "saving") {
+    return "Saving your changes.";
+  }
+
+  if (draft.isDirty) {
+    return "You have changes that have not been saved yet.";
+  }
+
+  return draft.hasOwnContent
+    ? "Saved. Your name, address, phone and email come from your restaurant; anything you have not written yourself is still sample copy."
+    : "Your name, address, phone and email are real. The headline, menu, photographs, hours and quotes are sample copy until you change them.";
 }
 
 /** Anything that is not a page: an error, a spinner, a design with nothing behind it. */

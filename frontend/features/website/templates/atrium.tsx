@@ -5,7 +5,7 @@ import { motion, MotionConfig } from "motion/react";
 import { ArrowRight, Clock, Mail, MapPin, Phone } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { sampleContent, type SampleContent } from "@/features/website/sample-content";
-import { PHOTO_GROUND, photoUrl, type PhotoTone } from "@/features/website/photos";
+import { photoGround, photoSrc, type PhotoRef } from "@/features/website/photos";
 import type { Restaurant } from "@/types/restaurant";
 
 /**
@@ -224,26 +224,26 @@ function Chapters({ content }: { content: SampleContent }) {
       kicker: "The room",
       title: content.story.title,
       body: content.story.body[0] ?? "",
-      tone: "room" as PhotoTone,
+      tone: "room" as PhotoRef,
     },
     {
       kicker: "The kitchen",
       title: content.chef.quote,
       body: content.chef.bio,
-      tone: "pass" as PhotoTone,
+      tone: "pass" as PhotoRef,
       footnote: `${content.chef.name} · ${content.chef.role}`,
     },
     {
       kicker: "The fire",
       title: "Everything meets the coals",
       body: content.story.body[1] ?? "",
-      tone: "fire" as PhotoTone,
+      tone: "fire" as PhotoRef,
     },
     {
       kicker: "The cellar",
       title: content.cellar.title,
       body: content.cellar.body,
-      tone: "wine" as PhotoTone,
+      tone: "wine" as PhotoRef,
     },
   ];
 
@@ -326,7 +326,7 @@ function Chapter({
   index: number;
   onEnter: (index: number) => void;
   /** Drawn above the writing on narrow screens, where there is no pinned panel. */
-  tone: PhotoTone;
+  tone: PhotoRef;
   children: React.ReactNode;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -707,7 +707,7 @@ function Picture({
   fill = false,
   priority = false,
 }: {
-  tone: PhotoTone;
+  tone: PhotoRef;
   width: number;
   height: number;
   className?: string;
@@ -725,12 +725,12 @@ function Picture({
         fill ? "absolute inset-0" : "relative",
         className,
       )}
-      style={{ backgroundImage: PHOTO_GROUND[tone], backgroundSize: "cover" }}
+      style={{ backgroundImage: photoGround(tone), backgroundSize: "cover" }}
     >
       {!failed && (
         // eslint-disable-next-line @next/next/no-img-element
         <img
-          src={photoUrl(tone, width, height)}
+          src={photoSrc(tone, width, height)}
           alt=""
           loading={priority ? "eager" : "lazy"}
           decoding="async"
