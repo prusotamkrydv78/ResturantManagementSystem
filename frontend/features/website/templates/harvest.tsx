@@ -6,7 +6,7 @@ import { ArrowRight, Clock, Mail, MapPin, Phone } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { sampleContent, type SampleContent } from "@/features/website/sample-content";
 import { photoGround, photoSrc, type PhotoRef } from "@/features/website/photos";
-import type { Restaurant } from "@/types/restaurant";
+import type { SiteIdentity } from "./index";
 
 /**
  * Harvest — the bistro page, loud and confident.
@@ -44,7 +44,7 @@ export function HarvestTemplate({
   restaurant,
   content = sampleContent(),
 }: {
-  restaurant: Restaurant;
+  restaurant: SiteIdentity;
   content?: SampleContent;
 }) {
   const where = [restaurant.addressLine, restaurant.city, restaurant.country]
@@ -88,7 +88,7 @@ const NAV = [
 /* -------------------------------------------------------------------------- */
 
 /** Name left, links right, one solid button. Sticky, opaque, out of the way. */
-function Masthead({ restaurant }: { restaurant: Restaurant }) {
+function Masthead({ restaurant }: { restaurant: SiteIdentity }) {
   return (
     <header
       id="top"
@@ -135,7 +135,7 @@ function Opening({
   restaurant,
   content,
 }: {
-  restaurant: Restaurant;
+  restaurant: SiteIdentity;
   content: SampleContent;
 }) {
   return (
@@ -507,7 +507,7 @@ function Visit({
   content,
   where,
 }: {
-  restaurant: Restaurant;
+  restaurant: SiteIdentity;
   content: SampleContent;
   where: string;
 }) {
@@ -587,7 +587,7 @@ function Visit({
 }
 
 /** The last word. */
-function Footer({ restaurant, where }: { restaurant: Restaurant; where: string }) {
+function Footer({ restaurant, where }: { restaurant: SiteIdentity; where: string }) {
   return (
     <footer style={{ backgroundColor: "var(--ink)", color: "var(--paper)" }}>
       <div className="mx-auto flex max-w-6xl flex-col gap-4 px-6 py-12 sm:flex-row sm:items-center sm:justify-between">

@@ -48,9 +48,6 @@ public sealed class MediaService : IMediaService
             .OrderByDescending(media => media.CreatedAtUtc)
             .Select(media => new MediaResponse(
                 media.Id,
-                // Composed in the projection rather than after it, so the shape of the
-                // address is decided by the domain and never by a caller.
-                RestaurantMedia.UrlFor(media.Id),
                 media.FileName,
                 media.ContentType,
                 media.ByteCount,
@@ -61,7 +58,8 @@ public sealed class MediaService : IMediaService
             items,
             items.Count,
             RestaurantMedia.MaxPerRestaurant,
-            items.Sum(item => (long)item.ByteCount)));
+            items.Sum(item => (long)item.ByteCount),
+            RestaurantMedia.MaxBytes));
     }
 
     /// <inheritdoc />
@@ -71,6 +69,7 @@ public sealed class MediaService : IMediaService
         string contentType,
         Stream content,
         long declaredLength,
+        MediaThumbnail? thumbnail,
         CancellationToken cancellationToken)
     {
         var restaurantId = await ResolveRestaurantAsync(managerUserId, cancellationToken);
@@ -131,6 +130,14 @@ public sealed class MediaService : IMediaService
             return Result.Failure<MediaResponse>(MediaErrors.TypeNotAllowed);
         }
 
+        // The small copy, if one came with it. Everything about it is optional: a
+        // thumbnail that fails any check is dropped rather than failing the upload,
+        // because the picture itself is the thing being asked for and it is already
+        // known good. The cost of dropping one is a slower grid.
+        var (thumbnailBytes, thumbnailType) = await ReadThumbnailAsync(
+            thumbnail,
+            cancellationToken);
+
         var media = new RestaurantMedia
         {
             Id = Guid.CreateVersion7(),
@@ -139,6 +146,8 @@ public sealed class MediaService : IMediaService
             FileName = ImageMedia.SafeFileName(fileName, contentType),
             ByteCount = bytes.Length,
             Content = bytes,
+            Thumbnail = thumbnailBytes,
+            ThumbnailContentType = thumbnailType,
             CreatedAtUtc = DateTimeOffset.UtcNow,
         };
 
@@ -153,11 +162,51 @@ public sealed class MediaService : IMediaService
 
         return Result.Success(new MediaResponse(
             media.Id,
-            RestaurantMedia.UrlFor(media.Id),
             media.FileName,
             media.ContentType,
             media.ByteCount,
             media.CreatedAtUtc));
+    }
+
+    /// <summary>
+    /// The small copy, or nothing.
+    ///
+    /// Never fails the upload. Checked as strictly as the original - size, whitelist,
+    /// and the leading bytes - and simply discarded if any of it does not hold, because
+    /// a thumbnail is an optimisation and refusing a good photograph over one would be
+    /// the tail wagging the dog.
+    /// </summary>
+    private static async Task<(byte[]? Bytes, string? ContentType)> ReadThumbnailAsync(
+        MediaThumbnail? thumbnail,
+        CancellationToken cancellationToken)
+    {
+        if (thumbnail is null || thumbnail.DeclaredLength <= 0)
+        {
+            return (null, null);
+        }
+
+        if (thumbnail.DeclaredLength > RestaurantMedia.ThumbnailMaxBytes)
+        {
+            return (null, null);
+        }
+
+        if (!ImageMedia.AllowedTypes.ContainsKey(thumbnail.ContentType))
+        {
+            return (null, null);
+        }
+
+        using var buffer = new MemoryStream();
+        await thumbnail.Content.CopyToAsync(buffer, cancellationToken);
+        var bytes = buffer.ToArray();
+
+        if (bytes.Length == 0 || bytes.Length > RestaurantMedia.ThumbnailMaxBytes)
+        {
+            return (null, null);
+        }
+
+        return ImageMedia.LooksLikeImage(bytes, thumbnail.ContentType)
+            ? (bytes, thumbnail.ContentType)
+            : (null, null);
     }
 
     /// <inheritdoc />
@@ -196,8 +245,27 @@ public sealed class MediaService : IMediaService
     /// <inheritdoc />
     public async Task<Result<(byte[] Content, string ContentType)>> GetBytesAsync(
         Guid id,
+        bool preferThumbnail,
         CancellationToken cancellationToken)
     {
+        // Two queries rather than one that reads both columns. A grid asking for sixty
+        // thumbnails would otherwise pull sixty full photographs out of the database to
+        // discard them in this method, which is the entire cost the thumbnail exists to
+        // avoid.
+        if (preferThumbnail)
+        {
+            var small = await _dbContext.RestaurantMedia
+                .AsNoTracking()
+                .Where(media => media.Id == id && media.Thumbnail != null)
+                .Select(media => new { media.Thumbnail, media.ThumbnailContentType })
+                .SingleOrDefaultAsync(cancellationToken);
+
+            if (small?.Thumbnail is not null && small.ThumbnailContentType is not null)
+            {
+                return Result.Success((small.Thumbnail, small.ThumbnailContentType));
+            }
+        }
+
         var row = await _dbContext.RestaurantMedia
             .AsNoTracking()
             .Where(media => media.Id == id)

@@ -14,7 +14,7 @@ import {
   photoSrc,
   type PhotoRef,
 } from "@/features/website/photos";
-import type { Restaurant } from "@/types/restaurant";
+import type { SiteIdentity } from "./index";
 
 /**
  * Aurora — the photography-first restaurant page.
@@ -56,7 +56,7 @@ export function AuroraTemplate({
   restaurant,
   content = sampleContent(),
 }: {
-  restaurant: Restaurant;
+  restaurant: SiteIdentity;
   content?: SampleContent;
 }) {
   const where = [restaurant.addressLine, restaurant.city, restaurant.country]
@@ -151,7 +151,7 @@ function Hero({
   restaurant,
   content,
 }: {
-  restaurant: Restaurant;
+  restaurant: SiteIdentity;
   content: SampleContent;
 }) {
   return (
@@ -612,7 +612,7 @@ function Visit({
   content,
   where,
 }: {
-  restaurant: Restaurant;
+  restaurant: SiteIdentity;
   content: SampleContent;
   where: string;
 }) {
@@ -714,7 +714,7 @@ function Footer({
   content,
   where,
 }: {
-  restaurant: Restaurant;
+  restaurant: SiteIdentity;
   content: SampleContent;
   where: string;
 }) {

@@ -24,6 +24,11 @@ public sealed class RestaurantMediaConfiguration : IEntityTypeConfiguration<Rest
         builder.Property(media => media.FileName).IsRequired().HasMaxLength(128);
         builder.Property(media => media.Content).IsRequired();
 
+        // Both nullable together: a row either has a small copy and knows its type, or
+        // has neither. Nothing reads one without the other.
+        builder.Property(media => media.Thumbnail);
+        builder.Property(media => media.ThumbnailContentType).HasMaxLength(100);
+
         builder
             .HasOne(media => media.Restaurant)
             .WithMany()

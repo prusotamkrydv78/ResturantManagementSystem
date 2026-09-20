@@ -6,7 +6,7 @@ import { ArrowUpRight, Mail, MapPin, Phone } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { sampleContent, type SampleContent } from "@/features/website/sample-content";
 import { GRAIN, photoGround, photoSrc, type PhotoRef } from "@/features/website/photos";
-import type { Restaurant } from "@/types/restaurant";
+import type { SiteIdentity } from "./index";
 
 /**
  * Slate — the dining-room page, dark and led by type.
@@ -49,7 +49,7 @@ export function SlateTemplate({
   restaurant,
   content = sampleContent(),
 }: {
-  restaurant: Restaurant;
+  restaurant: SiteIdentity;
   content?: SampleContent;
 }) {
   const where = [restaurant.addressLine, restaurant.city, restaurant.country]
@@ -114,7 +114,7 @@ const NAV = [
  * The rule down its right edge is the only border on the page. On a dark ground a
  * hairline does the work a whole panel would have to do on a pale one.
  */
-function Spine({ restaurant }: { restaurant: Restaurant }) {
+function Spine({ restaurant }: { restaurant: SiteIdentity }) {
   const active = useActiveSection(NAV.map((link) => link.href.slice(1)));
 
   return (
@@ -175,7 +175,7 @@ function Spine({ restaurant }: { restaurant: Restaurant }) {
 }
 
 /** The same information as a bar, for screens with no room for a column. */
-function TopBar({ restaurant }: { restaurant: Restaurant }) {
+function TopBar({ restaurant }: { restaurant: SiteIdentity }) {
   return (
     <header
       id="top"
@@ -211,7 +211,7 @@ function Overture({
   restaurant,
   content,
 }: {
-  restaurant: Restaurant;
+  restaurant: SiteIdentity;
   content: SampleContent;
 }) {
   return (
@@ -626,7 +626,7 @@ function Visit({
   content,
   where,
 }: {
-  restaurant: Restaurant;
+  restaurant: SiteIdentity;
   content: SampleContent;
   where: string;
 }) {
@@ -717,7 +717,7 @@ function Visit({
 }
 
 /** The last line. One rule, the name, and nothing else. */
-function Colophon({ restaurant, where }: { restaurant: Restaurant; where: string }) {
+function Colophon({ restaurant, where }: { restaurant: SiteIdentity; where: string }) {
   return (
     <footer className="border-t border-[var(--line)] px-6 py-10 sm:px-12 lg:px-16">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-baseline sm:justify-between">

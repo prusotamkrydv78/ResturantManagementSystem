@@ -18,13 +18,21 @@ public interface IMediaService
         Guid managerUserId,
         CancellationToken cancellationToken);
 
-    /// <summary>Adds a picture, refusing anything too large, wrong or over the limit.</summary>
+    /// <summary>
+    /// Adds a picture, refusing anything too large, wrong or over the limit.
+    ///
+    /// The thumbnail is optional and is the uploader's own small copy of the same
+    /// picture. Nothing checks that it depicts what the original depicts, because
+    /// nothing here can: it is checked for size and for being an image, and it is only
+    /// ever served to the account that uploaded it in a grid of its own pictures.
+    /// </summary>
     Task<Result<MediaResponse>> AddAsync(
         Guid managerUserId,
         string fileName,
         string contentType,
         Stream content,
         long declaredLength,
+        MediaThumbnail? thumbnail,
         CancellationToken cancellationToken);
 
     /// <summary>
@@ -39,8 +47,25 @@ public interface IMediaService
         Guid id,
         CancellationToken cancellationToken);
 
-    /// <summary>The bytes, for anybody at all. See the note on the interface.</summary>
+    /// <summary>
+    /// The bytes, for anybody at all. See the note on the interface.
+    ///
+    /// Asking for the thumbnail is a preference, not a demand: a picture stored before
+    /// thumbnails existed, or uploaded by something that could not make one, is served
+    /// whole. The caller is a browser drawing a grid and would rather have the picture
+    /// than an error.
+    /// </summary>
     Task<Result<(byte[] Content, string ContentType)>> GetBytesAsync(
         Guid id,
+        bool preferThumbnail,
         CancellationToken cancellationToken);
 }
+
+/// <summary>A small copy of a picture, made by whatever uploaded it.</summary>
+/// <param name="ContentType">Its media type, checked against the same whitelist.</param>
+/// <param name="Content">The bytes.</param>
+/// <param name="DeclaredLength">What the request said it would weigh.</param>
+public sealed record MediaThumbnail(
+    string ContentType,
+    Stream Content,
+    long DeclaredLength);

@@ -63,15 +63,20 @@ public sealed class MediaController : ControllerBase
     /// is rejected by the framework before it is buffered rather than after.
     /// </summary>
     /// <param name="file">The picture.</param>
+    /// <param name="thumbnail">
+    /// A small copy made by the uploader, if it could make one. Optional, and a bad one
+    /// is dropped rather than refused - see the service.
+    /// </param>
     /// <param name="cancellationToken">Cancellation token.</param>
     [HttpPost]
-    [RequestSizeLimit(RestaurantMedia.MaxBytes + 8192)]
+    [RequestSizeLimit(RestaurantMedia.MaxBytes + RestaurantMedia.ThumbnailMaxBytes + 8192)]
     [ProducesResponseType(typeof(MediaResponse), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<MediaResponse>> Add(
         IFormFile file,
+        IFormFile? thumbnail,
         CancellationToken cancellationToken)
     {
         var managerId = User.GetUserId();
@@ -87,6 +92,7 @@ public sealed class MediaController : ControllerBase
         }
 
         await using var stream = file.OpenReadStream();
+        await using var small = thumbnail?.OpenReadStream();
 
         var result = await _media.AddAsync(
             managerId.Value,
@@ -94,11 +100,17 @@ public sealed class MediaController : ControllerBase
             file.ContentType ?? string.Empty,
             stream,
             file.Length,
+            small is null || thumbnail is null
+                ? null
+                : new MediaThumbnail(
+                    thumbnail.ContentType ?? string.Empty,
+                    small,
+                    thumbnail.Length),
             cancellationToken);
 
         return result.IsFailure
             ? ProblemFrom(result.Error!, StatusFor(result.Error!))
-            : Created(result.Value!.Url, result.Value);
+            : Created(RestaurantMedia.UrlFor(result.Value!.Id), result.Value);
     }
 
     /// <summary>
@@ -143,14 +155,25 @@ public sealed class MediaController : ControllerBase
     /// uploading a new one, which has a new identifier and therefore a new address.
     /// </summary>
     /// <param name="id">Which picture.</param>
+    /// <param name="size">
+    /// <c>thumb</c> for the small copy, which is what a grid of these should ask for.
+    /// Anything else, including nothing, is the picture as it was uploaded. A picture
+    /// with no small copy answers with the original either way.
+    /// </param>
     /// <param name="cancellationToken">Cancellation token.</param>
     [HttpGet("{id:guid}")]
     [AllowAnonymous]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> GetBytes(Guid id, CancellationToken cancellationToken)
+    public async Task<IActionResult> GetBytes(
+        Guid id,
+        [FromQuery] string? size,
+        CancellationToken cancellationToken)
     {
-        var result = await _media.GetBytesAsync(id, cancellationToken);
+        var result = await _media.GetBytesAsync(
+            id,
+            string.Equals(size, "thumb", StringComparison.OrdinalIgnoreCase),
+            cancellationToken);
 
         if (result.IsFailure)
         {
@@ -159,7 +182,17 @@ public sealed class MediaController : ControllerBase
 
         var (content, contentType) = result.Value;
 
+        // Varies because the same address serves two different pictures depending on
+        // the query, and a cache that ignored it would hand a thumbnail to the page.
         Response.Headers.CacheControl = "public, max-age=31536000, immutable";
+
+        // These bytes were uploaded by a member of the public's counterparty and are
+        // served back from this origin to strangers. The magic-number check on upload
+        // is what actually stops something else being stored as a picture; these two
+        // headers are what stop a browser deciding for itself that it is something
+        // else anyway, and what stop it being treated as a page rather than an image.
+        Response.Headers.XContentTypeOptions = "nosniff";
+        Response.Headers.ContentDisposition = "inline";
 
         return File(content, contentType);
     }

@@ -9,6 +9,7 @@ import {
   useState,
 } from "react";
 import { deleteMedia, listMedia, uploadMedia, type Media } from "@/features/website/api";
+import { isWithinLimit, makeThumbnail } from "./thumbnail";
 
 /**
  * One restaurant's pictures, held once for the whole editor.
@@ -45,6 +46,8 @@ export interface MediaStore {
   used: number;
   limit: number;
   bytesUsed: number;
+  /** The largest single picture, also the server's. Zero until the library loads. */
+  maxBytes: number;
   isLoading: boolean;
   /** The library could not be read at all. Distinct from an upload failing. */
   loadError: string | null;
@@ -66,6 +69,7 @@ export function MediaLibraryProvider({ children }: { children: React.ReactNode }
   const [used, setUsed] = useState(0);
   const [limit, setLimit] = useState(0);
   const [bytesUsed, setBytesUsed] = useState(0);
+  const [maxBytes, setMaxBytes] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -87,6 +91,7 @@ export function MediaLibraryProvider({ children }: { children: React.ReactNode }
         setUsed(library.used);
         setLimit(library.limit);
         setBytesUsed(library.bytesUsed);
+        setMaxBytes(library.maxBytes);
         setLoadError(null);
       } catch (caught) {
         if (cancelled) return;
@@ -119,40 +124,68 @@ export function MediaLibraryProvider({ children }: { children: React.ReactNode }
    * truth here, and pretending otherwise would mean deleting pictures that uploaded
    * perfectly well.
    */
-  const upload = useCallback(async (files: File[]): Promise<Media[]> => {
-    const queue = files.slice(0, MAX_AT_ONCE);
+  const upload = useCallback(
+    async (files: File[]): Promise<Media[]> => {
+      const queue = files.slice(0, MAX_AT_ONCE);
 
-    if (queue.length === 0) {
-      return [];
-    }
-
-    setIsUploading(true);
-    setUploadError(null);
-
-    const added: Media[] = [];
-
-    try {
-      for (const file of queue) {
-        const media = await uploadMedia(file);
-
-        added.push(media);
-
-        // Written in as each one arrives rather than all at the end, so a picker that
-        // is open fills up while the upload is still running.
-        setItems((current) => [media, ...current]);
-        setUsed((current) => current + 1);
-        setBytesUsed((current) => current + media.byteCount);
+      if (queue.length === 0) {
+        return [];
       }
-    } catch (caught) {
-      setUploadError(
-        caught instanceof Error ? caught.message : "That picture could not be added.",
-      );
-    } finally {
-      setIsUploading(false);
-    }
 
-    return added;
-  }, []);
+      // Weighed here, against the server's own figure, before anything is sent. The
+      // server refuses an oversized picture either way — but it refuses it after the
+      // browser has spent a minute pushing it up a restaurant's broadband, and the
+      // answer was knowable the moment the file was chosen.
+      const tooBig = queue.filter((file) => !isWithinLimit(file, maxBytes));
+      const sendable = queue.filter((file) => isWithinLimit(file, maxBytes));
+
+      if (tooBig.length > 0) {
+        setUploadError(
+          tooBig.length === 1
+            ? `${tooBig[0]?.name ?? "That picture"} is larger than ${readableBytes(maxBytes)}, so it was not added.`
+            : `${tooBig.length} pictures are larger than ${readableBytes(maxBytes)}, so they were not added.`,
+        );
+      }
+
+      if (sendable.length === 0) {
+        return [];
+      }
+
+      setIsUploading(true);
+
+      if (tooBig.length === 0) {
+        setUploadError(null);
+      }
+
+      const added: Media[] = [];
+
+      try {
+        for (const file of sendable) {
+          // Made before the request rather than alongside it, so the two files travel
+          // in one multipart body and a half-uploaded pair cannot exist.
+          const thumbnail = await makeThumbnail(file);
+          const media = await uploadMedia(file, thumbnail);
+
+          added.push(media);
+
+          // Written in as each one arrives rather than all at the end, so a picker
+          // that is open fills up while the upload is still running.
+          setItems((current) => [media, ...current]);
+          setUsed((current) => current + 1);
+          setBytesUsed((current) => current + media.byteCount);
+        }
+      } catch (caught) {
+        setUploadError(
+          caught instanceof Error ? caught.message : "That picture could not be added.",
+        );
+      } finally {
+        setIsUploading(false);
+      }
+
+      return added;
+    },
+    [maxBytes],
+  );
 
   const remove = useCallback(async (id: string) => {
     // Taken out of the list first. The request is the slow part and the outcome is
@@ -184,6 +217,7 @@ export function MediaLibraryProvider({ children }: { children: React.ReactNode }
       used,
       limit,
       bytesUsed,
+      maxBytes,
       isLoading,
       loadError,
       isUploading,
@@ -199,6 +233,7 @@ export function MediaLibraryProvider({ children }: { children: React.ReactNode }
       used,
       limit,
       bytesUsed,
+      maxBytes,
       isLoading,
       loadError,
       isUploading,

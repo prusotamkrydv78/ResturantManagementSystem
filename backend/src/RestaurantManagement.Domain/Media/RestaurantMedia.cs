@@ -44,6 +44,24 @@ public class RestaurantMedia
     public const int MaxPerRestaurant = 60;
 
     /// <summary>
+    /// The largest thumbnail that will be accepted.
+    ///
+    /// Two hundred kilobytes is generous for a picture whose longest edge is
+    /// <see cref="ThumbnailEdge"/>; the limit is here to stop the second file in an
+    /// upload being used to smuggle a first-sized one past the check on the original.
+    /// </summary>
+    public const int ThumbnailMaxBytes = 256 * 1024;
+
+    /// <summary>
+    /// The longest edge a thumbnail should have.
+    ///
+    /// The editor draws these in a grid of squares about a hundred points across, so
+    /// three hundred and twenty covers a dense screen with room to spare. It is not
+    /// enforced - the bytes are not decoded here - it is what the browser is asked for.
+    /// </summary>
+    public const int ThumbnailEdge = 320;
+
+    /// <summary>
     /// Where a picture is served from.
     ///
     /// Relative on purpose. The page is served from whatever host the restaurant is
@@ -84,6 +102,32 @@ public class RestaurantMedia
 
     /// <summary>The image itself.</summary>
     public byte[] Content { get; set; } = [];
+
+    /// <summary>
+    /// A small copy, for grids.
+    ///
+    /// WHY THE BROWSER MAKES IT AND NOT THIS SERVER
+    ///
+    /// A library of sixty four-megabyte photographs drawn as hundred-pixel squares was
+    /// a quarter of a gigabyte of downloads to render a grid, and the editor draws that
+    /// grid inside every photograph field as well as in the library tab. It needed a
+    /// small copy.
+    ///
+    /// Resizing it here would mean an imaging library in the server, which this product
+    /// does not have and which is a real dependency with a real licence for one
+    /// downscale. The browser doing the upload has already decoded the picture in order
+    /// to show it to the person choosing it, so it can produce the small copy for
+    /// nothing and send both.
+    ///
+    /// Nullable, because that arrangement has to degrade. An upload that arrives without
+    /// one - an older client, a browser where the canvas is unavailable, anything
+    /// calling the API directly - is stored and served from the original. Slower, and
+    /// correct.
+    /// </summary>
+    public byte[]? Thumbnail { get; set; }
+
+    /// <summary>The media type of the thumbnail, if there is one.</summary>
+    public string? ThumbnailContentType { get; set; }
 
     /// <summary>When it was uploaded.</summary>
     public DateTimeOffset CreatedAtUtc { get; set; }

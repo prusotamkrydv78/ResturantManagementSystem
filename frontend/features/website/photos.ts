@@ -192,9 +192,17 @@ export function isPhotoTone(ref: string): ref is PhotoTone {
  * Composed against the API's own origin rather than the page's. In development those
  * are two ports, and a bare `/api/media/...` in an image tag would be asked of the
  * Next server, which does not have it.
+ *
+ * ASK FOR THE SMALL ONE WHEN DRAWING IT SMALL
+ *
+ * A grid of sixty pictures at a hundred points across is the editor's most common
+ * screen and was, before this, a quarter of a gigabyte of photographs. Anything
+ * painting a thumbnail should pass `"thumb"`; anything painting the page should not.
+ * A picture with no small copy stored answers with the original either way, so this is
+ * always safe to ask for.
  */
-export function mediaSrc(id: string): string {
-  return `${env.apiUrl}/api/media/${id}`;
+export function mediaSrc(id: string, variant: "full" | "thumb" = "full"): string {
+  return `${env.apiUrl}/api/media/${id}${variant === "thumb" ? "?size=thumb" : ""}`;
 }
 
 /**
@@ -213,7 +221,10 @@ export function photoSrc(ref: string, width: number, height: number): string {
   const id = mediaIdOf(ref);
 
   if (id !== null) {
-    return mediaSrc(id);
+    // The page, not a grid: the full picture. The editor's pickers ask for the small
+    // copy themselves, because they are the only place that knows it is being drawn
+    // at a hundred points.
+    return mediaSrc(id, "full");
   }
 
   return photoUrl(isPhotoTone(ref) ? ref : FALLBACK, width, height);

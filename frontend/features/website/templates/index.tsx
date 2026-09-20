@@ -2,7 +2,6 @@
 
 import type { DesignId } from "@/features/website/designs";
 import type { SampleContent } from "@/features/website/sample-content";
-import type { Restaurant } from "@/types/restaurant";
 import { AuroraTemplate } from "./aurora";
 import { SlateTemplate } from "./slate";
 import { HarvestTemplate } from "./harvest";
@@ -17,9 +16,29 @@ import { AtriumTemplate } from "./atrium";
  * which of them knows it exists.
  */
 
+/**
+ * The facts about a restaurant that a design prints.
+ *
+ * Narrower than the full record on purpose. A template needs a name, an address and a
+ * way to be contacted, and asking for the whole `Restaurant` meant it could only be
+ * drawn where one existed — which is the manager's editor and nowhere else. A visitor
+ * on the public page is served a page, not a restaurant record: no identifier, no
+ * manager, no timestamps, none of which are a stranger's business.
+ *
+ * A full `Restaurant` still satisfies this, so the editor passes one unchanged.
+ */
+export interface SiteIdentity {
+  name: string;
+  addressLine: string | null;
+  city: string | null;
+  country: string | null;
+  contactPhone: string | null;
+  contactEmail: string | null;
+}
+
 /** What every template is handed. The same shape, so they stay interchangeable. */
 export interface TemplateProps {
-  restaurant: Restaurant;
+  restaurant: SiteIdentity;
   /** Omitted, a template fills itself with the sample restaurant. */
   content?: SampleContent;
 }

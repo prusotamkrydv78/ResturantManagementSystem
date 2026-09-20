@@ -6,7 +6,7 @@ import { ArrowRight, Clock, Mail, MapPin, Phone } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { sampleContent, type SampleContent } from "@/features/website/sample-content";
 import { photoGround, photoSrc, type PhotoRef } from "@/features/website/photos";
-import type { Restaurant } from "@/types/restaurant";
+import type { SiteIdentity } from "./index";
 
 /**
  * Atrium — half picture, half page.
@@ -43,7 +43,7 @@ export function AtriumTemplate({
   restaurant,
   content = sampleContent(),
 }: {
-  restaurant: Restaurant;
+  restaurant: SiteIdentity;
   content?: SampleContent;
 }) {
   const where = [restaurant.addressLine, restaurant.city, restaurant.country]
@@ -85,7 +85,7 @@ const NAV = [
 /* -------------------------------------------------------------------------- */
 
 /** A slim bar, always there, on the paper colour. Nothing clever. */
-function Bar({ restaurant }: { restaurant: Restaurant }) {
+function Bar({ restaurant }: { restaurant: SiteIdentity }) {
   return (
     <header
       id="top"
@@ -132,7 +132,7 @@ function Opening({
   restaurant,
   content,
 }: {
-  restaurant: Restaurant;
+  restaurant: SiteIdentity;
   content: SampleContent;
 }) {
   return (
@@ -505,7 +505,7 @@ function Visit({
   content,
   where,
 }: {
-  restaurant: Restaurant;
+  restaurant: SiteIdentity;
   content: SampleContent;
   where: string;
 }) {
@@ -606,7 +606,7 @@ function Footer({
   content,
   where,
 }: {
-  restaurant: Restaurant;
+  restaurant: SiteIdentity;
   content: SampleContent;
   where: string;
 }) {

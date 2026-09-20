@@ -156,6 +156,11 @@ public sealed class SiteService : ISiteService
             .Select(site => new
             {
                 site.Restaurant.Name,
+                site.Restaurant.AddressLine,
+                site.Restaurant.City,
+                site.Restaurant.Country,
+                site.Restaurant.ContactPhone,
+                site.Restaurant.ContactEmail,
                 site.PublishedDesign,
                 site.PublishedJson,
             })
@@ -169,7 +174,12 @@ public sealed class SiteService : ISiteService
         return Result.Success(new PublicSiteResponse(
             row.Name,
             row.PublishedDesign ?? string.Empty,
-            Parse(row.PublishedJson)));
+            Parse(row.PublishedJson),
+            row.AddressLine,
+            row.City,
+            row.Country,
+            row.ContactPhone,
+            row.ContactEmail));
     }
 
     /// <summary>

@@ -34,13 +34,30 @@ public sealed record SiteResponse(
 /// on it, it is a 404. Nothing here says when it was written or whether a newer draft
 /// exists, because none of that is a stranger's business.
 /// </summary>
+/// <remarks>
+/// The contact details are here rather than left to a second request, because every
+/// design prints them: a restaurant page with no address and no telephone number is
+/// not a restaurant page. They are also the least private facts a business holds — a
+/// restaurant that did not want its address known would not have a website — so there
+/// is nothing to weigh against putting them on an open endpoint.
+/// </remarks>
 /// <param name="RestaurantName">The name, so a design need not be told it separately.</param>
 /// <param name="Design">Which design to draw it with.</param>
 /// <param name="Content">The published copy, whole.</param>
+/// <param name="AddressLine">Street address, or null.</param>
+/// <param name="City">Town or city, or null.</param>
+/// <param name="Country">Country, or null.</param>
+/// <param name="ContactPhone">Telephone number, or null.</param>
+/// <param name="ContactEmail">Email address, or null.</param>
 public sealed record PublicSiteResponse(
     string RestaurantName,
     string Design,
-    JsonElement Content);
+    JsonElement Content,
+    string? AddressLine,
+    string? City,
+    string? Country,
+    string? ContactPhone,
+    string? ContactEmail);
 
 /// <summary>Saves the draft. Replaces it whole; there is no partial write.</summary>
 public sealed class SaveSiteDraftRequest

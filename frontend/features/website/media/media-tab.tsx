@@ -26,7 +26,7 @@ import type { Media } from "@/features/website/api";
  * gallery and on the page next year. Uploading it per slot would be the same file
  * three times against a sixty-picture limit.
  */
-export function MediaTab() {
+export function MediaTab({ usedIds }: { usedIds: Set<string> }) {
   const library = useMediaLibrary();
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
 
@@ -79,6 +79,7 @@ export function MediaTab() {
               <li key={item.id}>
                 <Thumbnail
                   item={item}
+                  isUsed={usedIds.has(item.id)}
                   isConfirming={pendingDelete === item.id}
                   onAskDelete={() => setPendingDelete(item.id)}
                   onCancelDelete={() => setPendingDelete(null)}
@@ -97,7 +98,8 @@ export function MediaTab() {
         <p className="text-2xs leading-relaxed text-muted">
           Everything here can be used anywhere on the page — the hero, any dish, any
           gallery tile. Open a section and choose it under{" "}
-          <span className="font-medium text-text">Your pictures</span>.
+          <span className="font-medium text-text">Your pictures</span>. A dot marks the
+          ones the page is using now.
         </p>
       </footer>
     </div>
@@ -115,6 +117,16 @@ export function MediaTab() {
 function UploadControl() {
   const library = useMediaLibrary();
   const input = useRef<HTMLInputElement>(null);
+
+  /**
+   * How many nested elements the pointer is currently inside.
+   *
+   * Counted rather than held as a boolean, because `dragleave` fires every time the
+   * pointer crosses into a child — the button, the paragraph — and a boolean cleared
+   * on each of those makes the whole strip flicker while somebody is still over it.
+   * Enter increments, leave decrements, and only zero means genuinely gone.
+   */
+  const depth = useRef(0);
   const [isOver, setIsOver] = useState(false);
 
   const accept = (list: FileList | null) => {
@@ -130,13 +142,20 @@ function UploadControl() {
 
   return (
     <div
-      onDragOver={(event) => {
+      onDragEnter={(event) => {
         event.preventDefault();
+        depth.current += 1;
         setIsOver(true);
       }}
-      onDragLeave={() => setIsOver(false)}
+      onDragOver={(event) => event.preventDefault()}
+      onDragLeave={() => {
+        depth.current = Math.max(0, depth.current - 1);
+
+        if (depth.current === 0) setIsOver(false);
+      }}
       onDrop={(event) => {
         event.preventDefault();
+        depth.current = 0;
         setIsOver(false);
         accept(event.dataTransfer.files);
       }}
@@ -172,7 +191,12 @@ function UploadControl() {
         {library.isFull ? (
           <>Your library is full. Remove one to add another.</>
         ) : (
-          <>or drop them here — JPEG, PNG or WebP, up to 4 MB each</>
+          <>
+            or drop them here — JPEG, PNG or WebP
+            {/* The figure is the server's, not a sentence written here that would go
+                quietly wrong the day the limit moved. */}
+            {library.maxBytes > 0 && <>, up to {readableBytes(library.maxBytes)} each</>}
+          </>
         )}
       </p>
 
@@ -188,18 +212,25 @@ function UploadControl() {
 /**
  * One picture, with the only destructive control in the editor.
  *
- * Confirmed in place rather than in a dialog. Nothing on the server knows whether this
- * picture is on the page, so the warning has to be the honest one — it says what
- * cannot be undone and leaves the judgement with the person who knows.
+ * Confirmed in place rather than in a dialog, and the confirmation says whether this
+ * picture is on the page. Nothing on the server can know that — it stores a page as
+ * opaque JSON and has no idea what a page is made of — so the editor is the only place
+ * the warning can come from, and without it a manager deletes what looks like a spare
+ * photograph and their hero quietly becomes a gradient.
+ *
+ * Still a warning and not a prohibition. A manager who wants it gone knows things this
+ * code does not.
  */
 function Thumbnail({
   item,
+  isUsed,
   isConfirming,
   onAskDelete,
   onCancelDelete,
   onDelete,
 }: {
   item: Media;
+  isUsed: boolean;
   isConfirming: boolean;
   onAskDelete: () => void;
   onCancelDelete: () => void;
@@ -209,7 +240,8 @@ function Thumbnail({
     <div className="group/tile relative aspect-square overflow-hidden rounded-md border border-border bg-surface-3">
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
-        src={mediaSrc(item.id)}
+        // The small copy. This grid is the reason it exists.
+        src={mediaSrc(item.id, "thumb")}
         alt={item.fileName}
         title={`${item.fileName} · ${readableBytes(item.byteCount)}`}
         loading="lazy"
@@ -217,16 +249,25 @@ function Thumbnail({
         className="absolute inset-0 block h-full w-full object-cover"
       />
 
+      {isUsed && !isConfirming && (
+        <span
+          title="On the page"
+          className="absolute bottom-1 left-1 size-2 rounded-full bg-success ring-2 ring-[#171717]/40"
+        >
+          <span className="sr-only">On the page</span>
+        </span>
+      )}
+
       {isConfirming ? (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 bg-[#171717]/85 p-2 text-center">
           <p className="text-2xs leading-tight font-medium text-white">
-            Delete for good?
+            {isUsed ? "This one is on your page." : "Delete for good?"}
           </p>
           <div className="flex gap-1">
             <button
               type="button"
               onClick={onDelete}
-              className="rounded px-1.5 py-0.5 text-2xs font-semibold text-white bg-danger-solid"
+              className="rounded bg-danger-solid px-1.5 py-0.5 text-2xs font-semibold text-white"
             >
               Delete
             </button>

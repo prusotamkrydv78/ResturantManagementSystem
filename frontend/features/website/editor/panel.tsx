@@ -20,6 +20,7 @@ import { Input, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { useMediaLibrary } from "@/features/website/media/library";
 import { MediaTab } from "@/features/website/media/media-tab";
+import { mediaIdsIn } from "@/features/website/media/usage";
 import {
   mediaRef,
   mediaSrc,
@@ -121,7 +122,10 @@ export function EditorPanel({
       </div>
 
       {tab === "media" || section === undefined ? (
-        <MediaTab />
+        // The editor is the only thing in this system that knows which pictures a page
+        // is using — the server stores a page as opaque JSON — so the set is computed
+        // here, where the whole record is in hand, and carried in.
+        <MediaTab usedIds={mediaIdsIn(content)} />
       ) : (
         <>
       {/* Where in the page this is, and the way to the next one.
@@ -329,6 +333,26 @@ function PhotoField({
   const input = useRef<HTMLInputElement>(null);
   const current = typeof value === "string" ? value : "";
 
+  /**
+   * The most recent few, not the whole library.
+   *
+   * A restaurant may hold sixty pictures, and a section can have several photograph
+   * fields in it — Aurora's menu has one per dish, up to eight. Rendering the library
+   * in each of them put four hundred thumbnails in a drawer and pushed every other
+   * field on the section a screen and a half below the fold.
+   *
+   * Seven and the upload tile fill two rows exactly. The one in use is always among
+   * them however old it is, because a field that cannot show you its own current value
+   * is worse than one that shows you fewer choices. The rest of the library is one tab
+   * away, which is what the tab is for.
+   */
+  const recent = library.items.slice(0, RECENT);
+  const chosen = library.items.find((item) => mediaRef(item.id) === current);
+  const offered =
+    chosen !== undefined && !recent.includes(chosen)
+      ? [chosen, ...recent.slice(0, RECENT - 1)]
+      : recent;
+
   async function receive(list: FileList | null) {
     if (list === null) {
       return;
@@ -392,10 +416,11 @@ function PhotoField({
           <span className="text-[0.5rem] font-medium">Upload</span>
         </button>
 
-        {library.items.map((item) => (
+        {offered.map((item) => (
           <PhotoTile
             key={item.id}
-            src={mediaSrc(item.id)}
+            // The small copy: this is a hundred-point square, not the page.
+            src={mediaSrc(item.id, "thumb")}
             label={item.fileName}
             isSelected={current === mediaRef(item.id)}
             onClick={() => onChange(mediaRef(item.id))}
@@ -403,12 +428,20 @@ function PhotoField({
         ))}
       </div>
 
-      {library.items.length === 0 && (
+      {library.items.length === 0 ? (
         <p className="text-2xs leading-relaxed text-muted">
           Nothing uploaded yet. Anything you add here joins the{" "}
           <span className="font-medium text-text">Pictures</span> tab and can be used
           anywhere on the page.
         </p>
+      ) : (
+        library.items.length > offered.length && (
+          <p className="text-2xs text-muted">
+            Showing your {offered.length} most recent. All{" "}
+            {library.items.length} are in the{" "}
+            <span className="font-medium text-text">Pictures</span> tab.
+          </p>
+        )
       )}
 
       <p className="mt-2 text-2xs font-medium tracking-wide text-subtle uppercase">
@@ -430,6 +463,9 @@ function PhotoField({
     </fieldset>
   );
 }
+
+/** How many of a restaurant's own pictures a single field offers. See above. */
+const RECENT = 7;
 
 /** One choosable picture. The same tile for an upload and for a sample. */
 function PhotoTile({
