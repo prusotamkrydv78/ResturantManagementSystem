@@ -6,6 +6,7 @@ import { ArrowRight, Clock, Mail, MapPin, Phone } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { sampleContent, type SampleContent } from "@/features/website/sample-content";
 import { photoGround, photoSrc, type PhotoRef } from "@/features/website/photos";
+import { Editable } from "@/features/website/editor/editable";
 import type { SiteIdentity } from "./index";
 
 /**
@@ -61,13 +62,30 @@ export function AtriumTemplate({
         style={{ backgroundColor: "var(--paper)", color: "var(--ink)" }}
       >
         <Bar restaurant={restaurant} />
-        <Opening restaurant={restaurant} content={content} />
-        <Chapters content={content} />
-        <Carte content={content} />
-        <Interlude content={content} />
-        <Gallery content={content} />
-        <Visit restaurant={restaurant} content={content} where={where} />
-        <Footer restaurant={restaurant} content={content} where={where} />
+        {/* One wrapper per section, matching the editor's list. The bar is chrome.
+            The footer is wrapped because it prints the year the restaurant opened,
+            which is content rather than record. */}
+        <Editable id="opening" label="Opening">
+          <Opening restaurant={restaurant} content={content} />
+        </Editable>
+        <Editable id="chapters" label="Chapters">
+          <Chapters content={content} />
+        </Editable>
+        <Editable id="menu" label="The menu">
+          <Carte content={content} />
+        </Editable>
+        <Editable id="interlude" label="What guests said">
+          <Interlude content={content} />
+        </Editable>
+        <Editable id="gallery" label="Gallery">
+          <Gallery content={content} />
+        </Editable>
+        <Editable id="visit" label="Opening hours">
+          <Visit restaurant={restaurant} content={content} where={where} />
+        </Editable>
+        <Editable id="closing" label="Closing">
+          <Footer restaurant={restaurant} content={content} where={where} />
+        </Editable>
       </div>
     </MotionConfig>
   );

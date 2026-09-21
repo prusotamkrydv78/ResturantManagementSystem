@@ -34,6 +34,19 @@ public sealed class UpdateRestaurantRequest
         ErrorMessage = "The slug cannot be longer than 120 characters.")]
     public string? Slug { get; set; }
 
+    /// <summary>
+    /// The label the restaurant's website answers on, or null to leave it alone.
+    ///
+    /// The platform owner's to give, like the slug, and for the same reason: it is
+    /// unique across every restaurant, so it cannot be a field a manager edits without
+    /// somebody arbitrating the collisions.
+    ///
+    /// An empty string is distinguishable from absent and means "take it away", which
+    /// is the only way to release a label somebody else should have.
+    /// </summary>
+    [StringLength(63, ErrorMessage = "A web address cannot be longer than 63 characters.")]
+    public string? Subdomain { get; set; }
+
     [EmailAddress(ErrorMessage = "Enter a valid email address.")]
     [StringLength(256)]
     public string? ContactEmail { get; set; }

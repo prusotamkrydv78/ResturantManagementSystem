@@ -6,6 +6,7 @@ import { ArrowRight, Clock, Mail, MapPin, Phone } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { sampleContent, type SampleContent } from "@/features/website/sample-content";
 import { photoGround, photoSrc, type PhotoRef } from "@/features/website/photos";
+import { Editable } from "@/features/website/editor/editable";
 import type { SiteIdentity } from "./index";
 
 /**
@@ -62,14 +63,32 @@ export function HarvestTemplate({
         style={{ backgroundColor: "var(--paper)", color: "var(--ink)" }}
       >
         <Masthead restaurant={restaurant} />
-        <Opening restaurant={restaurant} content={content} />
-        <Ticker items={content.accolades} />
-        <Larder content={content} />
-        <Carte content={content} />
-        <Statement content={content} />
-        <Gallery content={content} />
-        <Celebrations content={content} />
-        <Visit restaurant={restaurant} content={content} where={where} />
+        {/* One wrapper per section, matching the editor's list. The masthead and
+            the footer are chrome drawn from the restaurant's own record. */}
+        <Editable id="opening" label="Opening">
+          <Opening restaurant={restaurant} content={content} />
+        </Editable>
+        <Editable id="ticker" label="Accolades marquee">
+          <Ticker items={content.accolades} />
+        </Editable>
+        <Editable id="larder" label="Your story">
+          <Larder content={content} />
+        </Editable>
+        <Editable id="menu" label="The menu">
+          <Carte content={content} />
+        </Editable>
+        <Editable id="statement" label="From the kitchen">
+          <Statement content={content} />
+        </Editable>
+        <Editable id="gallery" label="Gallery">
+          <Gallery content={content} />
+        </Editable>
+        <Editable id="celebrations" label="Celebrations">
+          <Celebrations content={content} />
+        </Editable>
+        <Editable id="visit" label="Opening hours">
+          <Visit restaurant={restaurant} content={content} where={where} />
+        </Editable>
         <Footer restaurant={restaurant} where={where} />
       </div>
     </MotionConfig>

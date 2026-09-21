@@ -896,6 +896,7 @@ function EditRestaurantDialog({
   const [isLoading, setIsLoading] = useState(false);
   const [name, setName] = useState(restaurant.name);
   const [slug, setSlug] = useState(restaurant.slug);
+  const [subdomain, setSubdomain] = useState("");
   const [city, setCity] = useState(restaurant.city ?? "");
   const [country, setCountry] = useState("");
   const [addressLine, setAddressLine] = useState("");
@@ -920,6 +921,7 @@ function EditRestaurantDialog({
 
         setName(full.name);
         setSlug(full.slug);
+        setSubdomain(full.subdomain ?? "");
         setCity(full.city ?? "");
         setCountry(full.country ?? "");
         setAddressLine(full.addressLine ?? "");
@@ -957,6 +959,9 @@ function EditRestaurantDialog({
         // are built from, so an unchanged value is left out entirely rather than
         // re-submitted.
         ...(slug.trim() === restaurant.slug ? {} : { slug: slug.trim() }),
+        // Always sent, because an emptied box is a request to take the address away
+        // and an omitted field cannot say that.
+        subdomain: subdomain.trim().toLowerCase(),
         // Blanks are cleared rather than omitted here: unlike create, an edit that
         // empties a field means the field should end up empty.
         city: blankToNull(city),
@@ -1016,6 +1021,26 @@ function EditRestaurantDialog({
                 value={slug}
                 onChange={(event) => setSlug(event.target.value)}
                 aria-describedby={describedBy(`edit-slug-${restaurant.id}`, {
+                  hasHint: true,
+                })}
+              />
+            </Field>
+
+            {/* The web address. Its own field rather than derived from the slug:
+                changing where a website lives should not silently invalidate every
+                QR code in the building. */}
+            <Field
+              htmlFor={`edit-subdomain-${restaurant.id}`}
+              label="Web address"
+              hint="Letters, digits and hyphens. Leave empty for no website address."
+            >
+              <Input
+                id={`edit-subdomain-${restaurant.id}`}
+                disabled={isLoading}
+                value={subdomain}
+                placeholder="kanchan"
+                onChange={(event) => setSubdomain(event.target.value)}
+                aria-describedby={describedBy(`edit-subdomain-${restaurant.id}`, {
                   hasHint: true,
                 })}
               />

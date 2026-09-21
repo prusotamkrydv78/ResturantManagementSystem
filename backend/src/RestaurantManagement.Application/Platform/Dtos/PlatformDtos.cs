@@ -456,6 +456,16 @@ public sealed record PlatformRestaurantDetailResponse(
 /// <param name="LocalDate">The service day it is now, in the one calendar there is.</param>
 /// <param name="ServiceDayLabel">That calendar, spelled out.</param>
 /// <param name="ServiceDayOffsetMinutes">And as a number, so a client can agree with it.</param>
+/// <param name="SiteBaseDomain">
+/// The domain restaurant websites hang off, as in the <c>eatery.np</c> of
+/// <c>kanchan.eatery.np</c>, or empty when none is configured.
+///
+/// Deployment configuration rather than a setting, and shown read-only for that
+/// reason. A wildcard DNS record and a wildcard certificate have to exist for a
+/// subdomain to resolve at all, and neither is something this product can arrange by
+/// writing a row - so the value that decides routing is the one the deployment was
+/// given, and the screen reports it rather than pretending to own it.
+/// </param>
 /// <param name="Environment">Which configuration the API booted with.</param>
 /// <param name="Version">The build that is running.</param>
 /// <param name="DatabaseReachable">Whether the API can currently open a connection.</param>
@@ -472,6 +482,7 @@ public sealed record PlatformSystemResponse(
     DateOnly LocalDate,
     string ServiceDayLabel,
     int ServiceDayOffsetMinutes,
+    string SiteBaseDomain,
     string Environment,
     string Version,
     bool DatabaseReachable,

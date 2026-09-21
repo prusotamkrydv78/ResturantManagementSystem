@@ -6,6 +6,7 @@ import { ArrowUpRight, Mail, MapPin, Phone } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { sampleContent, type SampleContent } from "@/features/website/sample-content";
 import { GRAIN, photoGround, photoSrc, type PhotoRef } from "@/features/website/photos";
+import { Editable } from "@/features/website/editor/editable";
 import type { SiteIdentity } from "./index";
 
 /**
@@ -76,14 +77,37 @@ export function SlateTemplate({
         <Spine restaurant={restaurant} />
 
         <main className="min-w-0">
-          <Overture restaurant={restaurant} content={content} />
-          <Creed content={content} />
-          <Carte content={content} />
-          <Cellar content={content} />
-          <Kitchen content={content} />
-          <Laurels content={content} />
-          <PrivateDining content={content} />
-          <Visit restaurant={restaurant} content={content} where={where} />
+          {/* One wrapper per section, and the ids match the entries in the
+              editor's section list. Outside edit mode each renders its children and
+              nothing else, so a published page carries no trace of the editor.
+
+              The top bar, the spine and the colophon are not wrapped: they are
+              chrome drawn from the restaurant's own record, and there is nothing on
+              them this editor owns. */}
+          <Editable id="overture" label="Opening">
+            <Overture restaurant={restaurant} content={content} />
+          </Editable>
+          <Editable id="creed" label="What you stand for">
+            <Creed content={content} />
+          </Editable>
+          <Editable id="carte" label="The carte">
+            <Carte content={content} />
+          </Editable>
+          <Editable id="cellar" label="The cellar">
+            <Cellar content={content} />
+          </Editable>
+          <Editable id="kitchen" label="The kitchen">
+            <Kitchen content={content} />
+          </Editable>
+          <Editable id="laurels" label="Awards">
+            <Laurels content={content} />
+          </Editable>
+          <Editable id="private" label="Private dining">
+            <PrivateDining content={content} />
+          </Editable>
+          <Editable id="visit" label="Opening hours">
+            <Visit restaurant={restaurant} content={content} where={where} />
+          </Editable>
           <Colophon restaurant={restaurant} where={where} />
         </main>
       </div>

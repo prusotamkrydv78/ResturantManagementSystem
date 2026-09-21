@@ -152,7 +152,16 @@ public sealed class SiteService : ISiteService
                 site.IsPublished &&
                 site.PublishedJson != null &&
                 site.Restaurant.IsActive &&
-                site.Restaurant.Slug == normalised)
+                // Either name resolves the same page.
+                //
+                // The subdomain is what a visitor types; the slug is what the guest
+                // ordering links have always used and what anybody who bookmarked the
+                // path route still holds. Matching both means giving a restaurant a
+                // web address does not quietly break the address it already had, and
+                // it keeps the edge rewrite a pure string operation - the middleware
+                // turns a host into a path without asking the database who owns it.
+                (site.Restaurant.Slug == normalised ||
+                 site.Restaurant.Subdomain == normalised))
             .Select(site => new
             {
                 site.Restaurant.Name,

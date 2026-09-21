@@ -874,6 +874,7 @@ public sealed class PlatformService : IPlatformService
             // Read from the environment rather than through IHostEnvironment, which
             // would put a hosting dependency into a layer that has no business
             // knowing it is hosted at all.
+            System.Environment.GetEnvironmentVariable("SITE_BASE_DOMAIN")?.Trim() ?? string.Empty,
             System.Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Unknown",
             Assembly.GetEntryAssembly()?.GetName().Version?.ToString() ?? "Unknown",
             reachable,

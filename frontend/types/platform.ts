@@ -315,6 +315,14 @@ export interface PlatformSystem {
   localDate: string;
   serviceDayLabel: string;
   serviceDayOffsetMinutes: number;
+  /**
+   * The domain restaurant websites hang off, or empty when none is configured.
+   *
+   * Deployment configuration rather than a setting: a subdomain only resolves when a
+   * wildcard DNS record and a wildcard certificate exist for it, and neither can be
+   * arranged by writing a row.
+   */
+  siteBaseDomain: string;
   environment: string;
   version: string;
   databaseReachable: boolean;

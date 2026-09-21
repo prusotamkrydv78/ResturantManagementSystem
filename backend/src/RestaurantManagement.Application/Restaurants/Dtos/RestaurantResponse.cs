@@ -10,6 +10,10 @@ public sealed record RestaurantManagerDto(Guid Id, string FullName, string Email
 /// <param name="Id">Identifier.</param>
 /// <param name="Name">Display name.</param>
 /// <param name="Slug">URL-friendly unique identifier.</param>
+/// <param name="Subdomain">
+/// The label its website answers on, or null while it has none. Separate from the
+/// slug so that renaming a website does not invalidate printed ordering links.
+/// </param>
 /// <param name="ContactEmail">Optional contact email.</param>
 /// <param name="ContactPhone">Optional contact phone.</param>
 /// <param name="AddressLine">Optional street address.</param>
@@ -23,6 +27,7 @@ public sealed record RestaurantResponse(
     Guid Id,
     string Name,
     string Slug,
+    string? Subdomain,
     string? ContactEmail,
     string? ContactPhone,
     string? AddressLine,

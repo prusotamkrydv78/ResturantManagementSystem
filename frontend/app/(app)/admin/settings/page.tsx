@@ -212,6 +212,28 @@ function SystemCard() {
             </span>
           </span>
         </DetailRow>
+        {/* Where restaurant websites live. Read-only, and the card says why: a
+            subdomain resolves because of a wildcard DNS record and a wildcard
+            certificate, and a value stored here could not conjure either. What a
+            platform owner changes is the label per restaurant, on the restaurants
+            page. */}
+        <DetailRow label="Websites">
+          {system.siteBaseDomain === "" ? (
+            <span className="text-muted">
+              No site domain configured, so restaurant websites are reachable at
+              /r/&lt;name&gt; only.
+            </span>
+          ) : (
+            <>
+              <span className="font-mono">
+                &lt;name&gt;.{system.siteBaseDomain}
+              </span>
+              <span className="block text-xs text-muted">
+                Set by the deployment. Give a restaurant its name under Restaurants.
+              </span>
+            </>
+          )}
+        </DetailRow>
         <DetailRow label="Service day">
           {system.serviceDayLabel}
           {/* Said out loud rather than left silent. It is not configurable, and a

@@ -8,6 +8,22 @@ namespace RestaurantManagement.Application.Restaurants;
 /// </summary>
 public static class RestaurantErrors
 {
+    /// <summary>The web address is not a shape DNS accepts.</summary>
+    public static readonly Error SubdomainInvalid = new(
+        "restaurant.subdomain_invalid",
+        "A web address may use letters, digits and hyphens only, must not start or "
+        + "end with a hyphen, and must be between 3 and 63 characters.");
+
+    /// <summary>The web address is one the platform keeps for itself.</summary>
+    public static readonly Error SubdomainReserved = new(
+        "restaurant.subdomain_reserved",
+        "That web address is reserved by the platform. Choose another.");
+
+    /// <summary>Another restaurant already answers on it.</summary>
+    public static readonly Error SubdomainTaken = new(
+        "restaurant.subdomain_taken",
+        "Another restaurant already uses that web address.");
+
     /// <summary>No restaurant exists with the supplied identifier.</summary>
     public static readonly Error NotFound =
         new("restaurant.not_found", "The restaurant could not be found.");

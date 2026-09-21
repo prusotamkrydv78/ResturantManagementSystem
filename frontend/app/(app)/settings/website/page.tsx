@@ -1,13 +1,21 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowUpRight } from "lucide-react";
+import { ArrowUpRight, ExternalLink } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Surface } from "@/components/ui/surface";
+import { Button, LinkButton } from "@/components/ui/button";
+import { Surface, SurfaceHeader } from "@/components/ui/surface";
+import { ErrorState, Skeleton } from "@/components/ui/states";
 import { PageBody, PageHeader } from "@/components/layout/page-header";
-import { DESIGNS, type Design } from "@/features/website/designs";
+import { getSite, setSitePublished, type Site } from "@/features/website/api";
+import { siteAddress } from "@/features/website/address";
+import { DESIGNS, designById, type Design } from "@/features/website/designs";
 import { DesignSketchView } from "@/features/website/design-sketch";
+import { getMyRestaurant } from "@/features/restaurants/api";
+import { Report, useAction } from "@/features/platform/use-action";
 import { cn } from "@/lib/utils/cn";
+import type { Restaurant } from "@/types/restaurant";
 
 /**
  * The designs a restaurant can build its public page on.
@@ -38,6 +46,10 @@ export default function WebsiteDesignsPage() {
       />
 
       <PageBody>
+        {/* What the website is doing, before the gallery of what it could look like.
+            The publish control used to exist only inside the editor, as a glyph. */}
+        <SiteStatus />
+
         <p className="text-xs text-muted">
           Four designs. Open any of them to see the whole page with your own name,
           address and contact details; everything else in the preview is sample copy.
@@ -50,6 +62,198 @@ export default function WebsiteDesignsPage() {
         </div>
       </PageBody>
     </>
+  );
+}
+
+/**
+ * Whether this restaurant has a website, and the one control that changes it.
+ *
+ * WHY IT IS HERE AND NOT ONLY IN THE EDITOR
+ *
+ * Publishing lived on a toolbar inside the editor, as a glyph that named itself on
+ * hover. That is a reasonable place for it while somebody is editing and a poor one
+ * for every other question about the website: whether it is live, which design it is
+ * on, what address it answers on, and how to take it down. All of those were only
+ * answerable by opening a design and looking at a circle.
+ *
+ * So the state and the switch live on the page the sidebar points at, and the toolbar
+ * keeps the copy of Publish that belongs next to the work.
+ */
+function SiteStatus() {
+  const [site, setSite] = useState<Site | null>(null);
+  const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+  const action = useAction();
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function load() {
+      try {
+        const [loadedSite, loadedRestaurant] = await Promise.all([
+          getSite(),
+          getMyRestaurant(),
+        ]);
+
+        if (!cancelled) {
+          setSite(loadedSite);
+          setRestaurant(loadedRestaurant);
+          setError(null);
+        }
+      } catch (caught) {
+        if (!cancelled) {
+          setError(
+            caught instanceof Error ? caught.message : "Unable to read your website.",
+          );
+        }
+      }
+    }
+
+    void load();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [reloadKey]);
+
+  if (error !== null) {
+    return (
+      <Surface>
+        <ErrorState message={error} onRetry={() => setReloadKey((key) => key + 1)} />
+      </Surface>
+    );
+  }
+
+  if (site === null || restaurant === null) {
+    return (
+      <Surface className="flex flex-col gap-3 p-4">
+        <Skeleton className="h-4 w-32" />
+        <Skeleton className="h-3 w-56" />
+      </Surface>
+    );
+  }
+
+  const design = site.design === "" ? undefined : designById(site.design);
+  const address = siteAddress(restaurant);
+
+  // Three states, not two. "Live" and "not published" are the obvious pair; the third
+  // is a page that is live and has been edited since, which is the one a manager most
+  // often wants to know about and the one a boolean cannot say.
+  const state = !site.isPublished
+    ? ("draft" as const)
+    : site.hasUnpublishedChanges
+      ? ("behind" as const)
+      : ("live" as const);
+
+  return (
+    <Surface className="flex flex-col">
+      <SurfaceHeader
+        title="Your website"
+        description={
+          design === undefined
+            ? "No design chosen yet. Open one below and save it to begin."
+            : `Built on ${design.name}.`
+        }
+        actions={
+          state === "live" ? (
+            <Badge tone="success" dot>
+              Live
+            </Badge>
+          ) : state === "behind" ? (
+            <Badge tone="warning" dot>
+              Changes not published
+            </Badge>
+          ) : (
+            <Badge tone="neutral" dot>
+              Not published
+            </Badge>
+          )
+        }
+      />
+
+      <div className="flex flex-col gap-3 p-4">
+        <Report action={action} />
+
+        {site.isPublished ? (
+          <div className="flex flex-col gap-1">
+            <span className="text-2xs font-semibold tracking-wider text-subtle uppercase">
+              Address
+            </span>
+            <a
+              href={address.href}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex w-fit items-center gap-1.5 rounded font-mono text-sm text-primary hover:underline"
+            >
+              {address.label}
+              <ExternalLink className="size-3.5" aria-hidden="true" />
+            </a>
+            {!address.isSubdomain && (
+              // Said plainly rather than left as a shorter-looking URL. A manager
+              // who has been promised their own address should know why they have
+              // not got one, and that it is not theirs to fix.
+              <span className="text-xs text-muted">
+                Your own web address has not been set up yet. Ask the platform
+                administrator for one.
+              </span>
+            )}
+          </div>
+        ) : (
+          <p className="text-sm text-muted">
+            Nothing is published, so nobody outside the restaurant can see this page
+            yet. Publishing takes a copy of what you have saved.
+          </p>
+        )}
+      </div>
+
+      <div className="flex flex-wrap justify-end gap-2 border-t border-border px-4 py-3">
+        {design !== undefined && (
+          <LinkButton
+            href={`/website/${design.id}`}
+            variant="secondary"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Open the editor
+          </LinkButton>
+        )}
+
+        {site.isPublished && (
+          // Taking a page down is not the same as deleting it: the draft, the design
+          // and every word stay exactly where they are, and publishing again puts
+          // them back. Worth saying on the button rather than in a dialog.
+          <Button
+            variant="secondary"
+            disabled={action.busy}
+            onClick={() =>
+              void action.run(async () => {
+                setSite(await setSitePublished(false));
+              }, "Taken down. Your work is kept.")
+            }
+          >
+            Take it down
+          </Button>
+        )}
+
+        <Button
+          disabled={action.busy || site.design === ""}
+          onClick={() =>
+            void action.run(async () => {
+              setSite(await setSitePublished(true));
+            }, site.isPublished ? "Published." : "Published. Your page is live.")
+          }
+        >
+          {action.busy
+            ? "Publishing…"
+            : state === "behind"
+              ? "Publish changes"
+              : state === "live"
+                ? "Publish again"
+                : "Publish"}
+        </Button>
+      </div>
+    </Surface>
   );
 }
 

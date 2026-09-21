@@ -24,6 +24,17 @@ public sealed class RestaurantConfiguration : IEntityTypeConfiguration<Restauran
 
         builder.HasIndex(restaurant => restaurant.Slug).IsUnique();
 
+        builder.Property(restaurant => restaurant.Subdomain).HasMaxLength(63);
+
+        // Filtered, so the many restaurants without an address do not collide with
+        // each other on null. Uniqueness has to be the database's job rather than a
+        // check in the service: two administrators naming two restaurants at the same
+        // moment is exactly the case a read-then-write cannot see.
+        builder
+            .HasIndex(restaurant => restaurant.Subdomain)
+            .IsUnique()
+            .HasFilter("[Subdomain] IS NOT NULL");
+
         builder.Property(restaurant => restaurant.ContactEmail).HasMaxLength(256);
         builder.Property(restaurant => restaurant.ContactPhone).HasMaxLength(32);
         builder.Property(restaurant => restaurant.AddressLine).HasMaxLength(256);

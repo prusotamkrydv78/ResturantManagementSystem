@@ -100,17 +100,6 @@ const AURORA_DESTINATIONS: Destination[] = [
   { value: "#gallery", label: "The gallery" },
 ];
 
-export const DESTINATIONS: Record<DesignId, Destination[]> = {
-  aurora: AURORA_DESTINATIONS,
-  slate: [],
-  harvest: [],
-  atrium: [],
-};
-
-export function destinationsFor(design: DesignId): Destination[] {
-  return DESTINATIONS[design] ?? [];
-}
-
 /**
  * How one section arrives, as a field.
  *
@@ -384,11 +373,504 @@ const AURORA: EditableSection[] = [
 ];
 
 /** Every design's editable sections. Empty until a design's turn comes. */
+/**
+ * Shared field shapes.
+ *
+ * The four designs print the same restaurant, so a course, an opening hour and a
+ * photograph caption are the same thing in each of them. Written once and called with
+ * a path, rather than copied four times, because four copies of "Price, max 12" is
+ * four places for a design to quietly disagree with the others about what a price is.
+ */
+function coursesField(path: ContentPath, hint: string): Field {
+  return {
+    kind: "list",
+    path,
+    label: "Courses",
+    hint,
+    itemLabel: "Course",
+    titleKey: "name",
+    max: 8,
+    blank: { name: "", note: "", lines: [] },
+    fields: [
+      { kind: "text", path: "name", label: "Course", max: 40 },
+      { kind: "text", path: "note", label: "Line underneath", max: 90 },
+      {
+        kind: "list",
+        path: "lines",
+        label: "Dishes",
+        itemLabel: "Dish",
+        titleKey: "name",
+        max: 14,
+        blank: { name: "", description: "", price: "" },
+        fields: [
+          { kind: "text", path: "name", label: "Name", max: 60 },
+          { kind: "lines", path: "description", label: "Description", max: 140 },
+          { kind: "text", path: "price", label: "Price", max: 12 },
+        ],
+      },
+    ],
+  };
+}
+
+function hoursField(path: ContentPath): Field {
+  return {
+    kind: "list",
+    path,
+    label: "Opening hours",
+    hint: "One row per pattern. Group the days that match rather than listing seven.",
+    itemLabel: "Row",
+    titleKey: "days",
+    max: 8,
+    blank: { days: "", time: "" },
+    fields: [
+      { kind: "text", path: "days", label: "Days", max: 40 },
+      { kind: "text", path: "time", label: "Hours", max: 40 },
+    ],
+  };
+}
+
+function galleryField(path: ContentPath, hint: string): Field {
+  return {
+    kind: "list",
+    path,
+    label: "Photographs",
+    hint,
+    itemLabel: "Photograph",
+    titleKey: "caption",
+    max: 10,
+    blank: { caption: "", photo: "room" },
+    fields: [
+      { kind: "text", path: "caption", label: "Caption", max: 70 },
+      { kind: "photo", path: "photo", label: "Photograph" },
+    ],
+  };
+}
+
+function storyFields(prefix: string, paragraphs: number): Field[] {
+  return [
+    { kind: "text", path: `${prefix}.title` as ContentPath, label: "Heading", max: 80 },
+    {
+      kind: "strings",
+      path: `${prefix}.body` as ContentPath,
+      label: "Paragraphs",
+      itemLabel: "Paragraph",
+      long: true,
+      max: paragraphs,
+    },
+  ];
+}
+
+function privateDiningFields(): Field[] {
+  return [
+    { kind: "text", path: "privateDining.title", label: "Heading", max: 60 },
+    { kind: "lines", path: "privateDining.body", label: "What the room is for", max: 300 },
+    {
+      kind: "lines",
+      path: "privateDining.note",
+      label: "The condition",
+      hint: "Minimum numbers, notice, a deposit. Every restaurant has one and few say it.",
+      max: 160,
+    },
+  ];
+}
+
+function tastingFields(full: boolean): Field[] {
+  const fields: Field[] = [
+    { kind: "text", path: "tasting.name", label: "Name", max: 60 },
+    { kind: "text", path: "tasting.price", label: "Price", max: 12 },
+  ];
+
+  // Atrium prints the price beside the carte and nothing else, so offering it a note
+  // and a set of terms would be offering a manager two boxes their page will not draw.
+  if (full) {
+    fields.splice(1, 0, {
+      kind: "lines",
+      path: "tasting.note",
+      label: "What it is",
+      max: 300,
+    });
+    fields.push({
+      kind: "lines",
+      path: "tasting.terms",
+      label: "The condition",
+      hint: "Whole table only, allergies in advance, that sort of thing.",
+      max: 160,
+    });
+  }
+
+  return fields;
+}
+
+const OPENING_FIELDS: Field[] = [
+  {
+    kind: "text",
+    path: "eyebrow",
+    label: "Small line above",
+    hint: "When you are open, or what kind of room this is.",
+    max: 60,
+  },
+  { kind: "lines", path: "headline", label: "Headline", max: 90 },
+  {
+    kind: "lines",
+    path: "standfirst",
+    label: "Opening sentence",
+    hint: "What somebody arriving from a search needs to know first.",
+    max: 260,
+  },
+];
+
+/* -------------------------------------------------------------------------- */
+/* Slate                                                                      */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Slate, in full.
+ *
+ * A dining room rather than a café: it prints a carte in courses with no photographs
+ * at all, carries a wine paragraph and a wall of awards, and gives the chef a band.
+ * It has no hero photograph and no dish cards, so neither is offered here.
+ */
+const SLATE: EditableSection[] = [
+  {
+    id: "overture",
+    label: "Opening",
+    note: "The first screen: the name of the restaurant and one sentence under it.",
+    fields: [
+      {
+        kind: "text",
+        path: "eyebrow",
+        label: "Small line above",
+        max: 60,
+      },
+      {
+        kind: "lines",
+        path: "standfirst",
+        label: "Opening sentence",
+        hint: "This design sets it large. One good sentence beats three ordinary ones.",
+        max: 260,
+      },
+    ],
+  },
+  {
+    id: "creed",
+    label: "What you stand for",
+    note: "The paragraphs that say how this kitchen thinks.",
+    fields: storyFields("story", 3),
+  },
+  {
+    id: "carte",
+    label: "The carte",
+    note: "The menu set in courses, printed rather than photographed.",
+    fields: [
+      coursesField("courses", "Printed in order, with the lines under each heading."),
+      ...tastingFields(true),
+    ],
+  },
+  {
+    id: "cellar",
+    label: "The cellar",
+    note: "A paragraph on the wine, for a list worth mentioning.",
+    fields: [
+      { kind: "text", path: "cellar.title", label: "Heading", max: 60 },
+      { kind: "lines", path: "cellar.body", label: "Paragraph", max: 400 },
+    ],
+  },
+  {
+    id: "kitchen",
+    label: "The kitchen",
+    note: "Who is answerable for the food, and one line in their own words.",
+    fields: [
+      { kind: "text", path: "chef.name", label: "Name", max: 60 },
+      { kind: "text", path: "chef.role", label: "Role", max: 60 },
+      { kind: "lines", path: "chef.bio", label: "Biography", max: 400 },
+      {
+        kind: "lines",
+        path: "chef.quote",
+        label: "In their own words",
+        hint: "Set in quotation marks, large. One sentence.",
+        max: 220,
+      },
+    ],
+  },
+  {
+    id: "laurels",
+    label: "Awards",
+    note: "Prizes and listings, each with the year attached.",
+    fields: [
+      {
+        kind: "list",
+        path: "awards",
+        label: "Awards",
+        itemLabel: "Award",
+        titleKey: "title",
+        max: 10,
+        blank: { title: "", source: "", year: "" },
+        fields: [
+          { kind: "text", path: "title", label: "What it was", max: 70 },
+          { kind: "text", path: "source", label: "Who gave it", max: 60 },
+          { kind: "text", path: "year", label: "Year", max: 12 },
+        ],
+      },
+    ],
+  },
+  {
+    id: "private",
+    label: "Private dining",
+    note: "What the room is also for.",
+    fields: privateDiningFields(),
+  },
+  {
+    id: "visit",
+    label: "Opening hours",
+    note: "When you are open. The address and telephone come from My restaurant.",
+    fields: [hoursField("hours")],
+  },
+];
+
+const SLATE_DESTINATIONS: Destination[] = [
+  { value: "#carte", label: "The carte" },
+  { value: "#kitchen", label: "The kitchen" },
+  { value: "#private", label: "Private dining" },
+  { value: "#visit", label: "Find us and book" },
+];
+
+/* -------------------------------------------------------------------------- */
+/* Harvest                                                                    */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Harvest, in full.
+ *
+ * A neighbourhood restaurant whose argument is continuity: it runs a marquee of
+ * accolades, states how long it has been here as figures, and gives the chef a
+ * statement band. It prints a carte and a gallery but has no dish cards.
+ */
+const HARVEST: EditableSection[] = [
+  {
+    id: "opening",
+    label: "Opening",
+    note: "The first screen: a headline, one sentence, and the way in.",
+    fields: OPENING_FIELDS,
+  },
+  {
+    id: "ticker",
+    label: "Accolades marquee",
+    note: "The line of prizes that travels across the page.",
+    fields: [
+      {
+        kind: "strings",
+        path: "accolades",
+        label: "Accolades",
+        hint: "Short phrases. The marquee repeats them, so a long one dominates.",
+        itemLabel: "Accolade",
+        max: 8,
+      },
+    ],
+  },
+  {
+    id: "larder",
+    label: "Your story",
+    note: "Who you are, beside the figures that say how long you have been here.",
+    fields: [
+      ...storyFields("story", 3),
+      {
+        kind: "list",
+        path: "heritage.facts",
+        label: "Figures",
+        hint: "Three. A number and what it counts — years open, growers, covers a week.",
+        itemLabel: "Figure",
+        titleKey: "label",
+        max: 4,
+        blank: { value: "", label: "" },
+        fields: [
+          { kind: "text", path: "value", label: "Number", max: 12 },
+          { kind: "text", path: "label", label: "What it counts", max: 40 },
+        ],
+      },
+    ],
+  },
+  {
+    id: "menu",
+    label: "The menu",
+    note: "The menu set in courses.",
+    fields: [coursesField("courses", "Printed in order, with the lines under each heading.")],
+  },
+  {
+    id: "statement",
+    label: "From the kitchen",
+    note: "One line from the chef, given a band of its own.",
+    fields: [
+      { kind: "text", path: "chef.name", label: "Name", max: 60 },
+      { kind: "text", path: "chef.role", label: "Role", max: 60 },
+      {
+        kind: "lines",
+        path: "chef.quote",
+        label: "In their own words",
+        hint: "Set large, in quotation marks. One sentence carries this band.",
+        max: 220,
+      },
+    ],
+  },
+  {
+    id: "gallery",
+    label: "Gallery",
+    note: "Photographs of the room and the food.",
+    fields: [galleryField("gallery", "The first several are shown. Captions are read.")],
+  },
+  {
+    id: "celebrations",
+    label: "Celebrations",
+    note: "What the room is also for.",
+    fields: privateDiningFields(),
+  },
+  {
+    id: "visit",
+    label: "Opening hours",
+    note: "When you are open. The address and telephone come from My restaurant.",
+    fields: [hoursField("hours")],
+  },
+];
+
+const HARVEST_DESTINATIONS: Destination[] = [
+  { value: "#menu", label: "The menu" },
+  { value: "#gallery", label: "The gallery" },
+  { value: "#celebrations", label: "Celebrations" },
+  { value: "#visit", label: "Find us and book" },
+];
+
+/* -------------------------------------------------------------------------- */
+/* Atrium                                                                     */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Atrium, in full.
+ *
+ * Built on chapters: the story, the cellar and the chef are three pinned panels
+ * rather than three bands, which is why they are one section here. Editing them
+ * separately would mean three panels for one thing a manager thinks of as "the
+ * chapters", and the page scrolls them as one.
+ */
+const ATRIUM: EditableSection[] = [
+  {
+    id: "opening",
+    label: "Opening",
+    note: "The first screen: a headline, one sentence, and the figures beneath.",
+    fields: [
+      ...OPENING_FIELDS,
+      {
+        kind: "list",
+        path: "heritage.facts",
+        label: "Figures",
+        hint: "Three. A number and what it counts.",
+        itemLabel: "Figure",
+        titleKey: "label",
+        max: 4,
+        blank: { value: "", label: "" },
+        fields: [
+          { kind: "text", path: "value", label: "Number", max: 12 },
+          { kind: "text", path: "label", label: "What it counts", max: 40 },
+        ],
+      },
+    ],
+  },
+  {
+    id: "chapters",
+    label: "Chapters",
+    note: "Three pinned panels — the story, the cellar and the chef — scrolled as one.",
+    fields: [
+      ...storyFields("story", 3),
+      { kind: "text", path: "cellar.title", label: "Cellar heading", max: 60 },
+      { kind: "lines", path: "cellar.body", label: "Cellar paragraph", max: 400 },
+      { kind: "text", path: "chef.name", label: "Chef", max: 60 },
+      { kind: "lines", path: "chef.bio", label: "Biography", max: 400 },
+      {
+        kind: "lines",
+        path: "chef.quote",
+        label: "In their own words",
+        max: 220,
+      },
+    ],
+  },
+  {
+    id: "menu",
+    label: "The menu",
+    note: "The menu set in courses, with the set price beside it.",
+    fields: [
+      coursesField("courses", "Printed in order, with the lines under each heading."),
+      ...tastingFields(false),
+    ],
+  },
+  {
+    id: "interlude",
+    label: "What guests said",
+    note: "Quotations between the menu and the gallery.",
+    fields: [
+      {
+        kind: "list",
+        path: "quotes",
+        label: "Quotes",
+        itemLabel: "Quote",
+        titleKey: "author",
+        max: 6,
+        blank: { quote: "", author: "" },
+        fields: [
+          { kind: "lines", path: "quote", label: "What they said", max: 240 },
+          { kind: "text", path: "author", label: "Who said it", max: 60 },
+        ],
+      },
+    ],
+  },
+  {
+    id: "gallery",
+    label: "Gallery",
+    note: "Photographs of the room and the food.",
+    fields: [galleryField("gallery", "The first several are shown. Captions are read.")],
+  },
+  {
+    id: "visit",
+    label: "Opening hours",
+    note: "When you are open. The address and telephone come from My restaurant.",
+    fields: [hoursField("hours")],
+  },
+  {
+    id: "closing",
+    label: "Closing",
+    note: "The last band, which states the year you opened.",
+    fields: [
+      {
+        kind: "text",
+        path: "heritage.since",
+        label: "Here since",
+        hint: "A year. It is printed in the footer.",
+        max: 12,
+      },
+    ],
+  },
+];
+
+const ATRIUM_DESTINATIONS: Destination[] = [
+  { value: "#menu", label: "The menu" },
+  { value: "#chapters", label: "Our story" },
+  { value: "#gallery", label: "The gallery" },
+  { value: "#visit", label: "Find us and book" },
+];
+
+export const DESTINATIONS: Record<DesignId, Destination[]> = {
+  aurora: AURORA_DESTINATIONS,
+  slate: SLATE_DESTINATIONS,
+  harvest: HARVEST_DESTINATIONS,
+  atrium: ATRIUM_DESTINATIONS,
+};
+
+export function destinationsFor(design: DesignId): Destination[] {
+  return DESTINATIONS[design] ?? [];
+}
+
 export const SECTIONS: Record<DesignId, EditableSection[]> = {
   aurora: AURORA,
-  slate: [],
-  harvest: [],
-  atrium: [],
+  slate: SLATE,
+  harvest: HARVEST,
+  atrium: ATRIUM,
 };
 
 /** The sections one design offers, in page order. */

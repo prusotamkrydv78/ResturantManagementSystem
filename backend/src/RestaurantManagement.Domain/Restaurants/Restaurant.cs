@@ -51,6 +51,16 @@ public class Restaurant
     /// </summary>
     public string Slug { get; set; } = string.Empty;
 
+    /// <summary>
+    /// The label this restaurant's website answers on, or null while it has none.
+    ///
+    /// Separate from <see cref="Slug"/> on purpose - see <see cref="Subdomain"/> for
+    /// why - and unique across the platform, because two restaurants cannot share a
+    /// hostname. Null is a real state: a restaurant that has never been given an
+    /// address is reachable at its slug and nowhere else.
+    /// </summary>
+    public string? Subdomain { get; set; }
+
     /// <summary>Optional contact email for the restaurant.</summary>
     public string? ContactEmail { get; set; }
 

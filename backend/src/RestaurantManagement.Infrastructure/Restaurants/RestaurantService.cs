@@ -90,6 +90,12 @@ public sealed partial class RestaurantService : IRestaurantService
             Country = Normalise(request.Country),
             VatRate = defaults.DefaultVatRate,
             ServiceChargeRate = defaults.DefaultServiceChargeRate,
+            // Suggested from the slug, which is itself derived from the name. Only a
+            // starting point, and only when it is free: the platform owner can change
+            // it afterwards, and a collision here means the next restaurant called
+            // The Bridge simply arrives without an address rather than failing to be
+            // created at all.
+            Subdomain = await SuggestSubdomainAsync(slug, cancellationToken),
             CreatedAtUtc = now,
             UpdatedAtUtc = now
         };
@@ -232,6 +238,45 @@ public sealed partial class RestaurantService : IRestaurantService
             }
         }
 
+        // Absent leaves it alone; empty takes it away. The two have to be told
+        // apart, because releasing a label somebody else should have is a real thing
+        // to want and "" is the only way to ask for it.
+        if (request.Subdomain is not null)
+        {
+            var wanted = Domain.Restaurants.Subdomain.Normalise(request.Subdomain);
+
+            if (wanted != restaurant.Subdomain)
+            {
+                if (wanted is null)
+                {
+                    restaurant.Subdomain = null;
+                }
+                else
+                {
+                    if (!Domain.Restaurants.Subdomain.IsValid(wanted))
+                    {
+                        return Result.Failure<RestaurantResponse>(
+                            Domain.Restaurants.Subdomain.IsReserved(wanted)
+                                ? RestaurantErrors.SubdomainReserved
+                                : RestaurantErrors.SubdomainInvalid);
+                    }
+
+                    var taken = await _dbContext.Restaurants.AnyAsync(
+                        candidate =>
+                            candidate.Subdomain == wanted && candidate.Id != restaurantId,
+                        cancellationToken);
+
+                    if (taken)
+                    {
+                        return Result.Failure<RestaurantResponse>(
+                            RestaurantErrors.SubdomainTaken);
+                    }
+
+                    restaurant.Subdomain = wanted;
+                }
+            }
+        }
+
         restaurant.Name = request.Name.Trim();
         restaurant.ContactEmail = Normalise(request.ContactEmail);
         restaurant.ContactPhone = Normalise(request.ContactPhone);
@@ -370,11 +415,38 @@ public sealed partial class RestaurantService : IRestaurantService
         return Result.Success(ToResponse(restaurant, restaurant.Manager));
     }
 
+    /// <summary>
+    /// A free label derived from something the restaurant already has, or null.
+    ///
+    /// Null rather than a numbered fallback. A restaurant handed
+    /// <c>the-bridge-2.eatery.np</c> because another Bridge got there first has an
+    /// address nobody would choose and nobody would print, and the platform owner is
+    /// better off being asked.
+    /// </summary>
+    private async Task<string?> SuggestSubdomainAsync(
+        string source,
+        CancellationToken cancellationToken)
+    {
+        var suggestion = Domain.Restaurants.Subdomain.SuggestFrom(source);
+
+        if (suggestion is null)
+        {
+            return null;
+        }
+
+        var taken = await _dbContext.Restaurants.AnyAsync(
+            candidate => candidate.Subdomain == suggestion,
+            cancellationToken);
+
+        return taken ? null : suggestion;
+    }
+
     private static RestaurantResponse ToResponse(Restaurant restaurant, ApplicationUser? manager) =>
         new(
             restaurant.Id,
             restaurant.Name,
             restaurant.Slug,
+            restaurant.Subdomain,
             restaurant.ContactEmail,
             restaurant.ContactPhone,
             restaurant.AddressLine,

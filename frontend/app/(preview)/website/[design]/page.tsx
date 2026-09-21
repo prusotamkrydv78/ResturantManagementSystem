@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import {
   CircleAlert,
   CircleCheck,
+  ExternalLink,
   Eye,
   Globe,
   Images,
@@ -31,6 +32,7 @@ import { MediaLibraryProvider } from "@/features/website/media/library";
 import { sectionOf, sectionsFor } from "@/features/website/editor/sections";
 import { isMissingRestaurant } from "@/lib/api/client";
 import { cn } from "@/lib/utils/cn";
+import { siteAddress } from "@/features/website/address";
 import type { Restaurant } from "@/types/restaurant";
 
 /**
@@ -304,6 +306,7 @@ function Page({ design, restaurant }: { design: Design; restaurant: Restaurant }
 
         <Toolbar
           name={design.name}
+          restaurant={restaurant}
           canEdit={canEdit}
           isEditing={isEditing}
           isMediaOpen={tab === "media"}
@@ -339,6 +342,7 @@ function Page({ design, restaurant }: { design: Design; restaurant: Restaurant }
  */
 function Toolbar({
   name,
+  restaurant,
   canEdit,
   isEditing,
   isMediaOpen,
@@ -349,6 +353,7 @@ function Toolbar({
   onMedia,
 }: {
   name: string;
+  restaurant: Restaurant;
   canEdit: boolean;
   isEditing: boolean;
   isMediaOpen: boolean;
@@ -360,6 +365,7 @@ function Toolbar({
 }) {
   const isLive = draft.site?.isPublished === true;
   const isSaving = draft.status === "saving";
+  const address = siteAddress(restaurant);
 
   return (
     <div
@@ -461,6 +467,35 @@ function Toolbar({
           onClick={() => void draft.save()}
         />
 
+        {/* Where it actually is, once it is anywhere.
+ 
+            Publishing used to end in a button going quiet, with no address anywhere
+            in the product - a manager was told their page was live and left to guess
+            where. Opens in a new tab: this is the page they are editing, and sending
+            the editor to the published copy would lose the draft they are looking at. */}
+        {isLive && (
+          <a
+            href={address.href}
+            target="_blank"
+            rel="noreferrer"
+            title={`Your website is at ${address.label}`}
+            className={cn(
+              // The same tokens every other control on this bar uses. The first
+              // version of this was white on white: the bar is a light surface, and
+              // the link was written as though it sat on the dark page behind it.
+              "inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full px-2.5",
+              "text-sm font-medium whitespace-nowrap text-muted",
+              "transition-colors hover:bg-surface-3 hover:text-text",
+              "focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+            )}
+          >
+            <ExternalLink className="size-4 shrink-0" aria-hidden="true" />
+            <span className="hidden max-w-[14rem] truncate sm:inline">
+              {address.label}
+            </span>
+          </a>
+        )}
+
         {/* Publishing takes a copy of the draft. Saving does not, which is why a
             manager can edit a live page all afternoon without anybody seeing it. The
             one control here that changes what strangers see, so the one that is
@@ -469,6 +504,7 @@ function Toolbar({
           label={isLive ? "Publish changes" : "Publish"}
           icon={<Globe className="size-4" aria-hidden="true" />}
           isPrimary
+          showsLabel
           isDisabled={!draft.isReady || draft.loadError !== null}
           onClick={() => void draft.publish(true)}
         />
@@ -520,6 +556,7 @@ function IconAction({
   onClick,
   isDisabled = false,
   isPrimary = false,
+  showsLabel = false,
   isActive = false,
 }: {
   label: string;
@@ -528,6 +565,16 @@ function IconAction({
   onClick?: () => void;
   isDisabled?: boolean;
   isPrimary?: boolean;
+  /**
+   * Whether the name stays out rather than unfolding on hover.
+   *
+   * For the one control whose meaning cannot be guessed from its glyph. Everything
+   * else on this bar is a verb somebody already knows - undo, save, a pencil - and a
+   * globe could as easily mean "view the site" as "put it on the internet". A manager
+   * looking at a green circle and asking where the publish button is has been let
+   * down by the bar, not by their attention.
+   */
+  showsLabel?: boolean;
   isActive?: boolean;
 }) {
   // The hover styles are withheld rather than overridden when the control is
@@ -560,9 +607,11 @@ function IconAction({
       <span
         aria-hidden="true"
         className={cn(
-          "grid grid-cols-[0fr] ease-[cubic-bezier(0.22,1,0.36,1)]",
+          "grid ease-[cubic-bezier(0.22,1,0.36,1)]",
           "transition-[grid-template-columns] duration-300 motion-reduce:transition-none",
-          "group-hover:grid-cols-[1fr] group-focus-visible:grid-cols-[1fr]",
+          showsLabel
+            ? "grid-cols-[1fr]"
+            : "grid-cols-[0fr] group-hover:grid-cols-[1fr] group-focus-visible:grid-cols-[1fr]",
         )}
       >
         {/* The clip. A grid track can go to zero; the text inside it cannot, so this
@@ -570,11 +619,12 @@ function IconAction({
         <span className="overflow-hidden">
           <span
             className={cn(
-              "block translate-x-1 pl-1.5 text-sm font-medium whitespace-nowrap opacity-0",
+              "block pl-1.5 text-sm font-medium whitespace-nowrap",
               "transition-[opacity,transform] duration-300 ease-out",
               "motion-reduce:transition-none",
-              "group-hover:translate-x-0 group-hover:opacity-100",
-              "group-focus-visible:translate-x-0 group-focus-visible:opacity-100",
+              showsLabel
+                ? "translate-x-0 opacity-100"
+                : "translate-x-1 opacity-0 group-hover:translate-x-0 group-hover:opacity-100 group-focus-visible:translate-x-0 group-focus-visible:opacity-100",
             )}
           >
             {label}

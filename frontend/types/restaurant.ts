@@ -10,6 +10,13 @@ export interface Restaurant {
   id: string;
   name: string;
   slug: string;
+  /**
+   * The label its website answers on, or null while it has none.
+   *
+   * Separate from the slug so that renaming a website does not invalidate the guest
+   * ordering links already printed and stuck to tables.
+   */
+  subdomain: string | null;
   contactEmail: string | null;
   contactPhone: string | null;
   addressLine: string | null;
@@ -47,6 +54,13 @@ export interface RestaurantSummary {
 export interface CreateRestaurantPayload {
   name: string;
   slug?: string;
+  /**
+   * The website label. Leave undefined to keep it; send "" to take it away.
+   *
+   * Undefined and empty mean different things, which is the only way to release a
+   * label another restaurant should have.
+   */
+  subdomain?: string;
   contactEmail?: string;
   contactPhone?: string;
   addressLine?: string;
@@ -78,6 +92,13 @@ export interface UpdateMyRestaurantPayload {
 export interface UpdateRestaurantPayload {
   name: string;
   slug?: string;
+  /**
+   * The website label. Leave undefined to keep it; send "" to take it away.
+   *
+   * Undefined and empty mean different things, which is the only way to release a
+   * label another restaurant should have.
+   */
+  subdomain?: string;
   contactEmail?: string | null;
   contactPhone?: string | null;
   addressLine?: string | null;
