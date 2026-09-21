@@ -1,116 +1,63 @@
-"use client";
-
-import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
-import { Spinner } from "@/components/ui/states";
-import { getPublicSite, type PublicSite } from "@/features/website/api";
+import type { Metadata } from "next";
+import { notFound } from "next/navigation";
 import { designById } from "@/features/website/designs";
-import { SiteRenderer } from "@/features/website/templates";
-import { conformContent } from "@/features/website/editor/conform";
-import { sampleContent } from "@/features/website/sample-content";
+import { readPublishedSite } from "@/features/website/published";
+import { SiteView } from "./site-view";
 
 /**
- * A restaurant's website, as a stranger sees it.
+ * A restaurant's website, at its own address.
  *
- * WHY THIS HAD TO EXIST
+ * WHY THIS IS A SERVER COMPONENT
  *
- * Publishing wrote the published copy and there was nowhere to read it. A manager
- * could build a page, press Publish, be told it was live, and no address on the
- * internet would show it — the whole feature ended one route short of doing anything.
+ * It decides whether there is a page here, and that decision has to be in the status
+ * line. The subdomain rewrite deliberately does not consult the database - it turns a
+ * host into a path and lets this route answer - so every label on the base domain
+ * arrives here, real or not. If the deciding happened in the browser, all of them
+ * would be answered `200 OK` with a screen that said otherwise, and "does this
+ * restaurant exist" would have no answer any crawler, monitor or cache could read.
  *
- * NOTHING OF THE EDITOR REACHES HERE
- *
- * No draft hook, no library, no editable wrappers, no toolbar. The templates render
- * their children bare when nobody is editing, so what a visitor downloads is the page
- * and not the machinery that made it. It is also why the content is conformed against
- * the sample before it is drawn: this copy was written by an older build of the
- * editor as often as not, and a missing field should cost a line of a page rather
- * than the page.
- *
- * A DRAFT IS A 404, not a page with a notice on it. The server decides that; this
- * screen only has to not pretend otherwise.
+ * Fetching here also means the request never crosses an origin, so the page does not
+ * depend on the API having been told about the restaurant's hostname. It should be
+ * told - the guest ordering screens still call from the browser - but the page a
+ * stranger loads should not be the thing that breaks when it has not been.
  */
-export default function PublicSitePage() {
-  const params = useParams<{ slug: string }>();
-  const slug = params.slug;
 
-  const [site, setSite] = useState<PublicSite | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      try {
-        const loaded = await getPublicSite(slug);
-
-        if (!cancelled) setSite(loaded);
-      } catch {
-        // Every failure is the same page to a visitor. A stranger has no use for the
-        // difference between "no such restaurant", "not published yet" and "the
-        // server is unwell", and spelling out the first two tells somebody probing
-        // slugs which ones exist.
-        if (!cancelled) setSite(null);
-      } finally {
-        if (!cancelled) setIsLoading(false);
-      }
-    }
-
-    void load();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [slug]);
-
-  if (isLoading) {
-    return (
-      <div className="flex min-h-svh items-center justify-center bg-canvas">
-        <Spinner />
-      </div>
-    );
-  }
-
-  const design = site === null ? undefined : designById(site.design);
-
-  if (site === null || design === undefined) {
-    return <NotHere />;
-  }
-
-  return (
-    <main className="site-page">
-      <SiteRenderer
-        design={design.id}
-        restaurant={{
-          name: site.restaurantName,
-          addressLine: site.addressLine,
-          city: site.city,
-          country: site.country,
-          contactPhone: site.contactPhone,
-          contactEmail: site.contactEmail,
-        }}
-        content={conformContent(sampleContent(), site.content)}
-      />
-    </main>
-  );
+interface PageProps {
+  params: Promise<{ slug: string }>;
 }
 
 /**
- * Nothing at this address.
+ * The tab, named after the restaurant rather than after this product.
  *
- * Deliberately plain, and deliberately not branded as this product. Somebody who
- * mistyped a restaurant's address is not a prospect for restaurant software, and a
- * page that used their mistake as a billboard would be the worst first impression
- * either business could make.
+ * A published page is the restaurant's, and a browser tab reading "Restaurant OS"
+ * over somebody's dining room announces their supplier to their guests.
  */
-function NotHere() {
-  return (
-    <main className="flex min-h-svh flex-col items-center justify-center gap-2 bg-canvas px-6 text-center">
-      <h1 className="text-lg font-semibold text-text">Nothing here yet</h1>
-      <p className="max-w-sm text-sm text-muted">
-        There is no page at this address. If you were looking for a restaurant, check
-        the link you followed.
-      </p>
-    </main>
-  );
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  const { slug } = await params;
+  const site = await readPublishedSite(slug);
+
+  if (site === null) {
+    return { title: "Nothing here yet" };
+  }
+
+  return {
+    title: site.restaurantName,
+    description:
+      typeof site.content.standfirst === "string" ? site.content.standfirst : undefined,
+  };
+}
+
+export default async function PublicSitePage({ params }: PageProps) {
+  const { slug } = await params;
+  const site = await readPublishedSite(slug);
+
+  // A draft is a 404, and so is a design this build does not have. The second is the
+  // rarer one and the easier to serve badly: a page whose design was renamed or
+  // withdrawn would otherwise render as a blank white document at a real address,
+  // which reads to a visitor as a restaurant that has gone out of business.
+  if (site === null || designById(site.design) === undefined) {
+    notFound();
+  }
+
+  return <SiteView site={site} />;
 }

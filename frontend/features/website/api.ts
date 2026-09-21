@@ -42,12 +42,11 @@ export interface PublicSite {
   contactEmail: string | null;
 }
 
-/** The published page at a restaurant's address, or a 404 if there is not one. */
-export function getPublicSite(slug: string): Promise<PublicSite> {
-  return apiFetch<PublicSite>(`/api/public/sites/${encodeURIComponent(slug)}`, {
-    auth: false,
-  });
-}
+/*
+ * There is no client-side reader for a published page on purpose. It is fetched on
+ * the server - see features/website/published.ts - so that a label nobody owns can be
+ * answered with a real 404 instead of a page that says so after the fact.
+ */
 
 /** The draft, created empty by the server the first time it is asked for. */
 export function getSite(): Promise<Site> {

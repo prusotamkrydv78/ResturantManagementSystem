@@ -50,6 +50,18 @@ builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 // Allow the Next.js frontend to call this API. Origins come from configuration so
 // more than one port can be permitted; AllowAnyOrigin is not usable here because
 // credentialed requests (the refresh cookie) require an explicit origin list.
+//
+// An entry may name a wildcard subdomain - "https://*.eatery.np" - which is what makes
+// restaurant websites work at all. A published site is served from its own host, so
+// the guest ordering and review screens on kanchan.eatery.np send that as their
+// Origin, and a list holding only the platform's own host answers them with no
+// Access-Control-Allow-Origin header at all. The browser then throws away a response
+// this server was perfectly happy to give, and the page renders as though the
+// restaurant did not exist - with nothing in any log on this side to find it by.
+//
+// The wildcard is narrower than it reads: the scheme, the port and every label after
+// the first must still match exactly, so it grants nothing beyond the hosts this
+// deployment hands out itself.
 var allowedOrigins = builder.Configuration
     .GetSection("Cors:AllowedOrigins")
     .Get<string[]>() ?? [];
@@ -58,6 +70,7 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy(CorsPolicyName, policy => policy
         .WithOrigins(allowedOrigins)
+        .SetIsOriginAllowedToAllowWildcardSubdomains()
         .AllowAnyHeader()
         .AllowAnyMethod()
         .AllowCredentials()); // required for the refresh cookie and SignalR
