@@ -42,6 +42,7 @@ internal sealed class SilentRealtimeNotifier : IRealtimeNotifier
         CancellationToken cancellationToken) => Task.CompletedTask;
 
     public Task OrderSettledAsync(
+        Guid restaurantId,
         Guid orderId,
         int orderNumber,
         CancellationToken cancellationToken) => Task.CompletedTask;
@@ -52,6 +53,7 @@ internal sealed class SilentRealtimeNotifier : IRealtimeNotifier
         CancellationToken cancellationToken) => Task.CompletedTask;
 
     public Task OrderCancelledAsync(
+        Guid restaurantId,
         Guid orderId,
         int orderNumber,
         CancellationToken cancellationToken) => Task.CompletedTask;

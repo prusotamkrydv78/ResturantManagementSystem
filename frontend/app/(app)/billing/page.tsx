@@ -17,7 +17,7 @@ import { EmptyState, ErrorState, Skeleton } from "@/components/ui/states";
 import { PageBody, PageHeader } from "@/components/layout/page-header";
 import { RequireAuth } from "@/features/auth/require-auth";
 import { listBillingOrders } from "@/features/billing/api";
-import { useRealtimeEvent } from "@/lib/realtime/realtime-context";
+import { useRealtimeEvent, useRealtimeResync } from "@/lib/realtime/realtime-context";
 import { cn } from "@/lib/utils/cn";
 import type { BillingOrderSummary } from "@/types/billing";
 
@@ -44,6 +44,9 @@ function Billing() {
   const [reloadKey, setReloadKey] = useState(0);
 
   const reload = useCallback(() => setReloadKey((key) => key + 1), []);
+
+  // Anything sent while the connection was down is not coming, so re-read on return.
+  useRealtimeResync(reload);
 
   // The list of what can be settled changes without this screen doing anything: a
   // waiter sends the last ticket, the kitchen finishes it, somebody settles a bill on

@@ -63,12 +63,14 @@ public interface IRealtimeNotifier
         CancellationToken cancellationToken);
 
     /// <summary>
-    /// Tells the customer their bill has been settled and the visit is over.
+    /// Tells the restaurant and the customer that a bill has been settled.
     ///
-    /// Only the customer. The floor took the payment and watched it happen, so telling
-    /// them would be reporting their own action back to them.
+    /// Not only the customer, as it once was. Whoever took the payment watched it
+    /// happen, but every other screen showing the order did not - see
+    /// RealtimeEventNames.OrderSettled.
     /// </summary>
     Task OrderSettledAsync(
+        Guid restaurantId,
         Guid orderId,
         int orderNumber,
         CancellationToken cancellationToken);
@@ -88,11 +90,13 @@ public interface IRealtimeNotifier
         CancellationToken cancellationToken);
 
     /// <summary>
-    /// Tells the customer their order has been called off.
+    /// Tells the restaurant and the customer that an order has been called off.
     ///
-    /// Only the customer. The manager cancelling it watched themselves do it.
+    /// The kitchen as well as the floor: a cancelled order's slips should leave the
+    /// rail now, not at the next poll.
     /// </summary>
     Task OrderCancelledAsync(
+        Guid restaurantId,
         Guid orderId,
         int orderNumber,
         CancellationToken cancellationToken);

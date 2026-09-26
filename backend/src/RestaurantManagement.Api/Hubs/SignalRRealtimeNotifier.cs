@@ -168,24 +168,50 @@ public sealed class SignalRRealtimeNotifier : IRealtimeNotifier
     }
 
     /// <inheritdoc />
-    public Task OrderSettledAsync(
+    public async Task OrderSettledAsync(
+        Guid restaurantId,
         Guid orderId,
         int orderNumber,
-        CancellationToken cancellationToken) =>
-        TellCustomerAsync(
+        CancellationToken cancellationToken)
+    {
+        await SendAsync(
+            OperationsHub.FloorGroup(restaurantId),
+            RealtimeEventNames.OrderSettled,
+            new OrderClosedEvent(orderId, orderNumber),
+            cancellationToken);
+
+        await TellCustomerAsync(
             orderId,
             new CustomerOrderUpdate(orderNumber, CustomerOrderStage.Settled),
             cancellationToken);
+    }
 
     /// <inheritdoc />
-    public Task OrderCancelledAsync(
+    public async Task OrderCancelledAsync(
+        Guid restaurantId,
         Guid orderId,
         int orderNumber,
-        CancellationToken cancellationToken) =>
-        TellCustomerAsync(
+        CancellationToken cancellationToken)
+    {
+        var closed = new OrderClosedEvent(orderId, orderNumber);
+
+        await SendAsync(
+            OperationsHub.FloorGroup(restaurantId),
+            RealtimeEventNames.OrderCancelled,
+            closed,
+            cancellationToken);
+
+        await SendAsync(
+            OperationsHub.KitchenGroup(restaurantId),
+            RealtimeEventNames.OrderCancelled,
+            closed,
+            cancellationToken);
+
+        await TellCustomerAsync(
             orderId,
             new CustomerOrderUpdate(orderNumber, CustomerOrderStage.Cancelled),
             cancellationToken);
+    }
 
     /// <inheritdoc />
     public Task BillRequestedAsync(

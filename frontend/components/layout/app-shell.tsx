@@ -9,6 +9,7 @@ import {
   SidebarNav,
   UserPanel,
 } from "@/components/layout/sidebar";
+import { LiveUpdatesBanner } from "@/lib/realtime/live-updates-banner";
 
 /**
  * The authenticated application frame: sidebar on large screens, a drawer
@@ -48,6 +49,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <Brand />
         </div>
 
+        <LiveUpdatesBanner />
         <main className="min-w-0 flex-1">{children}</main>
       </div>
     </div>

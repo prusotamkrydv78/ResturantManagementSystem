@@ -285,6 +285,7 @@ public sealed class BillingService : IBillingService
         if (settled)
         {
             await _realtime.OrderSettledAsync(
+                order.RestaurantId,
                 order.Id,
                 order.OrderNumber,
                 cancellationToken);
@@ -397,6 +398,7 @@ public sealed class BillingService : IBillingService
         // watching a live timeline for food that is never coming - worse than the
         // settled case it mirrors, because at least a paid bill ends happily.
         await _realtime.OrderCancelledAsync(
+            order.RestaurantId,
             order.Id,
             order.OrderNumber,
             cancellationToken);

@@ -41,6 +41,21 @@ public static class RealtimeEventNames
     public const string BillRequested = "billRequested";
 
     /// <summary>
+    /// An order was paid in full and closed.
+    ///
+    /// Sent to staff as well as the guest. It used to reach only the guest, on the
+    /// reasoning that the floor took the payment and watched it happen - but the
+    /// person at the till is one screen of several. Every other waiter's order list and
+    /// the billing queue kept showing a closed order until somebody reloaded, and the
+    /// two pages that listened for this name were listening for something the server
+    /// never sent.
+    /// </summary>
+    public const string OrderSettled = "orderSettled";
+
+    /// <summary>An order was called off. To staff and the guest, for the same reason.</summary>
+    public const string OrderCancelled = "orderCancelled";
+
+    /// <summary>
     /// How far along a customer's own order is, sent to that customer alone.
     ///
     /// One name for all five stages rather than five events. A phone following its own
@@ -49,6 +64,16 @@ public static class RealtimeEventNames
     /// </summary>
     public const string CustomerOrderUpdate = "customerOrderUpdate";
 }
+
+/// <summary>
+/// An order leaving the floor, paid or called off.
+///
+/// Only what a screen needs to find and drop the order. Everything else about it is
+/// finished, and a list reloading itself is what brings the rest up to date.
+/// </summary>
+/// <param name="OrderId">The order that closed.</param>
+/// <param name="OrderNumber">What staff say out loud.</param>
+public sealed record OrderClosedEvent(Guid OrderId, int OrderNumber);
 
 /// <summary>
 /// A customer's order arriving on the floor.

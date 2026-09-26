@@ -14,7 +14,11 @@ import {
   markTicketItemServed,
   markTicketServed,
 } from "@/features/orders/api";
-import { useRealtimeEvent, type TicketPayload } from "@/lib/realtime/realtime-context";
+import {
+  useRealtimeEvent,
+  useRealtimeResync,
+  type TicketPayload,
+} from "@/lib/realtime/realtime-context";
 import { cn } from "@/lib/utils/cn";
 import type { PassTicket } from "@/types/order";
 
@@ -102,6 +106,9 @@ function Pass() {
 
   const reload = useCallback(() => setReloadKey((key) => key + 1), []);
 
+  // Anything sent while the connection was down is not coming, so re-read on return.
+  useRealtimeResync(reload);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -148,6 +155,8 @@ function Pass() {
   // the kitchen alone, so this screen never heard it and only corrected on its next
   // poll twenty seconds later.
   useRealtimeEvent<TicketPayload>("ticketRecalled", reload);
+  // Plates for a cancelled order are not waiting for anybody.
+  useRealtimeEvent("orderCancelled", reload);
 
   /** Marks a whole slip delivered, or one dish off it. */
   async function serve(ticket: PassTicket, itemId?: string) {

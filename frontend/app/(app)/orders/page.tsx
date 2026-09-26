@@ -10,7 +10,7 @@ import { EmptyState, ErrorState, Skeleton } from "@/components/ui/states";
 import { PageBody, PageHeader } from "@/components/layout/page-header";
 import { RequireAuth } from "@/features/auth/require-auth";
 import { listOpenOrders } from "@/features/orders/api";
-import { useRealtimeEvent } from "@/lib/realtime/realtime-context";
+import { useRealtimeEvent, useRealtimeResync } from "@/lib/realtime/realtime-context";
 import { cn } from "@/lib/utils/cn";
 import type { OrderSummary } from "@/types/order";
 
@@ -40,6 +40,9 @@ function Orders() {
   const [reloadKey, setReloadKey] = useState(0);
 
   const reload = useCallback(() => setReloadKey((key) => key + 1), []);
+
+  // Anything sent while the connection was down is not coming, so re-read on return.
+  useRealtimeResync(reload);
 
   // This list used to load once and never move, so a customer's order could sit on it
   // unnoticed until somebody navigated away and back. It now follows the service.

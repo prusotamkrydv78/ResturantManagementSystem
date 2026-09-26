@@ -23,7 +23,7 @@ import { PageBody, PageHeader } from "@/components/layout/page-header";
 import { RequireAuth } from "@/features/auth/require-auth";
 import { useAuth } from "@/features/auth/auth-context";
 import { getManagerFloor, getWaiterFloor } from "@/features/floor/api";
-import { useRealtimeEvent } from "@/lib/realtime/realtime-context";
+import { useRealtimeEvent, useRealtimeResync } from "@/lib/realtime/realtime-context";
 import { cn } from "@/lib/utils/cn";
 import type { FloorOverview, FloorTable } from "@/types/floor";
 
@@ -67,6 +67,9 @@ function FloorOverviewScreen() {
 
   const reload = useCallback(() => setReloadKey((key) => key + 1), []);
 
+  // Anything sent while the connection was down is not coming, so re-read on return.
+  useRealtimeResync(reload);
+
   // The floor is the one screen two people watch at once, and it was the only
   // operational screen still finding out on a timer. A waiter seating a table and a
   // manager deciding whether to walk over should be looking at the same room, not at
@@ -82,6 +85,9 @@ function FloorOverviewScreen() {
   useRealtimeEvent("ticketRecalled", reload);
   useRealtimeEvent("ticketServed", reload);
   useRealtimeEvent("billRequested", reload);
+  // A paid or cancelled order frees its table, which is what this screen is for.
+  useRealtimeEvent("orderSettled", reload);
+  useRealtimeEvent("orderCancelled", reload);
   // Settling and cancelling are deliberately absent: the notifier tells the customer
   // about those, not the operations hub, so subscribing here would register handlers
   // for names that never arrive. The timer below is what covers them.

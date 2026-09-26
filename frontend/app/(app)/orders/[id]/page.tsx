@@ -38,6 +38,8 @@ import {
 import { ApiError } from "@/lib/api/client";
 import {
   useRealtimeEvent,
+  useRealtimeResync,
+  type OrderClosedPayload,
   type TicketPayload,
 } from "@/lib/realtime/realtime-context";
 import { cn } from "@/lib/utils/cn";
@@ -433,6 +435,30 @@ function OrderDetail() {
   useRealtimeEvent<TicketPayload>("ticketReady", onKitchenEvent);
   useRealtimeEvent<TicketPayload>("ticketRecalled", onKitchenEvent);
   useRealtimeEvent<TicketPayload>("ticketServed", onKitchenEvent);
+
+  // Paid or called off from another screen - usually the manager's till. Reloaded even
+  // over unsaved edits: a closed order cannot take them, and saying so now beats a
+  // save that fails later.
+  const onOrderClosed = (event: OrderClosedPayload) => {
+    if (event.orderId === orderId) {
+      setReloadKey((key) => key + 1);
+    }
+  };
+
+  useRealtimeEvent<OrderClosedPayload>("orderSettled", onOrderClosed);
+  useRealtimeEvent<OrderClosedPayload>("orderCancelled", onOrderClosed);
+
+  // Back from a dropped connection: anything could have changed. Treated like a
+  // kitchen event, so work in progress is flagged rather than overwritten.
+  useRealtimeResync(() => {
+    if (isDirty) {
+      setKitchenMoved(true);
+
+      return;
+    }
+
+    setReloadKey((key) => key + 1);
+  });
 
 /**
    * How many of each dish are on this order, split by whether the kitchen has them.

@@ -27,7 +27,7 @@ import {
   startKitchenTicket,
 } from "@/features/kitchen/api";
 import { ApiError } from "@/lib/api/client";
-import { useRealtimeEvent } from "@/lib/realtime/realtime-context";
+import { useRealtimeEvent, useRealtimeResync } from "@/lib/realtime/realtime-context";
 import { cn } from "@/lib/utils/cn";
 import type { KitchenItem, KitchenTicket } from "@/types/kitchen";
 
@@ -154,6 +154,9 @@ function Kitchen() {
 
   const reload = useCallback(() => setReloadKey((key) => key + 1), []);
 
+  // Anything sent while the connection was down is not coming, so re-read on return.
+  useRealtimeResync(reload);
+
   /**
    * Which course this screen is working, or all of them.
    *
@@ -224,6 +227,8 @@ function Kitchen() {
   // was never on it to remove. It matters now that the pass strip exists - a plate a
   // waiter has carried has left the pass, and the strip has to stop showing it.
   useRealtimeEvent("ticketServed", reload);
+  // A cancelled order's slips should leave the rail now, not at the next poll.
+  useRealtimeEvent("orderCancelled", reload);
 
   /**
    * Every course with work on the rail right now, and how much.
