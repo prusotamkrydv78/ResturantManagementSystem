@@ -42,15 +42,19 @@ public sealed class SignalRRealtimeNotifier : IRealtimeNotifier
     }
 
     /// <inheritdoc />
-    public Task OrderPlacedAsync(
+    public async Task OrderPlacedAsync(
         Guid restaurantId,
         OrderPlacedEvent payload,
-        CancellationToken cancellationToken) =>
-        SendAsync(
+        CancellationToken cancellationToken)
+    {
+        await SendAsync(
             OperationsHub.FloorGroup(restaurantId),
             RealtimeEventNames.OrderPlaced,
             payload,
             cancellationToken);
+
+        await TellPlatformAsync(restaurantId, RealtimeEventNames.OrderPlaced, moneyMoved: false, cancellationToken);
+    }
 
     /// <inheritdoc />
     public async Task OrderConfirmedAsync(
@@ -120,6 +124,8 @@ public sealed class SignalRRealtimeNotifier : IRealtimeNotifier
             payload,
             cancellationToken);
 
+        await TellPlatformAsync(restaurantId, RealtimeEventNames.TicketReady, moneyMoved: false, cancellationToken);
+
         // Only "ready" when all of it is.
         //
         // This event now fires each time a single dish is ticked off, and it used to
@@ -151,6 +157,8 @@ public sealed class SignalRRealtimeNotifier : IRealtimeNotifier
             payload,
             cancellationToken);
 
+        await TellPlatformAsync(restaurantId, RealtimeEventNames.TicketRecalled, moneyMoved: false, cancellationToken);
+
         await SendAsync(
             OperationsHub.KitchenGroup(restaurantId),
             RealtimeEventNames.TicketRecalled,
@@ -180,6 +188,8 @@ public sealed class SignalRRealtimeNotifier : IRealtimeNotifier
             new OrderClosedEvent(orderId, orderNumber),
             cancellationToken);
 
+        await TellPlatformAsync(restaurantId, RealtimeEventNames.OrderSettled, moneyMoved: true, cancellationToken);
+
         await TellCustomerAsync(
             orderId,
             new CustomerOrderUpdate(orderNumber, CustomerOrderStage.Settled),
@@ -200,6 +210,8 @@ public sealed class SignalRRealtimeNotifier : IRealtimeNotifier
             RealtimeEventNames.OrderCancelled,
             closed,
             cancellationToken);
+
+        await TellPlatformAsync(restaurantId, RealtimeEventNames.OrderCancelled, moneyMoved: true, cancellationToken);
 
         await SendAsync(
             OperationsHub.KitchenGroup(restaurantId),
@@ -238,6 +250,8 @@ public sealed class SignalRRealtimeNotifier : IRealtimeNotifier
             payload,
             cancellationToken);
 
+        await TellPlatformAsync(restaurantId, RealtimeEventNames.TicketServed, moneyMoved: false, cancellationToken);
+
         await SendAsync(
             OperationsHub.KitchenGroup(restaurantId),
             RealtimeEventNames.TicketServed,
@@ -249,6 +263,27 @@ public sealed class SignalRRealtimeNotifier : IRealtimeNotifier
             new CustomerOrderUpdate(payload.OrderNumber, CustomerOrderStage.Served),
             cancellationToken);
     }
+
+    /// <inheritdoc />
+    public Task PaymentRecordedAsync(Guid restaurantId, CancellationToken cancellationToken) =>
+        TellPlatformAsync(restaurantId, "paymentRecorded", moneyMoved: true, cancellationToken);
+
+    /// <summary>
+    /// Tells the platform consoles that trading moved in one restaurant.
+    ///
+    /// Sent after the restaurant's own screens have been told, so the people working
+    /// the service are never behind the people watching it.
+    /// </summary>
+    private Task TellPlatformAsync(
+        Guid restaurantId,
+        string kind,
+        bool moneyMoved,
+        CancellationToken cancellationToken) =>
+        SendAsync(
+            OperationsHub.PlatformGroup,
+            RealtimeEventNames.PlatformActivity,
+            new PlatformActivityEvent(restaurantId, kind, moneyMoved),
+            cancellationToken);
 
     /// <summary>
     /// Tells the customer following this order how far along it is.

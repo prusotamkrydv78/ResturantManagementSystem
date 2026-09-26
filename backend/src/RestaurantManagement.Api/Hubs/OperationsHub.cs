@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using RestaurantManagement.Api.Authentication;
+using RestaurantManagement.Application.Authentication;
 using RestaurantManagement.Application.Realtime;
 
 namespace RestaurantManagement.Api.Hubs;
@@ -42,6 +43,15 @@ public sealed class OperationsHub : Hub
     /// <summary>The group carrying a restaurant's kitchen events.</summary>
     public static string KitchenGroup(Guid restaurantId) => $"kitchen:{restaurantId}";
 
+    /// <summary>
+    /// Every platform administrator's console.
+    ///
+    /// One group for the whole platform, because a super admin belongs to no restaurant
+    /// and watches all of them. What reaches it is deliberately thin - which restaurant
+    /// moved and whether money did, never an order's contents.
+    /// </summary>
+    public const string PlatformGroup = "platform";
+
     /// <inheritdoc />
     public override async Task OnConnectedAsync()
     {
@@ -56,6 +66,16 @@ public sealed class OperationsHub : Hub
             // left connected in no group: a connection that hears nothing is a bug that
             // looks exactly like a quiet evening.
             Context.Abort();
+
+            return;
+        }
+
+        // The platform console belongs to no restaurant; it watches the estate. It used
+        // to be refused here outright, which is why its figures could only be polled.
+        if (Context.User!.IsInRole(PlatformRoles.SuperAdmin))
+        {
+            await Groups.AddToGroupAsync(Context.ConnectionId, PlatformGroup);
+            await base.OnConnectedAsync();
 
             return;
         }

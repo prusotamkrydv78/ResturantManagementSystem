@@ -102,6 +102,15 @@ public interface IRealtimeNotifier
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Tells the platform consoles that a part payment was taken.
+    ///
+    /// A payment that does not settle the bill changes nobody's screen in the
+    /// restaurant - the order is still open - but it changes what the platform has
+    /// taken today, so it is the one event that goes only to the platform.
+    /// </summary>
+    Task PaymentRecordedAsync(Guid restaurantId, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Tells the floor that a table wants to pay.
     ///
     /// The floor only. A kitchen has nothing to do about a bill, and the whole point of

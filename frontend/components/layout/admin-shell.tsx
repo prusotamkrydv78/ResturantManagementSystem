@@ -11,6 +11,8 @@ import { ToastSoundToggle } from "@/components/ui/toast";
 import { navigationFor, roleLabel, type NavItem } from "@/components/layout/nav-config";
 import { useAuth } from "@/features/auth/auth-context";
 import { useTheme } from "@/lib/theme/use-theme";
+import { useRealtimeStatus } from "@/lib/realtime/realtime-context";
+import { useAdminLiveUpdates } from "@/queries/admin";
 import { THEMES, THEME_LABELS, type ThemePreference } from "@/lib/theme/theme";
 import { cn } from "@/lib/utils/cn";
 
@@ -31,6 +33,9 @@ import { cn } from "@/lib/utils/cn";
  */
 export function AdminShell({ children }: { children: React.ReactNode }) {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+
+  // The console's figures follow the server's signals for as long as it is open.
+  useAdminLiveUpdates();
 
   // A layout effect, so the surface is in place before the first paint rather than
   // flashing the operational look for a frame.
@@ -80,6 +85,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           <ServiceDate />
 
           <div className="ml-auto flex items-center gap-1.5">
+            <LiveIndicator />
             <ThemeSwitch />
             <ToastSoundToggle className="rounded-full hover:bg-surface" />
           </div>
@@ -274,6 +280,45 @@ function ServiceDate() {
       <CalendarDays className="size-3.5 text-subtle" aria-hidden="true" />
       <span className="font-medium text-text">{label}</span>
       <span className="text-subtle">· service day</span>
+    </span>
+  );
+}
+
+/**
+ * Whether the figures on screen are following the server.
+ *
+ * A console that updates by itself has to say so, or nobody can tell a quiet
+ * platform from a screen that stopped listening. Green and "Live" while connected;
+ * the banner under the header takes over if the connection is lost for long.
+ */
+function LiveIndicator() {
+  const status = useRealtimeStatus();
+
+  if (status === null || !status.enabled) {
+    return null;
+  }
+
+  return (
+    <span
+      className="hidden items-center gap-1.5 rounded-full bg-surface px-2.5 py-1 text-xs font-medium text-muted shadow-(--surface-shadow) sm:inline-flex"
+      title={
+        status.connected
+          ? "Figures update the moment trading moves."
+          : "Reconnecting. Figures will refresh when the connection is back."
+      }
+    >
+      <span className="relative flex size-2">
+        {status.connected && (
+          <span className="absolute inline-flex size-full animate-ping rounded-full bg-success opacity-60" />
+        )}
+        <span
+          className={cn(
+            "relative inline-flex size-2 rounded-full",
+            status.connected ? "bg-success" : "bg-subtle",
+          )}
+        />
+      </span>
+      {status.connected ? "Live" : "Connecting"}
     </span>
   );
 }

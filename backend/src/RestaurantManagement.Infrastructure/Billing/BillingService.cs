@@ -290,6 +290,12 @@ public sealed class BillingService : IBillingService
                 order.OrderNumber,
                 cancellationToken);
         }
+        else
+        {
+            // A part payment: nothing changes in the restaurant, but what the platform
+            // has taken today does.
+            await _realtime.PaymentRecordedAsync(order.RestaurantId, cancellationToken);
+        }
 
         var names = new Dictionary<Guid, string>
         {

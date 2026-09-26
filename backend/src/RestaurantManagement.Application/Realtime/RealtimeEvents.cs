@@ -56,6 +56,17 @@ public static class RealtimeEventNames
     public const string OrderCancelled = "orderCancelled";
 
     /// <summary>
+    /// Trading moved in one restaurant, told to the platform consoles.
+    ///
+    /// Sent only for the events that change a figure the console shows - an order
+    /// placed or closed, a payment, a plate reaching or leaving the pass - and never
+    /// for the ones that do not, such as a ticket being started. The console does not
+    /// act on an order; it re-reads its figures, so all it needs is where and whether
+    /// money moved. See PlatformActivityEvent.
+    /// </summary>
+    public const string PlatformActivity = "platformActivity";
+
+    /// <summary>
     /// How far along a customer's own order is, sent to that customer alone.
     ///
     /// One name for all five stages rather than five events. A phone following its own
@@ -64,6 +75,19 @@ public static class RealtimeEventNames
     /// </summary>
     public const string CustomerOrderUpdate = "customerOrderUpdate";
 }
+
+/// <summary>
+/// Trading moved in one restaurant.
+///
+/// Deliberately thin. The console refetches the figures it is showing rather than
+/// being handed them, so this says only enough to decide what is stale: which
+/// restaurant, so one restaurant's page ignores another's traffic, and whether money
+/// moved, because only money changes a report.
+/// </summary>
+/// <param name="RestaurantId">Where it happened.</param>
+/// <param name="Kind">What happened, for logs and for screens that care.</param>
+/// <param name="MoneyMoved">A payment, a settlement or a cancellation.</param>
+public sealed record PlatformActivityEvent(Guid RestaurantId, string Kind, bool MoneyMoved);
 
 /// <summary>
 /// An order leaving the floor, paid or called off.

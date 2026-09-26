@@ -25,6 +25,7 @@ export const adminKeys = {
 
   platform: ["platform"] as const,
   pulse: () => ["platform", "pulse"] as const,
+  reports: () => ["platform", "report"] as const,
   report: (range: { from?: string; to?: string }) => ["platform", "report", range] as const,
   platformRestaurant: (id: string) => ["platform", "restaurant", id] as const,
   activity: () => ["platform", "activity"] as const,
@@ -33,5 +34,11 @@ export const adminKeys = {
   system: () => ["platform", "system"] as const,
 };
 
-/** How often a live figure refreshes while its screen is open. */
-export const LIVE_INTERVAL = 30_000;
+/**
+ * The safety net under the server's signals.
+ *
+ * Live figures update by signal (see live.ts); this slow poll only covers a signal
+ * that went missing, which is why it is a minute rather than the thirty seconds the
+ * screens used to poll at as their only way of hearing about anything.
+ */
+export const LIVE_INTERVAL = 60_000;

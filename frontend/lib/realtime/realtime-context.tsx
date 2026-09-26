@@ -69,13 +69,7 @@ interface RealtimeContextValue {
   subscribeResync: (handler: ResyncHandler) => () => void;
   /** Whether the socket is currently up. */
   connected: boolean;
-  /**
-   * Whether this account has a live feed at all.
-   *
-   * A platform administrator belongs to no restaurant, so the server refuses the
-   * connection outright - and a client that retried forever would hammer it for
-   * nothing and show a "paused" warning that could never clear.
-   */
+  /** Whether this account has a live feed at all: anybody signed in. */
   enabled: boolean;
   /** Skips the wait and tries to reconnect now. */
   retryNow: () => void;
@@ -104,6 +98,8 @@ export const REALTIME_EVENTS = [
   // covered - the server sends them to staff, and the test holds this list to it.
   "orderSettled",
   "orderCancelled",
+  // The platform console's one signal: trading moved somewhere. See useAdminLiveUpdates.
+  "platformActivity",
 ] as const;
 
 /** A customer's order landing on the floor. */
@@ -129,6 +125,14 @@ export interface BillRequestedPayload {
   orderNumber: number;
   tableName: string;
   total: number;
+}
+
+/** Trading moved in one restaurant; sent to platform admins only. */
+export interface PlatformActivityPayload {
+  restaurantId: string;
+  kind: string;
+  /** A payment, a settlement or a cancellation - the only things a report counts. */
+  moneyMoved: boolean;
 }
 
 /** An order leaving the floor: paid in full, or called off. */
@@ -191,7 +195,10 @@ const RETRY_FOREVER: IRetryPolicy = {
  */
 export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, user } = useAuth();
-  const enabled = isAuthenticated && user !== null && user.platformRole !== "SuperAdmin";
+  // Every signed-in account, platform admins included. The server now puts a super
+  // admin in the platform group rather than refusing the connection, which is what
+  // lets the console update by signal instead of by polling.
+  const enabled = isAuthenticated && user !== null;
 
   const [connected, setConnected] = useState(false);
 
