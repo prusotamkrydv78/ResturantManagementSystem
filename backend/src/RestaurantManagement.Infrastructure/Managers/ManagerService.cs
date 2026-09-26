@@ -5,6 +5,7 @@ using RestaurantManagement.Application.Managers;
 using RestaurantManagement.Application.Platform;
 using RestaurantManagement.Application.Managers.Dtos;
 using RestaurantManagement.Domain.Identity;
+using RestaurantManagement.Infrastructure.Identity;
 using RestaurantManagement.Domain.Restaurants;
 using RestaurantManagement.Infrastructure.Persistence;
 using RestaurantManagement.Shared.Results;
@@ -425,10 +426,8 @@ public sealed class ManagerService : IManagerService
             return Result.Failure<ManagerResponse>(ManagerErrors.NotFound);
         }
 
-        // Validated before the stored hash is touched. The replacement below happens in
-        // two writes, so a password rejected on the second one would leave the account
-        // with none at all; checking first means the only way to reach that state is
-        // the process dying mid-reset.
+        // Validated here because the replacement below writes the hash directly and so
+        // does not run the validators itself.
         foreach (var validator in _userManager.PasswordValidators)
         {
             var check = await validator.ValidateAsync(_userManager, manager, request.Password);
@@ -442,22 +441,13 @@ public sealed class ManagerService : IManagerService
             }
         }
 
-        // Through Identity rather than by writing a hash directly: both calls go via
-        // UpdatePasswordHash, which rotates the security stamp, and that is what makes
-        // the old password stop working everywhere rather than only at the next
-        // sign-in. Not the token-based reset, which would need a token provider to be
-        // registered for a token that is minted and consumed in the same breath.
-        var removed = await _userManager.RemovePasswordAsync(manager);
-
-        if (!removed.Succeeded)
-        {
-            var removeReason = string.Join(" ", removed.Errors.Select(e => e.Description));
-
-            return Result.Failure<ManagerResponse>(
-                ManagerErrors.PasswordResetFailed(removeReason));
-        }
-
-        var result = await _userManager.AddPasswordAsync(manager, request.Password);
+        // One save for the hash and the stamp - see PasswordReplacement.
+        var result = await PasswordReplacement.ReplaceAsync(
+            _userManager,
+            _dbContext,
+            manager,
+            request.Password,
+            cancellationToken);
 
         if (!result.Succeeded)
         {
@@ -467,10 +457,7 @@ public sealed class ManagerService : IManagerService
                 ManagerErrors.PasswordResetFailed(reason));
         }
 
-        // Existing refresh tokens are left alone deliberately. They are revoked by
-        // suspending the account, which is the action that means "lock them out"; a
-        // password reset is usually the manager asking for help getting back in, and
-        // signing them out of a device they are holding would not help.
+        // Every session ends with it - see PasswordReplacement for why.
         _logger.LogInformation("Reset the password for manager {ManagerId}.", managerId);
 
         // Recorded without a word about what the password is or was. The point of the

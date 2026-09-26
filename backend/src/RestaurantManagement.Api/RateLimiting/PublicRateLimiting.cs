@@ -42,6 +42,26 @@ public static class PublicRateLimiting
     /// </summary>
     public const string PublicWrite = "public-write";
 
+    /// <summary>
+    /// Signing in.
+    ///
+    /// The per-account lockout is what actually stops a password being guessed; this
+    /// stops one address trying a single common password against every account in
+    /// turn, which a lockout cannot see because no one account fails twice. Set well
+    /// above a shift change: a whole kitchen on the restaurant's wifi signs in within
+    /// the same few minutes, from the same address.
+    /// </summary>
+    public const string Login = "auth-login";
+
+    /// <summary>
+    /// Pictures served to strangers: dishes, categories, the website's photographs.
+    ///
+    /// Generous, because one menu page is dozens of them, and every one of them used to
+    /// be unlimited - each read a stored image out of the database for anybody who
+    /// asked, as often as they asked.
+    /// </summary>
+    public const string PublicMedia = "public-media";
+
     /// <summary>Registers both policies and the 429 they answer with.</summary>
     public static IServiceCollection AddPublicRateLimiting(this IServiceCollection services)
     {
@@ -61,9 +81,20 @@ public static class PublicRateLimiting
                         ((int)retryAfter.TotalSeconds).ToString(CultureInfo.InvariantCulture);
                 }
 
-                await context.HttpContext.Response.WriteAsync(
-                    "Too many requests. Please wait a moment and try again.",
-                    cancellationToken);
+                // A problem document rather than plain text, because that is what every
+                // other refusal from this API is and what the client reads the message
+                // out of. Plain text fell through to a generic "something went wrong",
+                // which told a locked-out person nothing about waiting.
+                await context.HttpContext.Response.WriteAsJsonAsync(
+                    new Microsoft.AspNetCore.Mvc.ProblemDetails
+                    {
+                        Status = StatusCodes.Status429TooManyRequests,
+                        Title = "Too many requests",
+                        Detail = "Too many requests. Please wait a moment and try again.",
+                    },
+                    options: null,
+                    contentType: "application/problem+json",
+                    cancellationToken: cancellationToken);
             };
 
             options.AddPolicy(
@@ -73,6 +104,14 @@ public static class PublicRateLimiting
             options.AddPolicy(
                 PublicWrite,
                 context => Partition(context, permitLimit: 12));
+
+            options.AddPolicy(
+                Login,
+                context => Partition(context, permitLimit: 30));
+
+            options.AddPolicy(
+                PublicMedia,
+                context => Partition(context, permitLimit: 600));
         });
 
         return services;
@@ -89,6 +128,11 @@ public static class PublicRateLimiting
     /// A missing remote address falls into one shared bucket. That is deliberate: it is
     /// the safe direction, and the alternative is a request with no partition key at all
     /// bypassing the limit entirely.
+    ///
+    /// The address is the visitor's only once forwarded headers have been applied, which
+    /// Program.cs does first. Behind a proxy without that, every request carries the
+    /// proxy's address and the whole platform shares one bucket - twelve guest orders a
+    /// minute across every restaurant at once.
     /// </summary>
     private static RateLimitPartition<string> Partition(HttpContext context, int permitLimit) =>
         RateLimitPartition.GetFixedWindowLimiter(

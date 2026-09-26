@@ -46,9 +46,20 @@ public sealed class ConnectionScopeLookup : IConnectionScopeLookup
             return staffRestaurantId;
         }
 
+        // The restaurant being suspended does not matter here, and used to.
+        //
+        // Suspension stops new business and nothing else: staff keep their accounts,
+        // open orders keep running to the till, and every service a manager calls keeps
+        // answering. Only this lookup disagreed, so a suspended restaurant's staff kept
+        // their live feed while its manager - the one person closing out the day - lost
+        // theirs, and watched a floor that no longer updated while they did it.
+        //
+        // The manager's own account being switched off does matter, as it does for staff.
         return await _dbContext.Restaurants
             .AsNoTracking()
-            .Where(restaurant => restaurant.ManagerId == userId && restaurant.IsActive)
+            .Where(restaurant =>
+                restaurant.ManagerId == userId &&
+                _dbContext.Users.Any(user => user.Id == userId && user.IsActive))
             .Select(restaurant => (Guid?)restaurant.Id)
             .SingleOrDefaultAsync(cancellationToken);
     }

@@ -16,7 +16,8 @@ import {
   type HubConnection,
 } from "@microsoft/signalr";
 import { useAuth } from "@/features/auth/auth-context";
-import { getAccessToken } from "@/lib/auth/token-store";
+import { refreshSession } from "@/lib/api/client";
+import { getAccessToken, isAccessTokenExpiring } from "@/lib/auth/token-store";
 import { env } from "@/lib/config/env";
 
 /**
@@ -158,7 +159,28 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
           // Read fresh on every connect and reconnect rather than captured once. The
           // access token is short lived and the refresh flow replaces it in place, so a
           // captured one would fail every reconnection after the first few minutes.
-          accessTokenFactory: () => getAccessToken() ?? "",
+          //
+          // Refreshed here when it is about to lapse. The server now closes the
+          // connection when its token expires, and the floor and kitchen screens make
+          // no other requests while they sit showing live updates - so nothing else
+          // would refresh an idle screen's token, and every reconnect would present
+          // the expired one and be refused. Skipped while offline, because a refresh
+          // that cannot reach the server is treated as signing out.
+          accessTokenFactory: async () => {
+            const current = getAccessToken();
+
+            if (current !== null && !isAccessTokenExpiring(current)) {
+              return current;
+            }
+
+            if (typeof navigator !== "undefined" && !navigator.onLine) {
+              return current ?? "";
+            }
+
+            const session = await refreshSession();
+
+            return session?.accessToken ?? current ?? "";
+          },
         })
         // Backs off on its own: a restaurant's wifi drops, and a waiter should not have
         // to reload the app to start hearing about their tables again.

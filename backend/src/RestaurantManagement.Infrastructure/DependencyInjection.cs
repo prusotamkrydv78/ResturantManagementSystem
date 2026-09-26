@@ -155,30 +155,36 @@ public static class DependencyInjection
 
                 // No composition rules. Whoever issues an account chooses the
                 // password, and the product does not argue with them about digits or
-                // capitals. A length of one rather than zero, because a genuinely
-                // empty password is not a credential anybody could type at the sign-in
-                // form; everything above that is the issuer decision.
+                // capitals - rules like those mostly produce "Password1!".
                 //
-                // Worth being clear-eyed about the trade: these accounts reach a
-                // restaurant takings, and nothing now stops somebody setting a
-                // password of "a". Hashing, lockout after ten failed attempts, and the
-                // fact that accounts are issued rather than self-registered are what
-                // remain.
-                options.Password.RequiredLength = 1;
+                // Length is the one rule that actually costs a guesser, and one was
+                // the old minimum: these accounts reach a restaurant's takings, and
+                // nothing stopped a password of "a". Six is a floor rather than a
+                // recommendation, set where the platform's own bootstrap password
+                // still passes; eight or more is what an issuer should choose.
+                // Existing passwords are unaffected - this applies when one is set.
+                options.Password.RequiredLength = 6;
                 options.Password.RequiredUniqueChars = 1;
                 options.Password.RequireDigit = false;
                 options.Password.RequireLowercase = false;
                 options.Password.RequireUppercase = false;
                 options.Password.RequireNonAlphanumeric = false;
 
+                // Enforced by AuthService.LoginAsync, which counts failures. These
+                // options did nothing on their own for as long as nothing counted.
+                //
+                // The known cost: anybody who knows an address can lock that account
+                // for fifteen minutes by failing ten times. Accepted, because the
+                // alternative is an account anybody can guess at forever.
+                options.Lockout.AllowedForNewUsers = true;
                 options.Lockout.MaxFailedAccessAttempts = 10;
                 options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
             })
             // No token providers are registered, and none are needed. The only
             // password reset the product has is an administrator setting a new one for
             // somebody standing in front of them, so there is no emailed link to mint
-            // a token for. The services do the reset with RemovePassword/AddPassword,
-            // which rotates the security stamp without one.
+            // a token for. PasswordReplacement sets the hash and rotates the security
+            // stamp in one save, without one.
             .AddEntityFrameworkStores<ApplicationDbContext>();
 
         services.AddScoped<JwtTokenGenerator>();

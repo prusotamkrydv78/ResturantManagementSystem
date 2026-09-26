@@ -16,6 +16,33 @@ namespace RestaurantManagement.Infrastructure.Authentication;
 /// </summary>
 public sealed class AuthService : IAuthService
 {
+    /// <summary>
+    /// How long a just-rotated refresh token is still honoured.
+    ///
+    /// Two tabs share one cookie jar, and when their access tokens expire together they
+    /// both send the same refresh token in the same instant. Only one can win the
+    /// rotation. The loser presents a token that was replaced a moment ago, which is
+    /// indistinguishable from theft by shape alone - and treating it as theft revoked
+    /// every session the person held, logging them out everywhere for having two tabs
+    /// open. Within this window a replayed token is answered with a fresh pair instead.
+    ///
+    /// Short on purpose: a stolen token replayed inside half a minute of the real
+    /// owner's own refresh is the price, and anything longer widens it for nothing.
+    /// </summary>
+    private static readonly TimeSpan RotationGrace = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// Something to hash a password against when there is no account.
+    ///
+    /// Without it an unknown email answered in microseconds and a known one after a full
+    /// password hash, and that difference names which addresses have accounts as surely
+    /// as a different error message would.
+    /// </summary>
+    private static readonly ApplicationUser TimingDecoy = new();
+
+    private static readonly string TimingDecoyHash =
+        new PasswordHasher<ApplicationUser>().HashPassword(TimingDecoy, Guid.NewGuid().ToString());
+
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly ApplicationDbContext _dbContext;
     private readonly JwtTokenGenerator _tokenGenerator;
@@ -48,14 +75,39 @@ public sealed class AuthService : IAuthService
         // email from a wrong password.
         if (user is null)
         {
+            // The same work a real account costs, so the time taken says nothing either.
+            _userManager.PasswordHasher.VerifyHashedPassword(
+                TimingDecoy,
+                TimingDecoyHash,
+                request.Password);
+
             _logger.LogInformation("Login failed: no account for the supplied email.");
             return Result.Failure<AuthenticationResult>(AuthenticationErrors.InvalidCredentials);
         }
 
+        // Lockout was configured and never enforced: nothing in the product counted a
+        // failure, so the ten-attempt limit existed only in the options. Checked before
+        // the password, so a locked account costs a guesser their attempt even when the
+        // guess is right.
+        if (await _userManager.IsLockedOutAsync(user))
+        {
+            _logger.LogWarning("Login refused for user {UserId}: locked out.", user.Id);
+            return Result.Failure<AuthenticationResult>(AuthenticationErrors.AccountLocked);
+        }
+
         if (!await _userManager.CheckPasswordAsync(user, request.Password))
         {
+            await _userManager.AccessFailedAsync(user);
+
             _logger.LogInformation("Login failed for user {UserId}: bad password.", user.Id);
             return Result.Failure<AuthenticationResult>(AuthenticationErrors.InvalidCredentials);
+        }
+
+        // A success clears the count, so ten mistakes spread across a month do not add
+        // up to a lockout.
+        if (await _userManager.GetAccessFailedCountAsync(user) > 0)
+        {
+            await _userManager.ResetAccessFailedCountAsync(user);
         }
 
         // Checked after the password so a deactivated account is not disclosed to
@@ -97,6 +149,24 @@ public sealed class AuthService : IAuthService
 
         if (!stored.IsActive(now))
         {
+            // Replaced a moment ago: almost always a second tab refreshing alongside
+            // the first. Answered rather than punished - see RotationGrace.
+            if (stored.ReplacedByTokenId is not null &&
+                stored.RevokedAtUtc is { } rotatedAt &&
+                now - rotatedAt <= RotationGrace &&
+                stored.ExpiresAtUtc > now &&
+                stored.User.IsActive)
+            {
+                _logger.LogInformation(
+                    "Refresh token for user {UserId} presented again {Seconds:0.0}s after " +
+                    "rotation; treated as a concurrent refresh.",
+                    stored.UserId,
+                    (now - rotatedAt).TotalSeconds);
+
+                return Result.Success(
+                    await IssueReplacementAsync(stored, now, claim: false, cancellationToken));
+            }
+
             // A rotated token presented a second time means either a replay or a
             // stolen token, so the whole family is revoked and the real session
             // cannot continue either.
@@ -128,24 +198,68 @@ public sealed class AuthService : IAuthService
                 AuthenticationErrors.AccountDeactivated);
         }
 
-        // Rotation: the presented token is revoked and replaced by a brand new one.
+        return Result.Success(
+            await IssueReplacementAsync(stored, now, claim: true, cancellationToken));
+    }
+
+    /// <summary>
+    /// Mints the next refresh token after <paramref name="stored"/>, and an access token.
+    ///
+    /// The replacement is written first and the old token claimed afterwards with a
+    /// conditional update, which is what makes rotation safe under concurrency. Before,
+    /// two requests could both read the token as live, both mark it revoked, and both
+    /// save - leaving two valid children of one parent and no record that it happened.
+    /// Now only one claim can succeed; the other sees zero rows and knows it lost.
+    /// </summary>
+    /// <param name="stored">The token being exchanged.</param>
+    /// <param name="now">The moment of the exchange.</param>
+    /// <param name="claim">
+    /// Whether to revoke <paramref name="stored"/>. False inside the grace window, where
+    /// it was already revoked by the request that won.
+    /// </param>
+    /// <param name="cancellationToken">Cancels the writes.</param>
+    private async Task<AuthenticationResult> IssueReplacementAsync(
+        RefreshToken stored,
+        DateTimeOffset now,
+        bool claim,
+        CancellationToken cancellationToken)
+    {
         var replacement = BuildRefreshToken(stored.UserId, now, out var rawReplacement);
 
-        stored.RevokedAtUtc = now;
-        stored.ReplacedByTokenId = replacement.Id;
-
         _dbContext.RefreshTokens.Add(replacement);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        if (claim)
+        {
+            var claimed = await _dbContext.RefreshTokens
+                .Where(token => token.Id == stored.Id && token.RevokedAtUtc == null)
+                .ExecuteUpdateAsync(
+                    setters => setters
+                        .SetProperty(token => token.RevokedAtUtc, now)
+                        .SetProperty(token => token.ReplacedByTokenId, replacement.Id),
+                    cancellationToken);
+
+            // Somebody else rotated the same token in the same instant. Both are the
+            // real owner - a thief does not race the owner to the millisecond - so the
+            // replacement already saved stands beside theirs rather than being thrown
+            // away and taking this tab's session with it.
+            if (claimed == 0)
+            {
+                _logger.LogInformation(
+                    "Refresh token for user {UserId} was rotated concurrently; issuing a " +
+                    "sibling rather than refusing.",
+                    stored.UserId);
+            }
+        }
 
         var (accessToken, accessExpiresAt) = _tokenGenerator.CreateAccessToken(stored.User);
 
-        await _dbContext.SaveChangesAsync(cancellationToken);
-
         _logger.LogInformation("Rotated refresh token for user {UserId}.", stored.UserId);
 
-        return Result.Success(new AuthenticationResult(
+        return new AuthenticationResult(
             new AuthResponse(accessToken, accessExpiresAt, ToDto(stored.User)),
             rawReplacement,
-            replacement.ExpiresAtUtc));
+            replacement.ExpiresAtUtc);
     }
 
     /// <inheritdoc />
@@ -192,6 +306,16 @@ public sealed class AuthService : IAuthService
         CancellationToken cancellationToken)
     {
         var now = DateTimeOffset.UtcNow;
+
+        // Nothing ever deleted a refresh token, so every sign-in and every rotation
+        // added a row forever. Expired ones are useless even as evidence - reuse
+        // detection only needs a revoked token until it would have expired anyway - so
+        // they go here, one account at a time, where the index on the user makes it
+        // cheap and no background job is needed.
+        await _dbContext.RefreshTokens
+            .Where(token => token.UserId == user.Id && token.ExpiresAtUtc < now)
+            .ExecuteDeleteAsync(cancellationToken);
+
         var refreshToken = BuildRefreshToken(user.Id, now, out var rawRefreshToken);
 
         _dbContext.RefreshTokens.Add(refreshToken);
@@ -232,8 +356,14 @@ public sealed class AuthService : IAuthService
             return Result.Failure<UserDto>(AuthenticationErrors.UserNotFound);
         }
 
-        var email = request.Email.Trim();
-        var fullName = request.FullName.Trim();
+        var email = (request.Email ?? string.Empty).Trim();
+        var fullName = (request.FullName ?? string.Empty).Trim();
+
+        if (email.Length == 0 || fullName.Length == 0)
+        {
+            return Result.Failure<UserDto>(
+                AuthenticationErrors.Rejected("Enter both a name and an email address."));
+        }
 
         // Checked before Identity is asked, so the caller gets the specific reason
         // rather than whatever wording the identity errors happen to carry.
@@ -256,6 +386,24 @@ public sealed class AuthService : IAuthService
         // spectacular way to lock the platform owner out of their own platform.
         if (!string.Equals(user.Email, email, StringComparison.OrdinalIgnoreCase))
         {
+            // The email is the sign-in, so changing it is changing the credential - and
+            // it asks for the password for the same reason changing the password does.
+            // Without this, anybody holding a stolen access token for fifteen minutes
+            // could move the account to an address they own and keep it for good.
+            if (string.IsNullOrEmpty(request.CurrentPassword))
+            {
+                return Result.Failure<UserDto>(AuthenticationErrors.CurrentPasswordRequired);
+            }
+
+            if (!await _userManager.CheckPasswordAsync(user, request.CurrentPassword))
+            {
+                _logger.LogInformation(
+                    "Email change refused for {UserId}: current password did not verify.",
+                    userId);
+
+                return Result.Failure<UserDto>(AuthenticationErrors.WrongCurrentPassword);
+            }
+
             var emailChange = await _userManager.SetEmailAsync(user, email);
 
             if (!emailChange.Succeeded)

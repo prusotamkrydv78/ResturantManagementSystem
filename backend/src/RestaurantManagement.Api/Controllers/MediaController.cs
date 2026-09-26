@@ -163,6 +163,8 @@ public sealed class MediaController : ControllerBase
     /// <param name="cancellationToken">Cancellation token.</param>
     [HttpGet("{id:guid}")]
     [AllowAnonymous]
+    [Microsoft.AspNetCore.RateLimiting.EnableRateLimiting(
+        RestaurantManagement.Api.RateLimiting.PublicRateLimiting.PublicMedia)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetBytes(
@@ -182,9 +184,13 @@ public sealed class MediaController : ControllerBase
 
         var (content, contentType) = result.Value;
 
-        // Varies because the same address serves two different pictures depending on
-        // the query, and a cache that ignored it would hand a thumbnail to the page.
-        Response.Headers.CacheControl = "public, max-age=31536000, immutable";
+        // No Vary header is needed for the thumbnail: ?size=thumb is part of the URL, and
+        // every cache already keys on the full URL.
+        //
+        // A day, not a year. The address changes whenever the picture does, so a long
+        // lifetime cost nothing for replacements - but a deleted picture stayed in every
+        // cache that had seen it for a year, reachable by anybody holding the link.
+        Response.Headers.CacheControl = "public, max-age=86400";
 
         // These bytes were uploaded by a member of the public's counterparty and are
         // served back from this origin to strangers. The magic-number check on upload

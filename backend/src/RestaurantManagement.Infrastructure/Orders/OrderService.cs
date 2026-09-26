@@ -6,6 +6,7 @@ using RestaurantManagement.Application.Orders;
 using RestaurantManagement.Application.Orders.Dtos;
 using RestaurantManagement.Application.Realtime;
 using RestaurantManagement.Domain.Identity;
+using RestaurantManagement.Domain.Inventory;
 using RestaurantManagement.Domain.Orders;
 using RestaurantManagement.Domain.Restaurants;
 using RestaurantManagement.Infrastructure.Persistence;
@@ -28,6 +29,12 @@ public sealed class OrderService : IOrderService
     /// consecutive collisions means something else is wrong.
     /// </summary>
     private const int OrderNumberAttempts = 5;
+
+    /// <summary>The index that makes a readable order number unique per restaurant.</summary>
+    private const string OrderNumberIndex = "IX_Orders_RestaurantId_OrderNumber";
+
+    /// <summary>The index that makes a readable ticket number unique per restaurant.</summary>
+    private const string TicketNumberIndex = "IX_KitchenTickets_RestaurantId_TicketNumber";
 
     private readonly ApplicationDbContext _dbContext;
     private readonly IRealtimeNotifier _realtime;
@@ -364,6 +371,10 @@ public sealed class OrderService : IOrderService
                 .ThenInclude(item => item.KitchenTicketItem)
                     .ThenInclude(ticketItem => ticketItem!.KitchenTicket)
             .Include(candidate => candidate.Table)
+            // Read by the mapper: amount paid, amount outstanding and whether it can be
+            // settled are all derived from these. Without them a part-paid bill reports
+            // nothing paid and the whole total owed, and nothing says it is wrong.
+            .Include(candidate => candidate.Payments)
             .Include(candidate => candidate.KitchenTickets)
                 .ThenInclude(ticket => ticket.Items)
             .SingleOrDefaultAsync(
@@ -477,6 +488,10 @@ public sealed class OrderService : IOrderService
             .Include(candidate => candidate.Items)
                 .ThenInclude(item => item.KitchenTicketItem)
             .Include(candidate => candidate.Table)
+            // Read by the mapper: amount paid, amount outstanding and whether it can be
+            // settled are all derived from these. Without them a part-paid bill reports
+            // nothing paid and the whole total owed, and nothing says it is wrong.
+            .Include(candidate => candidate.Payments)
             .Include(candidate => candidate.KitchenTickets)
                 .ThenInclude(ticket => ticket.Items)
             .SingleOrDefaultAsync(
@@ -949,6 +964,10 @@ public sealed class OrderService : IOrderService
                 .ThenInclude(item => item.KitchenTicketItem)
                     .ThenInclude(ticketItem => ticketItem!.KitchenTicket)
             .Include(candidate => candidate.Table)
+            // Read by the mapper: amount paid, amount outstanding and whether it can be
+            // settled are all derived from these. Without them a part-paid bill reports
+            // nothing paid and the whole total owed, and nothing says it is wrong.
+            .Include(candidate => candidate.Payments)
             .Include(candidate => candidate.KitchenTickets)
                 .ThenInclude(ticket => ticket.Items)
             .SingleOrDefaultAsync(
@@ -1035,6 +1054,10 @@ public sealed class OrderService : IOrderService
             .Include(candidate => candidate.Items)
                 .ThenInclude(item => item.KitchenTicketItem)
             .Include(candidate => candidate.Table)
+            // Read by the mapper: amount paid, amount outstanding and whether it can be
+            // settled are all derived from these. Without them a part-paid bill reports
+            // nothing paid and the whole total owed, and nothing says it is wrong.
+            .Include(candidate => candidate.Payments)
             .Include(candidate => candidate.KitchenTickets)
                 .ThenInclude(ticket => ticket.Items)
             .SingleOrDefaultAsync(
@@ -1236,9 +1259,29 @@ public sealed class OrderService : IOrderService
                 await _dbContext.SaveChangesAsync(cancellationToken);
                 return SaveOutcome.Saved;
             }
-            catch (DbUpdateConcurrencyException)
+            catch (DbUpdateConcurrencyException exception)
             {
-                // The order moved under us, so someone else is editing or submitting.
+                // Two different things can be under us here, and only one of them means
+                // this submission should stop.
+                //
+                // The order moving is a real clash - someone else is editing or sending
+                // it - and the answer is to reload. A stock row moving is not: it only
+                // means another table's ticket used the same rice a moment earlier. That
+                // used to land here too and be reported as "already submitted", so at the
+                // busiest moment of a service a waiter was told a ticket was in the
+                // kitchen when it had been thrown away. The deduction is rebased onto
+                // the shelf as it now stands and the save goes again.
+                if (attempt < OrderNumberAttempts &&
+                    await TryRebaseStockAsync(exception, cancellationToken))
+                {
+                    _logger.LogInformation(
+                        "Stock moved under ticket {Number} in restaurant {RestaurantId}; " +
+                        "rebased the deduction and retrying.",
+                        ticket.TicketNumber,
+                        restaurantId);
+                    continue;
+                }
+
                 return SaveOutcome.AlreadySubmitted;
             }
             catch (DbUpdateException exception)
@@ -1247,7 +1290,9 @@ public sealed class OrderService : IOrderService
                 // An order line is already on a ticket. Retrying would not help.
                 return SaveOutcome.AlreadySubmitted;
             }
-            catch (DbUpdateException) when (attempt < OrderNumberAttempts)
+            catch (DbUpdateException exception)
+                when (attempt < OrderNumberAttempts &&
+                      DbErrors.IsUniqueViolation(exception, TicketNumberIndex))
             {
                 // Most likely the ticket number was taken. Look again.
                 _logger.LogInformation(
@@ -1258,6 +1303,68 @@ public sealed class OrderService : IOrderService
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Re-applies this save's stock deductions on top of the shelf as it now stands.
+    ///
+    /// Only when every conflicting row is a stock item. Anything else - the order
+    /// itself above all - is a genuine clash and is left for the caller to report.
+    ///
+    /// The deduction is carried across as a delta rather than recomputed, because the
+    /// amount taken for these dishes has not changed; only what it is taken from has.
+    /// The other columns are brought up to date too, so a manager who renamed the item
+    /// or moved its reorder level in the same instant does not have that edit quietly
+    /// overwritten by the copy this save was holding.
+    /// </summary>
+    /// <param name="exception">The conflict the save reported.</param>
+    /// <param name="cancellationToken">Cancels the re-read.</param>
+    private async Task<bool> TryRebaseStockAsync(
+        DbUpdateConcurrencyException exception,
+        CancellationToken cancellationToken)
+    {
+        if (exception.Entries.Count == 0 ||
+            exception.Entries.Any(entry => entry.Entity is not InventoryItem))
+        {
+            return false;
+        }
+
+        foreach (var entry in exception.Entries)
+        {
+            var item = (InventoryItem)entry.Entity;
+            var original = (decimal)entry.OriginalValues[nameof(InventoryItem.QuantityInStock)]!;
+            var delta = item.QuantityInStock - original;
+            var touchedAt = item.UpdatedAtUtc;
+
+            var stored = await entry.GetDatabaseValuesAsync(cancellationToken);
+
+            if (stored is null)
+            {
+                // Deleted in the meantime. Nothing to rebase onto.
+                return false;
+            }
+
+            var latest = (decimal)stored[nameof(InventoryItem.QuantityInStock)]!;
+
+            entry.CurrentValues.SetValues(stored);
+            entry.OriginalValues.SetValues(stored);
+
+            item.QuantityInStock = latest + delta;
+            item.UpdatedAtUtc = touchedAt;
+
+            // The movements this save is adding recorded the balance they produced, and
+            // that balance was computed from the stale shelf.
+            foreach (var movement in _dbContext.ChangeTracker.Entries<StockMovement>())
+            {
+                if (movement.State == EntityState.Added &&
+                    movement.Entity.InventoryItemId == item.Id)
+                {
+                    movement.Entity.QuantityAfter += latest - original;
+                }
+            }
+        }
+
+        return true;
     }
 
     /// <summary>
@@ -1448,7 +1555,9 @@ public sealed class OrderService : IOrderService
                 await _dbContext.SaveChangesAsync(cancellationToken);
                 return true;
             }
-            catch (DbUpdateException) when (attempt < OrderNumberAttempts)
+            catch (DbUpdateException exception)
+                when (attempt < OrderNumberAttempts &&
+                      DbErrors.IsUniqueViolation(exception, OrderNumberIndex))
             {
                 // Another order took this number in the meantime. Look again.
                 _logger.LogInformation(

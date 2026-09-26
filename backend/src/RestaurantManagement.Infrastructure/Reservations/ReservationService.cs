@@ -277,6 +277,7 @@ public sealed class ReservationService : IReservationService
         _dbContext.Reservations.Add(reservation);
 
         await _dbContext.SaveChangesAsync(cancellationToken);
+        await ReleaseTableBookingsAsync(cancellationToken);
 
         _logger.LogInformation(
             "Manager {ManagerId} took reservation {ReservationId} for {Guests} at {When}.",
@@ -467,6 +468,8 @@ public sealed class ReservationService : IReservationService
             return Result.Success(true);
         }
 
+        await HoldTableBookingsAsync(restaurantId, cancellationToken);
+
         var table = await _dbContext.RestaurantTables
             .AsNoTracking()
             .SingleOrDefaultAsync(
@@ -538,6 +541,7 @@ public sealed class ReservationService : IReservationService
         try
         {
             await _dbContext.SaveChangesAsync(cancellationToken);
+            await ReleaseTableBookingsAsync(cancellationToken);
         }
         catch (DbUpdateConcurrencyException)
         {
@@ -547,6 +551,60 @@ public sealed class ReservationService : IReservationService
         }
 
         return await ReloadAsync(restaurantId, reservation.Id, cancellationToken);
+    }
+
+    /// <summary>
+    /// Holds this restaurant's table bookings until the save that follows commits.
+    ///
+    /// WHY A LOCK
+    ///
+    /// The clash rule reads the other bookings on a table and then this one is saved.
+    /// Two bookings for the same table and hour made in the same instant - two tabs, a
+    /// manager and a colleague on the phone - both read a table with nothing on it and
+    /// both saved. The row version on a booking protects that booking; it has nothing
+    /// to say about a different one arriving beside it.
+    ///
+    /// An application lock rather than a serializable transaction because the thing to
+    /// serialise is "somebody is placing a booking here", not any particular row, and
+    /// range locks over the reservations table would take far more than that and
+    /// deadlock under the same contention they were meant to settle. Per restaurant, so
+    /// one busy dining room never waits on another.
+    ///
+    /// Owned by the transaction: it is released by the commit, and by the rollback if
+    /// the request ends without one, so no failure path can leave it held.
+    /// </summary>
+    /// <param name="restaurantId">Whose bookings.</param>
+    /// <param name="cancellationToken">Cancels the wait.</param>
+    private async Task HoldTableBookingsAsync(
+        Guid restaurantId,
+        CancellationToken cancellationToken)
+    {
+        if (_dbContext.Database.CurrentTransaction is null)
+        {
+            await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+        }
+
+        var resource = $"reservations:{restaurantId:N}";
+
+        // Ten seconds is far beyond any real save; past it the lock is simply not
+        // held and the clash check behaves as it did before, rather than a booking
+        // failing because a colleague's request hung.
+        await _dbContext.Database.ExecuteSqlInterpolatedAsync(
+            $"EXEC sp_getapplock @Resource = {resource}, @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 10000",
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Commits the transaction <see cref="HoldTableBookingsAsync"/> opened, if it did.
+    /// </summary>
+    /// <param name="cancellationToken">Cancels the commit.</param>
+    private async Task ReleaseTableBookingsAsync(CancellationToken cancellationToken)
+    {
+        if (_dbContext.Database.CurrentTransaction is { } transaction)
+        {
+            await transaction.CommitAsync(cancellationToken);
+            await transaction.DisposeAsync();
+        }
     }
 
     /// <summary>

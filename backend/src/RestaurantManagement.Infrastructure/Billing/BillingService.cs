@@ -225,6 +225,16 @@ public sealed class BillingService : IBillingService
         order.Payments.Add(payment);
         _dbContext.Payments.Add(payment);
 
+        // Touched on every payment, not only the one that settles.
+        //
+        // What is owed is derived from the payments, so a part payment used to insert a
+        // row and change nothing on the order - which meant the order's row version was
+        // never checked, and two tills each taking 800 against a 1000 bill both
+        // succeeded. Writing the order makes the second of two simultaneous payments
+        // collide with the first and be refused as a conflict, so the till re-reads what
+        // is actually outstanding rather than charging against a figure that has moved.
+        order.UpdatedAtUtc = now;
+
         // Only when the bill is actually covered. A part payment leaves the order open
         // and the table occupied, which is the whole point: the party is still sitting
         // there and still owes money.

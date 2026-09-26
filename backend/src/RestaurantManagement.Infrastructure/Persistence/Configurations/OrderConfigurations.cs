@@ -7,6 +7,14 @@ namespace RestaurantManagement.Infrastructure.Persistence.Configurations;
 /// <summary>Maps orders.</summary>
 public sealed class OrderConfiguration : IEntityTypeConfiguration<Order>
 {
+    /// <summary>
+    /// The filtered index allowing one open guest-placed order per table.
+    ///
+    /// Named rather than left to convention, because the save that loses the race
+    /// recognises the failure by this name.
+    /// </summary>
+    public const string OpenGuestOrderPerTableIndex = "IX_Orders_TableId_OpenGuestOrder";
+
     /// <inheritdoc />
     public void Configure(EntityTypeBuilder<Order> builder)
     {
@@ -154,6 +162,27 @@ public sealed class OrderConfiguration : IEntityTypeConfiguration<Order>
             .IsUnique();
 
         builder.HasIndex(order => new { order.RestaurantId, order.Status });
+
+        // At most one open guest-placed order per table.
+        //
+        // Guest-placed only, on purpose. Staff may open more than one order on a table -
+        // separate checks for one party are ordinary, and the floor screen is built for
+        // it - so an index over every order would forbid something the product does on
+        // purpose. What it must not do is let two strangers on their phones both claim
+        // the same free table: the website path checks the table is free and then
+        // inserts, and two guests in the same instant both pass the check. A read cannot
+        // see that race; only the database can refuse it.
+        //
+        // A second index beside the ordinary one on TableId, not a replacement for it.
+        // EF drops its own foreign-key index whenever any index covers the column, even
+        // a filtered one - and a filtered index cannot serve the other lookups by
+        // table, or the check when a table is deleted. So the plain one is declared
+        // explicitly, and this one is named so the two can coexist.
+        builder.HasIndex(order => order.TableId);
+
+        builder.HasIndex(order => order.TableId, OpenGuestOrderPerTableIndex)
+            .IsUnique()
+            .HasFilter("[Status] = 'Open' AND [Source] <> 'Staff'");
         builder.HasIndex(order => new { order.RestaurantId, order.CreatedAtUtc });
         builder.HasIndex(order => order.CreatedByStaffId);
 

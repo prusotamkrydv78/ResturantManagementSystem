@@ -33,6 +33,15 @@ public static class AuthenticationSetup
                 "Jwt:Key is not configured. Set it through user secrets or environment variables.");
         }
 
+        // HMAC-SHA256 needs at least 256 bits of key. A shorter one used to be accepted
+        // here and refused by the token library on the first sign-in, so a deployment
+        // started, answered its health check and then failed every login.
+        if (Encoding.UTF8.GetByteCount(jwt.Key) < 32)
+        {
+            throw new InvalidOperationException(
+                "Jwt:Key must be at least 32 bytes (256 bits) for HMAC-SHA256.");
+        }
+
         services
             .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             .AddJwtBearer(options =>

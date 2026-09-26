@@ -36,6 +36,9 @@ public sealed class PublicOrderingService : IPublicOrderingService
     /// </summary>
     private const int OrderNumberAttempts = 5;
 
+    /// <summary>The index that makes a readable order number unique per restaurant.</summary>
+    private const string OrderNumberIndex = "IX_Orders_RestaurantId_OrderNumber";
+
     private readonly ApplicationDbContext _dbContext;
     private readonly IRealtimeNotifier _realtime;
     private readonly ILogger<PublicOrderingService> _logger;
@@ -652,10 +655,14 @@ public sealed class PublicOrderingService : IPublicOrderingService
 
             _dbContext.Orders.Add(order);
 
-            if (!await SaveWithOrderNumberAsync(order, table.RestaurantId, cancellationToken))
+            var refused = await SaveWithOrderNumberAsync(
+                order,
+                table.RestaurantId,
+                cancellationToken);
+
+            if (refused is not null)
             {
-                return Result.Failure<PublicOrderResponse>(
-                    PublicOrderingErrors.NumberUnavailable);
+                return Result.Failure<PublicOrderResponse>(refused);
             }
         }
         else
@@ -894,7 +901,12 @@ public sealed class PublicOrderingService : IPublicOrderingService
     /// unique index turn a race into a failed insert, and take the next one. A guest and a
     /// waiter submitting in the same instant is exactly the case this handles.
     /// </summary>
-    private async Task<bool> SaveWithOrderNumberAsync(
+    /// <returns>
+    /// Null once saved; otherwise why not. Two answers are possible and they mean
+    /// different things to a guest: the numbers ran out under contention, or somebody
+    /// else claimed this table in the instant between checking it was free and saving.
+    /// </returns>
+    private async Task<Error?> SaveWithOrderNumberAsync(
         Order order,
         Guid restaurantId,
         CancellationToken cancellationToken)
@@ -911,9 +923,26 @@ public sealed class PublicOrderingService : IPublicOrderingService
             try
             {
                 await _dbContext.SaveChangesAsync(cancellationToken);
-                return true;
+                return null;
             }
-            catch (DbUpdateException) when (attempt < OrderNumberAttempts)
+            catch (DbUpdateException exception)
+                when (DbErrors.IsUniqueViolation(
+                    exception,
+                    Persistence.Configurations.OrderConfiguration.OpenGuestOrderPerTableIndex))
+            {
+                // The website path checks the table is free and then inserts, and two
+                // guests choosing the same table at once both pass the check. The index
+                // is what actually decides, and the one who lost is told the truth.
+                // Retrying could never help: the table is not coming free.
+                _logger.LogInformation(
+                    "Guest order on table {TableId} lost the race for it to another guest.",
+                    order.TableId);
+
+                return PublicOrderingErrors.TableInUse;
+            }
+            catch (DbUpdateException exception)
+                when (attempt < OrderNumberAttempts &&
+                      DbErrors.IsUniqueViolation(exception, OrderNumberIndex))
             {
                 _logger.LogInformation(
                     "Order number {Number} was taken in restaurant {RestaurantId}; retrying.",
@@ -922,7 +951,7 @@ public sealed class PublicOrderingService : IPublicOrderingService
             }
         }
 
-        return false;
+        return PublicOrderingErrors.NumberUnavailable;
     }
 
     /// <summary>

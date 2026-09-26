@@ -8,7 +8,9 @@ using RestaurantManagement.Application;
 using RestaurantManagement.Application.Realtime;
 using RestaurantManagement.Infrastructure;
 using RestaurantManagement.Infrastructure.Identity;
+using System.Net;
 using System.Text.Json.Serialization;
+using Microsoft.AspNetCore.HttpOverrides;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -76,6 +78,49 @@ builder.Services.AddCors(options =>
         .AllowCredentials()); // required for the refresh cookie and SignalR
 });
 
+// Who is actually on the other end, when a proxy sits in front.
+//
+// The deployed frontend forwards /api/* through its own server (API_PROXY_TARGET), so
+// every request reaches this process from that server's address. Without this, the
+// rate limiter partitioned the entire platform into one bucket and every guest order
+// recorded the proxy as where it came from.
+//
+// Only proxies named in configuration are believed. X-Forwarded-For is a header any
+// client can write, and trusting it from anywhere would let a script claim a fresh
+// address on every request and walk straight past every limit here. ForwardLimit of one
+// takes the hop the trusted proxy added and nothing a client put in front of it.
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.ForwardLimit = 1;
+
+    var forwarding = builder.Configuration.GetSection("ForwardedHeaders");
+
+    foreach (var proxy in forwarding.GetSection("KnownProxies").Get<string[]>() ?? [])
+    {
+        if (IPAddress.TryParse(proxy, out var address))
+        {
+            options.KnownProxies.Add(address);
+        }
+    }
+
+    foreach (var network in forwarding.GetSection("KnownNetworks").Get<string[]>() ?? [])
+    {
+        if (System.Net.IPNetwork.TryParse(network, out var range))
+        {
+            options.KnownIPNetworks.Add(range);
+        }
+    }
+
+    // For a host whose proxy has no fixed address. Safe only when this API cannot be
+    // reached except through that proxy - otherwise anybody can set the header.
+    if (forwarding.GetValue<bool>("TrustAllProxies"))
+    {
+        options.KnownProxies.Clear();
+        options.KnownIPNetworks.Clear();
+    }
+});
+
 builder.Services.AddJwtAuthentication(builder.Configuration);
 
 // Bounds on the anonymous ordering routes, which are the only ones in this product a
@@ -110,6 +155,10 @@ await app.Services.BootstrapIdentityAsync();
 // Pipeline
 // ---------------------------------------------------------------------------
 
+// First, so everything after it - HTTPS redirection, the rate limiter, the address an
+// order records - sees the visitor rather than the proxy.
+app.UseForwardedHeaders();
+
 app.UseExceptionHandler();
 
 if (app.Environment.IsDevelopment())
@@ -134,7 +183,16 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
-app.MapHub<OperationsHub>("/hubs/operations");
+// Closed when the token it was opened with expires.
+//
+// Group membership is decided once, at connect, and a WebSocket can stay open for a
+// whole service. Without this a waiter who was deactivated mid-shift kept receiving
+// every order in the restaurant for as long as the tab stayed open. The client reopens
+// with a fresh token, so somebody still entitled to the feed notices nothing, and
+// somebody who is not is refused at the reconnect.
+app.MapHub<OperationsHub>(
+    "/hubs/operations",
+    options => options.CloseOnAuthenticationExpiration = true);
 
 // The customer's own order, followed anonymously by presenting the key they were given
 // when they placed it. A separate hub so the staff one keeps its guarantee that every

@@ -282,9 +282,14 @@ function ProfileForm({
 }) {
   const [fullName, setFullName] = useState(user.fullName);
   const [email, setEmail] = useState(user.email);
+  const [currentPassword, setCurrentPassword] = useState("");
   const action = useAction();
 
   const unchanged = fullName === user.fullName && email === user.email;
+
+  // Only a new email needs the password. Asking for it to fix a typo in a name would
+  // train people to type it without thinking, which is the opposite of the point.
+  const changingEmail = email.trim().toLowerCase() !== user.email.toLowerCase();
 
   return (
     <Surface className="flex h-full flex-col">
@@ -298,7 +303,12 @@ function ProfileForm({
           event.preventDefault();
 
           void action.run(async () => {
-            await updateMyProfile({ fullName, email });
+            await updateMyProfile({
+              fullName,
+              email,
+              ...(changingEmail ? { currentPassword } : {}),
+            });
+            setCurrentPassword("");
             await onSaved();
           }, "Saved.");
         }}
@@ -331,10 +341,35 @@ function ProfileForm({
               aria-describedby={describedBy("account-email", { hasHint: true })}
             />
           </Field>
+
+          {changingEmail && (
+            <Field
+              htmlFor="account-current-password"
+              label="Current password"
+              required
+              hint="Needed to change the email you sign in with."
+            >
+              <PasswordInput
+                id="account-current-password"
+                autoComplete="current-password"
+                required
+                value={currentPassword}
+                onChange={(event) => setCurrentPassword(event.target.value)}
+                aria-describedby={describedBy("account-current-password", {
+                  hasHint: true,
+                })}
+              />
+            </Field>
+          )}
         </div>
 
         <div className="flex justify-end border-t border-border px-4 py-3">
-          <Button type="submit" disabled={unchanged || action.busy}>
+          <Button
+            type="submit"
+            disabled={
+              unchanged || action.busy || (changingEmail && currentPassword === "")
+            }
+          >
             {action.busy ? "Saving…" : "Save changes"}
           </Button>
         </div>

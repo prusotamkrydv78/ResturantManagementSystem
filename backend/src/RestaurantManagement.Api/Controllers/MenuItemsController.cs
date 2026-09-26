@@ -327,6 +327,8 @@ public sealed class MenuItemsController : ControllerBase
     /// </summary>
     [HttpGet("{id:guid}/image")]
     [AllowAnonymous]
+    [Microsoft.AspNetCore.RateLimiting.EnableRateLimiting(
+        RestaurantManagement.Api.RateLimiting.PublicRateLimiting.PublicMedia)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetImage(Guid id, CancellationToken cancellationToken)
@@ -340,7 +342,10 @@ public sealed class MenuItemsController : ControllerBase
 
         var (content, contentType) = result.Value;
 
-        Response.Headers.CacheControl = "public, max-age=31536000, immutable";
+        // A day, not a year. The address changes whenever the picture does, so a long
+        // lifetime cost nothing for replacements - but a deleted picture stayed in every
+        // cache that had seen it for a year, reachable by anybody holding the link.
+        Response.Headers.CacheControl = "public, max-age=86400";
 
         return File(content, contentType);
     }

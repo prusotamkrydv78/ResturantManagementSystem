@@ -50,6 +50,11 @@ export { refreshSession };
 export function updateMyProfile(payload: {
   fullName: string;
   email: string;
+  /**
+   * Required by the server when the email changes, and ignored otherwise. The email
+   * is the sign-in, so changing it is changing the credential.
+   */
+  currentPassword?: string;
 }): Promise<AuthUser> {
   return apiFetch<AuthUser>("/api/auth/me", {
     method: "PUT",

@@ -24,6 +24,23 @@ public static class AuthenticationErrors
     public static readonly Error AccountDeactivated =
         new("auth.account_deactivated", "This account has been deactivated.");
 
+    /// <summary>
+    /// Too many wrong passwords in a row; sign-in is paused for this account.
+    ///
+    /// Says so plainly rather than repeating "invalid email or password", which would
+    /// send the real owner round in circles retyping a password that is correct.
+    /// </summary>
+    public static readonly Error AccountLocked =
+        new(
+            "auth.account_locked",
+            "Too many unsuccessful sign-in attempts. Wait a few minutes and try again.");
+
+    /// <summary>An email change arrived without the password that authorises it.</summary>
+    public static readonly Error CurrentPasswordRequired =
+        new(
+            "auth.current_password_required",
+            "Enter your current password to change the email you sign in with.");
+
     /// <summary>The authenticated user no longer exists.</summary>
     public static readonly Error UserNotFound =
         new("auth.user_not_found", "The user could not be found.");

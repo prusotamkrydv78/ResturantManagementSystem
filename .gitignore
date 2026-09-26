@@ -27,6 +27,13 @@ TestResults/
 appsettings.*.local.json
 secrets.json
 
+# Holds the live database password and JWT signing key. Supply those on the host as
+# environment variables (ConnectionStrings__DefaultConnection, Jwt__Key) instead.
+# NOTE: this rule only stops the file being added again. A copy is already tracked,
+# so it also needs `git rm --cached` once - and both secrets are in the history, so
+# they must be rotated regardless.
+appsettings.Production.json
+
 # ---------------------------------------------------------------------------
 # Node / frontend
 # ---------------------------------------------------------------------------

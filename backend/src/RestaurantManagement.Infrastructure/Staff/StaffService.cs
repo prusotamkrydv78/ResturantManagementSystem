@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using RestaurantManagement.Application.Staff;
 using RestaurantManagement.Application.Staff.Dtos;
 using RestaurantManagement.Domain.Identity;
+using RestaurantManagement.Infrastructure.Identity;
 using RestaurantManagement.Domain.Media;
 using RestaurantManagement.Infrastructure.Persistence;
 using RestaurantManagement.Shared.Results;
@@ -300,10 +301,8 @@ public sealed class StaffService : IStaffService
             return Result.Failure<StaffResponse>(StaffErrors.NotFound);
         }
 
-        // Validated before the stored hash is touched. The replacement below happens in
-        // two writes, so a password rejected on the second one would leave the account
-        // with none at all; checking first means the only way to reach that state is
-        // the process dying mid-reset.
+        // Validated here because the replacement below writes the hash directly and so
+        // does not run the validators itself.
         foreach (var validator in _userManager.PasswordValidators)
         {
             var check = await validator.ValidateAsync(_userManager, member, request.Password);
@@ -317,21 +316,14 @@ public sealed class StaffService : IStaffService
             }
         }
 
-        // Through Identity rather than by writing a hash directly: both calls go via
-        // UpdatePasswordHash, which rotates the security stamp, and that is what makes
-        // the old password stop working everywhere rather than only at the next
-        // sign-in. Not the token-based reset, which would need a token provider to be
-        // registered for a token that is minted and consumed in the same breath.
-        var removed = await _userManager.RemovePasswordAsync(member);
-
-        if (!removed.Succeeded)
-        {
-            var reason = string.Join(" ", removed.Errors.Select(error => error.Description));
-
-            return Result.Failure<StaffResponse>(StaffErrors.PasswordResetFailed(reason));
-        }
-
-        var result = await _userManager.AddPasswordAsync(member, request.Password);
+        // One save for the hash and the stamp, and every session ended - see
+        // PasswordReplacement for why both.
+        var result = await PasswordReplacement.ReplaceAsync(
+            _userManager,
+            _dbContext,
+            member,
+            request.Password,
+            cancellationToken);
 
         if (!result.Succeeded)
         {
@@ -340,10 +332,6 @@ public sealed class StaffService : IStaffService
             return Result.Failure<StaffResponse>(StaffErrors.PasswordResetFailed(reason));
         }
 
-        // Sessions are left alone deliberately. Deactivating is the action that means
-        // "lock them out" and it revokes tokens; a reset is usually somebody standing
-        // in front of the manager asking to get back in, and signing out the handset
-        // they are holding would not help.
         _logger.LogInformation("Reset the password for staff account {StaffId}.", staffId);
 
         return Result.Success(ToResponse(member, restaurant.Value.Name));

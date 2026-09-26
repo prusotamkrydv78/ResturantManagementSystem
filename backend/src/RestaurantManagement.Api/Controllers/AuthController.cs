@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using RestaurantManagement.Api.Authentication;
+using RestaurantManagement.Api.RateLimiting;
 using RestaurantManagement.Application.Authentication;
 using RestaurantManagement.Application.Authentication.Dtos;
 using RestaurantManagement.Shared.Results;
@@ -39,17 +41,28 @@ public sealed class AuthController : ControllerBase
     /// <summary>Signs in with email and password.</summary>
     [HttpPost("login")]
     [AllowAnonymous]
+    [EnableRateLimiting(PublicRateLimiting.Login)]
     [ProducesResponseType(typeof(AuthResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
     public async Task<ActionResult<AuthResponse>> Login(
         LoginRequest request,
         CancellationToken cancellationToken)
     {
         var result = await _authService.LoginAsync(request, cancellationToken);
 
-        return result.IsFailure
-            ? ProblemFrom(result.Error!, StatusCodes.Status401Unauthorized)
-            : IssueSession(result.Value);
+        if (result.IsFailure)
+        {
+            // A locked account is "slow down", not "wrong password": 429, so the screen
+            // can say to wait rather than inviting another attempt that cannot succeed.
+            var status = result.Error == AuthenticationErrors.AccountLocked
+                ? StatusCodes.Status429TooManyRequests
+                : StatusCodes.Status401Unauthorized;
+
+            return ProblemFrom(result.Error!, status);
+        }
+
+        return IssueSession(result.Value);
     }
 
     /// <summary>
