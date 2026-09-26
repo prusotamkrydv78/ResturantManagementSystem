@@ -319,9 +319,14 @@ export function RecentDaysCard({ days }: { days: PlatformTrendDay[] }) {
           ...axisStyle(theme, true),
           position: "left" as const,
           beginAtZero: true,
+          // Whole numbers only. With nothing taken the scale runs 0 to 1 in tenths,
+          // and money() rounds each tenth to a whole number - which printed
+          // "1 1 1 1 1 1 0 0 0 0 0" up the side of an empty week.
           ticks: {
             ...axisStyle(theme, true).ticks,
             color: theme.primary,
+            precision: 0,
+            maxTicksLimit: 6,
             callback: (value) => money(Number(value)),
           },
         },
@@ -353,8 +358,9 @@ export function RecentDaysCard({ days }: { days: PlatformTrendDay[] }) {
         }
       />
       <ChartFrame
-        height={220}
+        height={180}
         summary={`Takings and orders for the last ${days.length} days. ${money(takings)} taken from ${orders} orders.`}
+        empty={orders === 0 ? `No orders in the last ${days.length} days` : undefined}
       >
         {data !== null && options !== null && (
           <Chart type="bar" data={data} options={options} />
@@ -487,8 +493,9 @@ export function HourCard({
         }
       />
       <ChartFrame
-        height={170}
+        height={140}
         summary={`Orders placed in each hour of today. Busiest hour ${clock(busiest.hour)} with ${busiest.ordersPlaced} orders.`}
+        empty={busiest.ordersPlaced === 0 ? "No orders yet today" : undefined}
       >
         {data !== null && options !== null && <Bar data={data} options={options} />}
       </ChartFrame>
@@ -605,9 +612,9 @@ export function TenderCard({ byMethod }: { byMethod: PlatformMethodTotal[] }) {
         }
       />
 
-      <div className="flex flex-1 flex-col gap-3 p-4">
+      <div className="flex flex-1 flex-col items-center gap-4 px-4 pt-2 pb-3 sm:flex-row">
         <div
-          className="relative mx-auto my-auto h-40 w-40"
+          className="relative h-32 w-32 shrink-0"
           onMouseLeave={() => setActive(null)}
         >
           {data !== null && options !== null && taken.length > 0 ? (
@@ -635,7 +642,7 @@ export function TenderCard({ byMethod }: { byMethod: PlatformMethodTotal[] }) {
         {/* The list is the legend, and the legend is a control. Each row is a real
             button: hovering it lifts its slice, and tabbing to it does the same, so
             the chart is readable without a pointer at all. */}
-        <ul className="-mx-2 flex flex-col">
+        <ul className="-mx-2 flex w-full min-w-0 flex-1 flex-col">
           {byMethod.map((row) => (
             <li key={row.method}>
               <button
@@ -645,7 +652,7 @@ export function TenderCard({ byMethod }: { byMethod: PlatformMethodTotal[] }) {
                 onFocus={() => setActive(row.method)}
                 onBlur={() => setActive(null)}
                 className={cn(
-                  "flex w-full items-baseline justify-between gap-3 rounded-md px-2 py-1.5 text-left transition-colors",
+                  "flex w-full items-baseline justify-between gap-3 rounded-md px-2 py-1 text-left transition-colors",
                   "focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
                   active === row.method ? "bg-surface-2" : "hover:bg-surface-2",
                 )}
@@ -853,10 +860,6 @@ export function ReportRangeCard({ days }: { days: PlatformReportDay[] }) {
     days[0] ?? { localDate: "", bills: 0, takings: 0, cancelled: 0, cancelledValue: 0 },
   );
 
-  // One label roughly every eight columns, whatever the range. A week reads as seven
-  // dates; a quarter reads as a dozen, which is a scale rather than a list.
-  const every = Math.max(1, Math.ceil(days.length / 12));
-
   const data = useMemo<ChartData<"bar" | "line", number[], string> | null>(() => {
     if (theme === null) {
       return null;
@@ -953,21 +956,28 @@ export function ReportRangeCard({ days }: { days: PlatformReportDay[] }) {
       scales: {
         x: {
           ...axisStyle(theme, false),
+          // Thinned by the axis itself, by the width it actually has. A fixed
+          // interval chosen for a desktop ran thirty dates into one smear on a phone.
           ticks: {
             ...axisStyle(theme, false).ticks,
-            autoSkip: false,
+            autoSkip: true,
+            autoSkipPadding: 18,
             maxRotation: 0,
-            callback: (_value, index) =>
-              index % every === 0 ? shortDay(days[index]?.localDate) : "",
+            callback: (_value, index) => shortDay(days[index]?.localDate),
           },
         },
         money: {
           ...axisStyle(theme, true),
           position: "left" as const,
           beginAtZero: true,
+          // Whole numbers only. With nothing taken the scale runs 0 to 1 in tenths,
+          // and money() rounds each tenth to a whole number - which printed
+          // "1 1 1 1 1 1 0 0 0 0 0" up the side of an empty week.
           ticks: {
             ...axisStyle(theme, true).ticks,
             color: theme.primary,
+            precision: 0,
+            maxTicksLimit: 6,
             callback: (value) => money(Number(value)),
           },
         },
@@ -979,7 +989,7 @@ export function ReportRangeCard({ days }: { days: PlatformReportDay[] }) {
         },
       },
     };
-  }, [days, drawn, every, theme]);
+  }, [days, drawn, theme]);
 
   return (
     <Surface className="flex h-full flex-col">
@@ -1000,8 +1010,9 @@ export function ReportRangeCard({ days }: { days: PlatformReportDay[] }) {
         }
       />
       <ChartFrame
-        height={260}
+        height={180}
         summary={`Takings and bills for each of ${days.length} days. ${money(takings)} from ${bills} bills.`}
+        empty={bills === 0 ? "Nothing settled in this range" : undefined}
       >
         {data !== null && options !== null && (
           <Chart type="bar" data={data} options={options} />
@@ -1115,8 +1126,9 @@ export function WeekdayCard({ byWeekday }: { byWeekday: PlatformWeekday[] }) {
         }
       />
       <ChartFrame
-        height={210}
+        height={180}
         summary={`Takings by day of the week. ${best.weekday} is the busiest at ${money(best.takings)}.`}
+        empty={total === 0 ? "Nothing settled in this range" : undefined}
       >
         {data !== null && options !== null && <Bar data={data} options={options} />}
       </ChartFrame>
@@ -1140,11 +1152,20 @@ export function WeekdayCard({ byWeekday }: { byWeekday: PlatformWeekday[] }) {
 function ChartFrame({
   height,
   summary,
+  empty,
   children,
 }: {
   /** The shortest this chart is worth drawing at, not the height it will get. */
   height: number;
   summary: string;
+  /**
+   * Said over the plot when there is nothing in it.
+   *
+   * An empty chart used to be a blank grid, which reads as a chart that failed to
+   * load. The axes still draw underneath, so the shape of the period stays visible;
+   * the label says the emptiness is real.
+   */
+  empty?: string;
   children: React.ReactNode;
 }) {
   const reduced = useReducedMotion();
@@ -1156,7 +1177,7 @@ function ChartFrame({
     children !== false && children !== null && children !== undefined;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col px-4 pt-2 pb-3">
+    <div className="flex min-h-0 flex-1 flex-col px-3 pt-1 pb-2">
       <div className="relative w-full flex-1" style={{ minHeight: height }}>
         <AnimatePresence mode="wait" initial={false}>
           {drawing ? (
@@ -1174,7 +1195,11 @@ function ChartFrame({
             // be defeated by whatever a dataset does with its own animation.
             <motion.div
               key="chart"
-              className="size-full"
+              // Pinned to the frame rather than sized as a percentage of it. The frame
+              // only has a minimum height, a percentage of which resolves to nothing, so
+              // Chart.js fell back to its default 150px canvas and left the rest of the
+              // card as an empty band under the plot.
+              className="absolute inset-0"
               initial={
                 reduced === true ? false : { clipPath: "inset(0% 100% 0% 0%)" }
               }
@@ -1192,7 +1217,7 @@ function ChartFrame({
             // slow endpoint does not end in a flicker.
             <motion.div
               key="waiting"
-              className="size-full"
+              className="absolute inset-0"
               initial={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.2 }}
@@ -1201,6 +1226,13 @@ function ChartFrame({
             </motion.div>
           )}
         </AnimatePresence>
+        {empty !== undefined && drawing && (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+            <span className="rounded-full border border-border bg-surface px-3 py-1.5 text-xs font-medium text-muted shadow-sm">
+              {empty}
+            </span>
+          </div>
+        )}
       </div>
       <p className="sr-only">{summary}</p>
     </div>

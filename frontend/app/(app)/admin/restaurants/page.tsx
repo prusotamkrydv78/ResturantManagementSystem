@@ -464,13 +464,24 @@ function RestaurantTable({
               onClick={(event) => open(event, restaurant.id)}
             >
               <Td>
+                <div className="flex items-center gap-3">
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    "flex size-10 shrink-0 items-center justify-center rounded-xl text-sm font-semibold",
+                    restaurant.isActive ? "bg-panel text-panel-fg" : "bg-danger-soft text-danger",
+                  )}
+                >
+                  {restaurant.name.trim().charAt(0).toUpperCase() || "?"}
+                </span>
+                <div className="flex min-w-0 flex-col">
                 <div className="flex items-center gap-2">
                   {/* The name is the way in. Everything this row summarises has a
                       fuller answer one click away, and a table of restaurants where
                       nothing is clickable makes a reader hunt for the verb. */}
                   <Link
                     href={`/admin/restaurants/${restaurant.id}`}
-                    className="rounded font-medium text-text hover:text-primary hover:underline"
+                    className="rounded font-semibold text-text hover:text-primary hover:underline"
                   >
                     {restaurant.name}
                   </Link>
@@ -485,10 +496,12 @@ function RestaurantTable({
                 {/* The slug and the city on one line. The slug is what appears in a
                     guest's URL, the city is how a person says which restaurant they
                     mean, and neither deserves a column of its own. */}
-                <span className="block text-2xs text-subtle">
-                  <span className="font-mono">{restaurant.slug}</span>
+                <span className="block text-xs text-muted">
+                  <span className="font-mono text-2xs">{restaurant.slug}</span>
                   {restaurant.city !== null && ` · ${restaurant.city}`}
                 </span>
+                </div>
+                </div>
               </Td>
               <Td>
                 {restaurant.managerId === null ? (
@@ -496,11 +509,19 @@ function RestaurantTable({
                     Unassigned
                   </Badge>
                 ) : (
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-text">{restaurant.managerName}</span>
-                    <span className="truncate text-2xs text-muted">
-                      {restaurant.managerEmail}
+                  <div className="flex items-center gap-2.5">
+                    <span
+                      aria-hidden="true"
+                      className="flex size-8 shrink-0 items-center justify-center rounded-full bg-surface-3 text-xs font-semibold text-muted"
+                    >
+                      {(restaurant.managerName ?? "?").trim().charAt(0).toUpperCase()}
                     </span>
+                    <div className="flex min-w-0 flex-col gap-0.5">
+                      <span className="font-medium text-text">{restaurant.managerName}</span>
+                      <span className="truncate text-2xs text-muted">
+                        {restaurant.managerEmail}
+                      </span>
+                    </div>
                   </div>
                 )}
               </Td>
@@ -577,6 +598,9 @@ function RestaurantTable({
                   )}
                   <RestaurantStaffDialog restaurant={restaurant} />
                   <EditRestaurantDialog restaurant={restaurant} onSaved={onChanged} />
+                  {/* Suspending stops a restaurant trading. Set apart from the
+                      everyday actions so it is never the one hit by a near miss. */}
+                  <span className="mx-1 h-5 w-px bg-border" aria-hidden="true" />
                   <RestaurantStatusButton
                     restaurant={restaurant}
                     onChanged={onChanged}
@@ -625,12 +649,12 @@ const RowAction = forwardRef<
         // Merged rather than replaced: asChild hands the trigger its own classes
         // through this prop, and overwriting them takes the open state with it.
         className={cn(
-          "inline-flex size-9 items-center justify-center rounded-md border border-border",
+          "inline-flex size-9 items-center justify-center rounded-full bg-surface-2",
           "text-muted transition-colors [&_svg]:size-4",
           "focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
           tone === "danger"
-            ? "hover:border-danger-border hover:bg-danger-soft hover:text-danger"
-            : "hover:bg-surface-3 hover:text-text",
+            ? "hover:bg-danger-soft hover:text-danger"
+            : "hover:bg-ink hover:text-surface",
           className,
         )}
       >
@@ -754,7 +778,7 @@ function AssignManagerDialog({
         description={`${restaurant.name} will be run by this person.`}
       >
         <form onSubmit={handleSubmit}>
-          <div className="flex flex-col gap-4 px-4 py-4">
+          <div className="flex flex-col gap-3 px-4 py-3">
             {error !== null && <FormError message={error} />}
 
             <fieldset className="flex flex-col gap-2">
@@ -780,7 +804,7 @@ function AssignManagerDialog({
             </fieldset>
 
             {mode === "create" ? (
-              <div className="flex flex-col gap-4 border-t border-border pt-4">
+              <div className="flex flex-col gap-3 border-t border-border pt-4">
                 <Field htmlFor={`name-${restaurant.id}`} label="Full name" required>
                   <Input
                     id={`name-${restaurant.id}`}
@@ -995,7 +1019,7 @@ function EditRestaurantDialog({
         description="Changing the slug breaks any guest ordering link already handed out."
       >
         <form onSubmit={handleSubmit}>
-          <div className="flex flex-col gap-4 px-4 py-4">
+          <div className="flex flex-col gap-3 px-4 py-3">
             {error !== null && <FormError message={error} />}
 
             <Field htmlFor={`edit-name-${restaurant.id}`} label="Name" required>
@@ -1055,7 +1079,7 @@ function EditRestaurantDialog({
               />
             </Field>
 
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <Field htmlFor={`edit-city-${restaurant.id}`} label="City">
                 <Input
                   id={`edit-city-${restaurant.id}`}
@@ -1183,7 +1207,7 @@ function RestaurantStatusButton({
             : "It will be able to take orders again."
         }
       >
-        <div className="flex flex-col gap-3 px-4 py-4">
+        <div className="flex flex-col gap-3 px-4 py-3">
           {error !== null && <FormError message={error} />}
 
           {suspending ? (
@@ -1281,7 +1305,7 @@ function RestaurantStaffDialog({ restaurant }: { restaurant: RestaurantSummary }
         title={`Staff at ${restaurant.name}`}
         description="Read-only. The manager of this restaurant hires and suspends."
       >
-        <div className="flex flex-col gap-3 px-4 py-4">
+        <div className="flex flex-col gap-3 px-4 py-3">
           {error !== null && <FormError message={error} />}
 
           {staff === null && error === null ? (
@@ -1380,7 +1404,7 @@ function UnassignManagerButton({
         title="Remove the manager?"
         description={`${restaurant.managerName} will no longer run ${restaurant.name}.`}
       >
-        <div className="flex flex-col gap-3 px-4 py-4">
+        <div className="flex flex-col gap-3 px-4 py-3">
           {error !== null && <FormError message={error} />}
           <p className="text-sm text-muted">
             The account stays active and can be assigned to another restaurant. The

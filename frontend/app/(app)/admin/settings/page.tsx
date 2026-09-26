@@ -81,7 +81,7 @@ function PlatformSettingsView() {
       <PageBody>
         <SystemCard />
 
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
           <ProfileCard />
           <PasswordCard />
         </div>
@@ -145,7 +145,7 @@ function SystemCard() {
 
   if (system === null) {
     return (
-      <Surface className="flex flex-col gap-3 p-4">
+      <Surface className="flex flex-col gap-3 p-3.5">
         <Skeleton className="h-3 w-24" />
         <Skeleton className="h-4 w-64" />
       </Surface>
@@ -260,7 +260,7 @@ function ProfileCard() {
 
   if (user === null) {
     return (
-      <Surface className="flex h-full flex-col gap-3 p-4">
+      <Surface className="flex h-full flex-col gap-3 p-3.5">
         <Skeleton className="h-4 w-32" />
         <Skeleton className="h-9 w-full" />
       </Surface>
@@ -313,7 +313,7 @@ function ProfileForm({
           }, "Saved.");
         }}
       >
-        <div className="flex flex-1 flex-col gap-4 p-4">
+        <div className="flex flex-1 flex-col gap-3 p-3.5">
           <Report action={action} />
 
           <Field htmlFor="account-name" label="Full name" required>
@@ -396,7 +396,7 @@ function PasswordCard() {
         title="Password and sessions"
         description="There is no self-service reset on this platform. This is the only way to change it."
       />
-      <div className="flex flex-1 flex-col gap-4 p-4">
+      <div className="flex flex-1 flex-col gap-3 p-3.5">
         <Report action={password} />
 
         <Field htmlFor="current-password" label="Current password" required>
@@ -540,12 +540,12 @@ function DefaultsCard() {
       />
 
       {settings === null ? (
-        <div className="p-4">
+        <div className="p-3.5">
           <Skeleton className="h-9 w-full" />
         </div>
       ) : (
         <>
-          <div className="flex flex-col gap-4 p-4 sm:flex-row">
+          <div className="flex flex-col gap-3 p-3.5 sm:flex-row">
             <Report action={action} />
 
             <Field htmlFor="default-vat" label="VAT" className="sm:w-48">
@@ -682,7 +682,7 @@ function ActivityCard() {
       />
 
       {rows === null ? (
-        <div className="flex flex-col gap-3 p-4">
+        <div className="flex flex-col gap-3 p-3.5">
           <Skeleton className="h-4 w-2/3" />
           <Skeleton className="h-4 w-1/2" />
         </div>

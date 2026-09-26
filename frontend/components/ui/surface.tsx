@@ -12,7 +12,7 @@ export function Surface({
   return (
     <div
       className={cn(
-        "rounded-lg border border-border bg-surface",
+        "ui-surface rounded-lg border border-border bg-surface",
         className,
       )}
       {...divProps}
@@ -37,7 +37,7 @@ export function SurfaceHeader({
   return (
     <div
       className={cn(
-        "flex flex-wrap items-start justify-between gap-3 border-b border-border px-4 py-3",
+        "ui-surface-header flex flex-wrap items-start justify-between gap-3 border-b border-border px-4 py-3",
         className,
       )}
     >

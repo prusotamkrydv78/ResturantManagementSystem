@@ -8,17 +8,19 @@ import {
   Boxes,
   ChefHat,
   ClipboardList,
-  Flame,
   Mail,
   MapPin,
   Pencil,
   Phone,
+  ReceiptText,
   Star,
   UtensilsCrossed,
+  Wallet,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { LinkButton } from "@/components/ui/button";
+import { StatTile } from "@/components/ui/stat-tile";
 import { Surface, SurfaceHeader } from "@/components/ui/surface";
 import { ErrorState, Skeleton } from "@/components/ui/states";
 import { Table, TableWrap, Td, Th, Tr } from "@/components/ui/table";
@@ -133,7 +135,7 @@ function PlatformRestaurant() {
           title="Loading…"
         />
         <PageBody>
-          <Surface className="flex flex-col gap-3 p-4">
+          <Surface className="flex flex-col gap-3 p-3.5">
             <Skeleton className="h-3 w-20" />
             <Skeleton className="h-9 w-44" />
             <Skeleton className="h-3 w-64" />
@@ -145,7 +147,6 @@ function PlatformRestaurant() {
   }
 
   const { today, yesterday, setup, reviews } = detail;
-  const peak = Math.max(today.takings, yesterday.takings, 1);
 
   return (
     <>
@@ -168,7 +169,7 @@ function PlatformRestaurant() {
         {/* Identity first, and the one fact that outranks everything else on the
             page: whether this restaurant can trade at all. A suspended room with a
             beautiful fortnight behind it is still a room taking no orders now. */}
-        <Surface className="flex flex-wrap items-start justify-between gap-4 p-4">
+        <Surface className="flex flex-wrap items-start justify-between gap-3 p-3.5">
           <div className="flex min-w-0 flex-col gap-1.5">
             <div className="flex flex-wrap items-center gap-2">
               <span className="font-mono text-xs text-subtle">{detail.slug}</span>
@@ -234,69 +235,79 @@ function PlatformRestaurant() {
           </div>
         </Surface>
 
-        {/* Today, with the floor beside it. */}
-        <Surface className="p-4">
-          <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-4">
-            <div className="flex min-w-0 flex-col gap-1">
-              <span className="text-2xs font-semibold tracking-wider text-subtle uppercase">
-                Taken today
-              </span>
-              <p className="tabular text-[2rem] leading-10 font-semibold text-text">
-                {money(today.takings, 2)}
-              </p>
-              <p className="text-xs text-muted">
-                {today.ordersPlaced === 0
-                  ? "No orders placed yet today."
-                  : `${today.ordersPlaced} ${today.ordersPlaced === 1 ? "order" : "orders"} placed · ${today.completed} settled${today.cancelled > 0 ? ` · ${today.cancelled} cancelled` : ""}${today.averageOrderValue > 0 ? ` · ${money(today.averageOrderValue, 2)} average bill` : ""}`}
-              </p>
-            </div>
+        {/* Today, as four tiles: the money in lime, then orders, the floor right
+            now, and what guests think. The same tiles the overview and the report
+            use, so a figure looks the same wherever it appears. */}
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <StatTile
+            featured
+            icon={Wallet}
+            label="Taken today"
+            value={money(today.takings, 2)}
+            delta={
+              yesterday.takings > 0 ? (
+                <span className="text-xs font-semibold text-accent-fg">
+                  {today.takings >= yesterday.takings
+                    ? "Past yesterday"
+                    : `${Math.round((today.takings / yesterday.takings) * 100)}% of yesterday`}
+                </span>
+              ) : undefined
+            }
+            footnote={
+              yesterday.takings > 0
+                ? `Yesterday ${money(yesterday.takings, 2)}`
+                : "Nothing was taken yesterday"
+            }
+          />
+          <StatTile
+            icon={ReceiptText}
+            tone="indigo"
+            label="Orders today"
+            value={today.ordersPlaced}
+            footnote={
+              today.ordersPlaced === 0
+                ? "No orders placed yet today"
+                : `${today.completed} settled${today.cancelled > 0 ? ` · ${today.cancelled} cancelled` : ""}${today.averageOrderValue > 0 ? ` · ${money(today.averageOrderValue, 2)} average` : ""}`
+            }
+          />
+          <StatTile
+            icon={ClipboardList}
+            tone="peach"
+            label="Open right now"
+            value={detail.openOrders}
+            footnote={
+              detail.platesAtPass === 0 ? (
+                "No plates waiting at the pass"
+              ) : (
+                <span className="font-semibold text-warning">
+                  {detail.platesAtPass} {detail.platesAtPass === 1 ? "plate" : "plates"} waiting at the pass
+                </span>
+              )
+            }
+          />
+          <StatTile
+            icon={Star}
+            tone="rose"
+            label="Guest rating"
+            value={
+              reviews.averageRating === null ? (
+                "—"
+              ) : (
+                <>
+                  {reviews.averageRating.toFixed(1)}
+                  <span className="ml-1 text-lg font-medium text-subtle">/ 5</span>
+                </>
+              )
+            }
+            footnote={
+              reviews.count === 0
+                ? "No reviews yet"
+                : `From ${reviews.count} ${reviews.count === 1 ? "review" : "reviews"}`
+            }
+          />
+        </div>
 
-            <div className="flex shrink-0 items-start gap-5">
-              <Counter
-                icon={ClipboardList}
-                value={detail.openOrders}
-                label="open orders"
-              />
-              <Counter
-                icon={Flame}
-                value={detail.platesAtPass}
-                label="at the pass"
-                tone={detail.platesAtPass > 0 ? "warning" : "neutral"}
-              />
-              <Counter
-                icon={Star}
-                value={reviews.averageRating ?? 0}
-                label={
-                  reviews.count === 0
-                    ? "no reviews"
-                    : `from ${reviews.count} ${reviews.count === 1 ? "review" : "reviews"}`
-                }
-                decimals={1}
-              />
-            </div>
-          </div>
-
-          <div className="mt-4 flex flex-col gap-1.5">
-            <Bar
-              label="Today"
-              amount={today.takings}
-              share={today.takings / peak}
-              tone="primary"
-            />
-            <Bar
-              label="Yesterday"
-              amount={yesterday.takings}
-              share={yesterday.takings / peak}
-              tone="muted"
-            />
-          </div>
-
-          <p className="mt-2.5 text-2xs text-subtle">
-            Service day {detail.localDate} · read at {formatTime(detail.serverUtcNow)}
-          </p>
-        </Surface>
-
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 xl:grid-cols-3">
           <div className="xl:col-span-2">
             <RecentDaysCard days={detail.days} />
           </div>
@@ -380,7 +391,7 @@ function PlatformRestaurant() {
           )}
         </Surface>
 
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 xl:grid-cols-3">
           {/* The roster. Read-only here: the manager of this restaurant hires and
               suspends, and a platform administrator watching over their shoulder
               should not have a second set of controls for it. */}
@@ -601,66 +612,7 @@ function SetupTile({
 }
 
 /** A number with what it counts underneath it. */
-function Counter({
-  icon: Icon,
-  value,
-  label,
-  tone = "neutral",
-  decimals = 0,
-}: {
-  icon: LucideIcon;
-  value: number;
-  label: string;
-  tone?: "neutral" | "warning";
-  decimals?: number;
-}) {
-  return (
-    <div className="flex flex-col items-end gap-0.5">
-      <span
-        className={cn(
-          "tabular flex items-center gap-1.5 text-xl font-semibold",
-          tone === "warning" ? "text-warning" : "text-text",
-        )}
-      >
-        <Icon className="size-4 text-subtle" aria-hidden="true" />
-        {money(value, decimals)}
-      </span>
-      <span className="text-2xs whitespace-nowrap text-muted">{label}</span>
-    </div>
-  );
-}
-
 /** Today against yesterday, on one scale. */
-function Bar({
-  label,
-  amount,
-  share,
-  tone,
-}: {
-  label: string;
-  amount: number;
-  share: number;
-  tone: "primary" | "muted";
-}) {
-  return (
-    <div className="flex items-center gap-3">
-      <span className="w-20 shrink-0 text-xs text-muted">{label}</span>
-      <span className="h-2 flex-1 overflow-hidden rounded-full bg-surface-3">
-        <span
-          className={cn(
-            "block h-full rounded-full",
-            tone === "primary" ? "bg-primary" : "bg-border",
-          )}
-          style={{ width: `${Math.max(0, Math.min(1, share)) * 100}%` }}
-        />
-      </span>
-      <span className="tabular w-24 shrink-0 text-right text-xs text-muted">
-        {money(amount, 2)}
-      </span>
-    </div>
-  );
-}
-
 function money(amount: number, decimals: number): string {
   return amount.toLocaleString(undefined, {
     minimumFractionDigits: decimals,
@@ -678,12 +630,4 @@ function formatDate(isoString: string): string {
         month: "short",
         day: "numeric",
       });
-}
-
-function formatTime(isoString: string): string {
-  const parsed = new Date(isoString);
-
-  return Number.isNaN(parsed.getTime())
-    ? "—"
-    : parsed.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
 }

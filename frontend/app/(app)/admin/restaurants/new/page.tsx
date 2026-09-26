@@ -139,10 +139,10 @@ function NewRestaurant() {
       />
 
       <PageBody>
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        <form onSubmit={handleSubmit} className="flex w-full max-w-4xl flex-col gap-3">
           {error !== null && (
             <Surface>
-              <div className="px-4 py-4">
+              <div className="px-4 py-3">
                 <FormError message={error} />
               </div>
             </Surface>
@@ -154,8 +154,8 @@ function NewRestaurant() {
               description="Only the name is required. Everything else can be filled in later."
             />
 
-            <div className="flex flex-col gap-4 px-4 py-4">
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="flex flex-col gap-3 px-4 py-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <Field htmlFor="name" label="Name" required>
                   <Input
                     id="name"
@@ -190,7 +190,7 @@ function NewRestaurant() {
                 />
               </Field>
 
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <Field htmlFor="city" label="City">
                   <Input
                     id="city"
@@ -233,8 +233,8 @@ function NewRestaurant() {
               description="A restaurant with nobody assigned cannot trade, so this is part of setting one up rather than a later step."
             />
 
-            <div className="flex flex-col gap-4 px-4 py-4">
-              <fieldset className="flex flex-col gap-2">
+            <div className="flex flex-col gap-3 px-4 py-3">
+              <fieldset className="grid gap-2 md:grid-cols-3">
                 <legend className="sr-only">How to assign a manager</legend>
 
                 <ModeOption
@@ -249,6 +249,9 @@ function NewRestaurant() {
                   name="manager-mode"
                   checked={mode === "existing"}
                   onSelect={() => setMode("existing")}
+                  // Not offered when there is nobody to choose. Selecting it used to
+                  // be possible with its own caption saying there was no one.
+                  disabled={unassigned !== null && unassigned.length === 0}
                   title="Use an existing manager"
                   detail={
                     unassigned === null
@@ -269,7 +272,7 @@ function NewRestaurant() {
               </fieldset>
 
               {mode === "create" && (
-                <div className="flex flex-col gap-4 border-t border-border pt-4">
+                <div className="flex flex-col gap-3 border-t border-border pt-4">
                   <Field htmlFor="managerFullName" label="Manager name" required>
                     <Input
                       id="managerFullName"
@@ -280,7 +283,7 @@ function NewRestaurant() {
                     />
                   </Field>
 
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <Field htmlFor="managerEmail" label="Manager email" required>
                       <Input
                         id="managerEmail"
@@ -360,25 +363,30 @@ function ModeOption({
   onSelect,
   title,
   detail,
+  disabled = false,
 }: {
   name: string;
   checked: boolean;
   onSelect: () => void;
   title: string;
   detail: string;
+  disabled?: boolean;
 }) {
   return (
     <label
-      className={`flex cursor-pointer items-start gap-2.5 rounded-md border px-3 py-2.5 transition-colors ${
-        checked
-          ? "border-primary-border bg-primary-soft"
-          : "border-border bg-surface hover:bg-surface-2"
+      className={`flex items-start gap-2.5 rounded-xl border px-3 py-3 transition-colors ${
+        disabled
+          ? "cursor-not-allowed border-border bg-surface-2 opacity-60"
+          : checked
+            ? "cursor-pointer border-primary-border bg-primary-soft"
+            : "cursor-pointer border-border bg-surface hover:bg-surface-2"
       }`}
     >
       <input
         type="radio"
         name={name}
         checked={checked}
+        disabled={disabled}
         onChange={onSelect}
         className="mt-0.5 size-3.5 shrink-0 accent-[var(--primary)]"
       />

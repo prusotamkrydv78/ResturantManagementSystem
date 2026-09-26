@@ -5,7 +5,11 @@ import Link from "next/link";
 import {
   ArrowDown,
   ArrowUp,
+  Ban,
+  CalendarRange,
   ChartNoAxesColumn,
+  ReceiptText,
+  Wallet,
   Download,
   Minus,
   Search,
@@ -14,8 +18,8 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { StatTile } from "@/components/ui/stat-tile";
 import { Surface, SurfaceHeader } from "@/components/ui/surface";
 import { EmptyState, ErrorState, TableSkeleton } from "@/components/ui/states";
 import { Table, TableWrap, Td, Th, Tr } from "@/components/ui/table";
@@ -157,65 +161,71 @@ function PlatformReports() {
             offered two date pickers, which made "how did last week go" a typing
             exercise; almost nobody asks a report for an arbitrary window before they
             have asked it for the obvious ones. */}
-        <Surface>
-          <div className="flex flex-col gap-3 px-4 py-3">
-            <div className="flex flex-wrap items-center gap-1.5">
-              {PRESETS.map((option) => (
-                <RangeChip
-                  key={option.key}
-                  active={preset === option.key}
-                  onClick={() => apply(presetRange(option.key), option.key)}
-                >
-                  {option.label}
-                </RangeChip>
-              ))}
-            </div>
-
-            <form
-              className="flex flex-wrap items-end gap-3 border-t border-border pt-3"
-              onSubmit={(event) => {
-                event.preventDefault();
-                apply({ from, to }, "custom");
-              }}
-            >
-              <Field htmlFor="from" label="From" className="w-40">
-                <Input
-                  id="from"
-                  type="date"
-                  value={from}
-                  onChange={(event) => setFrom(event.target.value)}
-                />
-              </Field>
-
-              <Field htmlFor="to" label="To" className="w-40">
-                <Input
-                  id="to"
-                  type="date"
-                  value={to}
-                  onChange={(event) => setTo(event.target.value)}
-                />
-              </Field>
-
-              <Button type="submit" variant="secondary">
-                Apply
-              </Button>
-
-              {report !== null && (
-                <p className="ml-auto text-right text-xs text-muted">
-                  <span className="block text-sm text-text">
-                    {report.fromLocalDate === report.toLocalDate
-                      ? report.fromLocalDate
-                      : `${report.fromLocalDate} → ${report.toLocalDate}`}{" "}
-                    <span className="text-muted">
-                      ({report.dayCount} {report.dayCount === 1 ? "day" : "days"})
-                    </span>
-                  </span>
-                  against {report.previous.fromLocalDate} →{" "}
-                  {report.previous.toLocalDate}
-                </p>
-              )}
-            </form>
+        {/* One toolbar row: the presets, a custom range, and what the range is
+            being read against. It used to be a tall card with the dates on a second
+            row, most of its width empty. */}
+        <Surface className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2.5">
+          <div className="flex flex-wrap items-center gap-1.5">
+            {PRESETS.map((option) => (
+              <RangeChip
+                key={option.key}
+                active={preset === option.key}
+                onClick={() => apply(presetRange(option.key), option.key)}
+              >
+                {option.label}
+              </RangeChip>
+            ))}
           </div>
+
+          <span className="hidden h-6 w-px bg-border md:block" aria-hidden="true" />
+
+          <form
+            className="flex flex-wrap items-center gap-2"
+            onSubmit={(event) => {
+              event.preventDefault();
+              apply({ from, to }, "custom");
+            }}
+          >
+            <CalendarRange className="size-4 text-subtle" aria-hidden="true" />
+            <div className="w-36">
+              <Input
+                id="from"
+                type="date"
+                aria-label="From"
+                className="h-8 text-sm"
+                value={from}
+                onChange={(event) => setFrom(event.target.value)}
+              />
+            </div>
+            <span className="text-xs text-subtle">to</span>
+            <div className="w-36">
+              <Input
+                id="to"
+                type="date"
+                aria-label="To"
+                className="h-8 text-sm"
+                value={to}
+                onChange={(event) => setTo(event.target.value)}
+              />
+            </div>
+            <Button type="submit" size="sm">
+              Apply
+            </Button>
+          </form>
+
+          {report !== null && (
+            <p className="ml-auto text-right text-xs leading-tight text-muted">
+              <span className="block font-medium text-text">
+                {report.fromLocalDate === report.toLocalDate
+                  ? report.fromLocalDate
+                  : `${report.fromLocalDate} → ${report.toLocalDate}`}{" "}
+                <span className="font-normal text-muted">
+                  · {report.dayCount} {report.dayCount === 1 ? "day" : "days"}
+                </span>
+              </span>
+              against {report.previous.fromLocalDate} → {report.previous.toLocalDate}
+            </p>
+          )}
         </Surface>
 
         {error !== null && (
@@ -241,34 +251,44 @@ function PlatformReports() {
                 carries the same figure for the period of equal length immediately
                 before, so "collected 412,000" becomes "collected 412,000, up eight per
                 cent", which is the sentence somebody actually repeats. */}
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <Stat
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <StatTile
+                featured
+                icon={Wallet}
                 label="Collected"
                 value={amount(report.paymentTotal)}
-                previous={report.previous.paymentTotal}
-                current={report.paymentTotal}
-                hint={`${report.paymentCount} ${report.paymentCount === 1 ? "bill" : "bills"} from ${report.completedCount} ${report.completedCount === 1 ? "order" : "orders"} closed`}
+                delta={deltaOf(report.paymentTotal, report.previous.paymentTotal)}
+                footnote={`${report.paymentCount} ${report.paymentCount === 1 ? "bill" : "bills"} from ${report.completedCount} ${report.completedCount === 1 ? "order" : "orders"} closed`}
               />
-              <Stat
+              <StatTile
+                icon={ReceiptText}
+                tone="indigo"
                 label="Average bill"
                 value={amount(report.averageOrderValue)}
-                previous={report.previous.averageOrderValue}
-                current={report.averageOrderValue}
-                hint="Across every restaurant"
+                delta={deltaOf(report.averageOrderValue, report.previous.averageOrderValue)}
+                footnote="Across every restaurant"
               />
-              <Stat
+              <StatTile
+                icon={Store}
+                tone="sky"
                 label="Trading"
-                value={`${report.tradingCount} of ${report.restaurantCount}`}
-                hint="Took at least one payment"
+                value={
+                  <>
+                    {report.tradingCount}
+                    <span className="ml-1 text-lg font-medium text-subtle">
+                      / {report.restaurantCount}
+                    </span>
+                  </>
+                }
+                footnote="Took at least one payment"
               />
-              <Stat
+              <StatTile
+                icon={Ban}
+                tone="rose"
                 label="Not taken"
                 value={amount(report.cancelledValue)}
-                previous={report.previous.cancelledValue}
-                current={report.cancelledValue}
-                invert
-                hint={`${report.cancelledCount} cancelled, never revenue`}
-                tone="warning"
+                delta={deltaOf(report.cancelledValue, report.previous.cancelledValue, true)}
+                footnote={`${report.cancelledCount} cancelled, never revenue`}
               />
             </div>
 
@@ -293,7 +313,7 @@ function PlatformReports() {
             {/* The spine. */}
             <ReportRangeCard days={report.days} />
 
-            <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+            <div className="grid grid-cols-1 gap-3 xl:grid-cols-3">
               <div className="xl:col-span-2">
                 <WeekdayCard byWeekday={report.byWeekday} />
               </div>
@@ -580,7 +600,7 @@ function RangeChip({
       onClick={onClick}
       aria-pressed={active}
       className={cn(
-        "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+        "ui-chip rounded-full border px-3 py-1 text-xs font-medium transition-colors",
         "focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
         active
           ? "border-primary-border bg-primary-soft text-primary"
@@ -789,45 +809,15 @@ function quote(value: string): string {
 /* Small pieces                                                               */
 /* -------------------------------------------------------------------------- */
 
-function Stat({
-  label,
-  value,
-  hint,
-  tone = "neutral",
-  current,
-  previous,
-  invert = false,
-}: {
-  label: string;
-  value: string;
-  hint: string;
-  tone?: "neutral" | "warning";
-  /** Given together, these draw the movement against the period before. */
-  current?: number;
-  previous?: number;
-  /** True where going up is bad news, as it is for cancellations. */
-  invert?: boolean;
-}) {
-  return (
-    <Surface className="flex flex-col gap-0.5 px-4 py-3">
-      <p className="text-2xs font-semibold tracking-wider text-subtle uppercase">
-        {label}
-      </p>
-      <div className="flex flex-wrap items-baseline gap-2">
-        <p
-          className={cn(
-            "tabular text-2xl font-semibold",
-            tone === "warning" ? "text-warning" : "text-text",
-          )}
-        >
-          {value}
-        </p>
-        {current !== undefined && previous !== undefined && (
-          <Delta current={current} previous={previous} invert={invert} />
-        )}
-      </div>
-      <p className="text-xs text-muted">{hint}</p>
-    </Surface>
+/**
+ * The movement to draw beside a headline, or nothing.
+ *
+ * Decided here rather than inside Delta, because the tile draws a pill around
+ * whatever it is given - and a component that renders null still counts as given.
+ */
+function deltaOf(current: number, previous: number, invert = false) {
+  return previous === 0 || current === previous ? undefined : (
+    <Delta current={current} previous={previous} invert={invert} />
   );
 }
 

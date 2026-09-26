@@ -51,7 +51,7 @@ export function PageHeader({
   const crumbs = crumbsFor(pathname, params, crumb);
 
   return (
-    <header className="border-b border-border bg-surface">
+    <header className="ui-page-header border-b border-border bg-surface">
       <div className="flex flex-col gap-3 px-4 py-3.5">
         {crumbs.length > 0 && (
           <nav aria-label="Breadcrumb">
@@ -87,7 +87,7 @@ export function PageHeader({
 
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex min-w-0 flex-col gap-1">
-            <h1 className="text-2xl font-semibold text-text">{title}</h1>
+            <h1 className="ui-page-title text-2xl font-semibold text-text">{title}</h1>
             {description !== undefined && (
               <p className="max-w-2xl text-sm text-muted">{description}</p>
             )}
@@ -121,7 +121,7 @@ export function PageBody({
   return (
     <div
       className={cn(
-        "flex flex-col gap-4 px-4 py-4",
+        "ui-page-body flex flex-col gap-4 px-4 py-4",
         className,
       )}
     >

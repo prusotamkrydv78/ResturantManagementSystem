@@ -42,7 +42,7 @@ export function Th({
     <th
       scope="col"
       className={cn(
-        "border-b border-border bg-surface-2 px-4 py-2",
+        "ui-th border-b border-border bg-surface-2 px-4 py-2",
         "text-2xs font-semibold tracking-wide text-muted uppercase",
         className,
       )}
@@ -60,7 +60,7 @@ export function Td({
 }: React.TdHTMLAttributes<HTMLTableCellElement>) {
   return (
     <td
-      className={cn("border-b border-border px-4 py-2.5 align-middle text-sm", className)}
+      className={cn("ui-td border-b border-border px-4 py-2.5 align-middle text-sm", className)}
       {...tdProps}
     >
       {children}

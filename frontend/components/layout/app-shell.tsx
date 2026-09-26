@@ -9,6 +9,8 @@ import {
   SidebarNav,
   UserPanel,
 } from "@/components/layout/sidebar";
+import { AdminShell } from "@/components/layout/admin-shell";
+import { useAuth } from "@/features/auth/auth-context";
 import { LiveUpdatesBanner } from "@/lib/realtime/live-updates-banner";
 
 /**
@@ -19,6 +21,17 @@ import { LiveUpdatesBanner } from "@/lib/realtime/live-updates-banner";
  * content column keeps its full width on a phone.
  */
 export function AppShell({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth();
+
+  // The platform owner gets their own frame; see AdminShell for why.
+  if (user?.platformRole === "SuperAdmin") {
+    return <AdminShell>{children}</AdminShell>;
+  }
+
+  return <OperationsShell>{children}</OperationsShell>;
+}
+
+function OperationsShell({ children }: { children: React.ReactNode }) {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
   return (

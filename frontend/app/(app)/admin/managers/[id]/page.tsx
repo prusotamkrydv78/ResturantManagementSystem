@@ -117,7 +117,7 @@ function ManagerEdit() {
       <>
         <PageHeader title="Loading…" />
         <PageBody>
-          <Surface className="flex flex-col gap-3 p-4">
+          <Surface className="flex flex-col gap-3 p-3.5">
             <Skeleton className="h-4 w-40" />
             <Skeleton className="h-3 w-56" />
           </Surface>
@@ -141,7 +141,7 @@ function ManagerEdit() {
       />
 
       <PageBody>
-        <Surface className="flex flex-wrap items-center justify-between gap-3 p-4">
+        <Surface className="flex flex-wrap items-center justify-between gap-3 p-3.5">
           <div className="flex flex-wrap items-center gap-2">
             {/* Suspension outranks assignment: a suspended account cannot sign in,
                 so saying only "Assigned" would be misleading. */}
@@ -177,13 +177,13 @@ function ManagerEdit() {
           )}
         </Surface>
 
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-          <div className="flex flex-col gap-4 xl:col-span-2">
+        <div className="grid grid-cols-1 gap-3 xl:grid-cols-3">
+          <div className="flex flex-col gap-3 xl:col-span-2">
             <AccountCard manager={manager} onSaved={refresh} />
             <PasswordCard manager={manager} />
           </div>
 
-          <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-3">
             <AssignmentCard
               manager={manager}
               restaurants={restaurants}
@@ -235,7 +235,7 @@ function AccountCard({
         description="What this person is called, and the address they sign in with."
       />
       <form onSubmit={(event) => void handleSubmit(event)}>
-        <div className="flex flex-col gap-4 p-4">
+        <div className="flex flex-col gap-3 p-3.5">
           <Report action={action} />
 
           <Field htmlFor="manager-name" label="Full name" required>
@@ -322,7 +322,7 @@ function AssignmentCard({
             : `Currently running ${manager.restaurant.name}.`
         }
       />
-      <div className="flex flex-1 flex-col gap-4 p-4">
+      <div className="flex flex-1 flex-col gap-3 p-3.5">
         <Report action={action} />
 
         <Field
@@ -395,7 +395,7 @@ function PasswordCard({ manager }: { manager: Manager }) {
         title="Password"
         description="There is no self-service reset. This is the only way back in for a manager who has lost theirs."
       />
-      <div className="flex flex-col gap-4 p-4">
+      <div className="flex flex-col gap-3 p-3.5">
         <Report action={action} />
 
         <Field
@@ -463,7 +463,7 @@ function AccessCard({
             : "This account is suspended and cannot sign in."
         }
       />
-      <div className="flex flex-1 flex-col gap-3 p-4">
+      <div className="flex flex-1 flex-col gap-3 p-3.5">
         <Report action={action} />
 
         <p className="text-sm text-muted">
@@ -496,7 +496,10 @@ function AccessCard({
         )}
         <Button
           variant={suspending ? "danger" : "secondary"}
-          disabled={action.busy}
+          // The server refuses to suspend a manager who still runs a restaurant, and
+          // the text above already says so; offering the button anyway only let the
+          // refusal arrive after two clicks.
+          disabled={action.busy || (suspending && manager.isAssigned)}
           onClick={() => {
             // Restoring is harmless and undoes itself; suspending signs somebody out
             // of a live service, so only that one asks twice.

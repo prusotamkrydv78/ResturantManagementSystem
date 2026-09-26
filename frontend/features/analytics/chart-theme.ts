@@ -76,7 +76,7 @@ export function useChartTheme(): ChartTheme | null {
     const observer = new MutationObserver(read);
     observer.observe(document.documentElement, {
       attributes: true,
-      attributeFilter: ["data-theme"],
+      attributeFilter: ["data-theme", "data-surface"],
     });
 
     const dark = window.matchMedia("(prefers-color-scheme: dark)");

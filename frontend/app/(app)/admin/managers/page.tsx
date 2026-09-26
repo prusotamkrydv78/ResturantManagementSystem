@@ -567,7 +567,7 @@ function CreateManagerDialog({
         description="Creates a restaurant manager account. A restaurant can be assigned now or later."
       >
         <form onSubmit={handleSubmit}>
-          <div className="flex flex-col gap-4 px-4 py-4">
+          <div className="flex flex-col gap-3 px-4 py-3">
             {error !== null && <FormError message={error} />}
 
             <Field htmlFor="new-manager-name" label="Full name" required>

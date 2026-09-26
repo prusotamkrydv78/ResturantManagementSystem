@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils/cn";
  * dropdown in `select.tsx` cannot drift apart.
  */
 export const controlClasses = cn(
-  "w-full rounded-md border bg-surface px-2.5 text-base text-text",
+  "ui-control w-full rounded-md border bg-surface px-2.5 text-base text-text",
   "border-border-strong placeholder:text-subtle",
   "transition-colors duration-100",
   "hover:border-border-strong",
