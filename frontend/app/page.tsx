@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { SurfaceScope } from "@/components/layout/surface-scope";
 import { HeroFloaters } from "@/features/landing/hero-floaters";
+import { PageLoader } from "@/features/landing/page-loader";
 import { LandingScroll } from "@/features/landing/landing-scroll";
 import { EasingMarquee } from "@/features/landing/easing-marquee";
 import { FeatureShowcase } from "@/features/landing/feature-showcase";
@@ -51,6 +52,7 @@ export default function HomePage() {
 
       <LandingMotion>
         <LandingScroll>
+          <PageLoader />
         <main className="flex flex-1 flex-col gap-3 px-3 pb-3 sm:px-4">
           <Hero />
           <SectionReveal>

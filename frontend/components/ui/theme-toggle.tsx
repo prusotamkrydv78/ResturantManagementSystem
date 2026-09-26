@@ -1,6 +1,6 @@
 "use client";
 
-import { Monitor, Moon, Sun } from "lucide-react";
+import { Moon, Sun } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Tooltip } from "@/components/ui/tooltip";
 import { useTheme } from "@/lib/theme/use-theme";
@@ -20,7 +20,6 @@ import { cn } from "@/lib/utils/cn";
  */
 
 const ICONS: Record<ThemePreference, LucideIcon> = {
-  system: Monitor,
   light: Sun,
   dark: Moon,
 };
@@ -33,7 +32,7 @@ export function ThemeToggle({ isCollapsed = false }: { isCollapsed?: boolean }) 
     // and not for three. The icon is the current choice, so pressing it repeatedly
     // walks the list and comes back round.
     const index = THEMES.indexOf(theme);
-    const next = THEMES[(index + 1) % THEMES.length] ?? "system";
+    const next = THEMES[(index + 1) % THEMES.length] ?? "light";
     const Icon = ICONS[theme];
 
     return (

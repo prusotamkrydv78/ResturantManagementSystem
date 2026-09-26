@@ -14,21 +14,18 @@
 /**
  * Every theme the product offers.
  *
- * `system` is not a palette; it is the absence of a choice, and it means the
- * attribute is removed so the CSS falls back to `prefers-color-scheme`. It is first
- * because it is the default: somebody who has expressed no preference here has
- * usually expressed one to their operating system already.
+ * Light is first because it is the default, whatever the operating system says:
+ * the product opens white until somebody picks dark here themselves.
  *
  * A named theme added to `globals.css` goes in this list too, and the switcher
  * picks it up without any further change.
  */
-export const THEMES = ["system", "light", "dark"] as const;
+export const THEMES = ["light", "dark"] as const;
 
 export type ThemePreference = (typeof THEMES)[number];
 
 /** What each choice is called in the interface. */
 export const THEME_LABELS: Record<ThemePreference, string> = {
-  system: "System",
   light: "Light",
   dark: "Dark",
 };
@@ -53,22 +50,9 @@ export function isThemePreference(value: unknown): value is ThemePreference {
   );
 }
 
-/**
- * Writes a preference onto the document.
- *
- * `system` removes the attribute rather than setting it to something, because the
- * absence is what makes the media query in the stylesheet win. Setting an attribute
- * named "system" would need a third CSS rule saying what the first two already say.
- */
+/** Writes a preference onto the document. */
 export function applyTheme(theme: ThemePreference): void {
-  const root = document.documentElement;
-
-  if (theme === "system") {
-    root.removeAttribute(THEME_ATTRIBUTE);
-    return;
-  }
-
-  root.setAttribute(THEME_ATTRIBUTE, theme);
+  document.documentElement.setAttribute(THEME_ATTRIBUTE, theme);
 }
 
 /**

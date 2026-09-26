@@ -29,12 +29,12 @@ export function useTheme(): {
 } {
   const [stored, setStored] = useStoredPreference<ThemePreference>(
     THEME_STORAGE_KEY,
-    "system",
+    "light",
   );
 
   // A value written by an older build, or edited by hand, should not leave the
   // interface pointing at a theme that no longer exists.
-  const theme = isThemePreference(stored) ? stored : "system";
+  const theme = isThemePreference(stored) ? stored : "light";
 
   useEffect(() => {
     applyTheme(theme);

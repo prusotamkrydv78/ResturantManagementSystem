@@ -3,7 +3,7 @@
 import { useLayoutEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { CalendarDays, LogOut, Menu, Monitor, Moon, Sun, UtensilsCrossed } from "lucide-react";
+import { CalendarDays, LogOut, Menu, Moon, Sun, UtensilsCrossed } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Dialog, DialogTrigger, DrawerContent } from "@/components/ui/dialog";
 import { Tooltip } from "@/components/ui/tooltip";
@@ -324,7 +324,6 @@ function LiveIndicator() {
 }
 
 const THEME_ICONS: Record<ThemePreference, LucideIcon> = {
-  system: Monitor,
   light: Sun,
   dark: Moon,
 };

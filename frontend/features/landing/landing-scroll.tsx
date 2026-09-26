@@ -2,12 +2,13 @@
 
 import { useRef } from "react";
 import gsap from "gsap";
-import { ScrollToPlugin } from "gsap/ScrollToPlugin";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { SplitText } from "gsap/SplitText";
 import { useGSAP } from "@gsap/react";
+import Lenis from "lenis";
+import { impact, spotOf } from "./loader-impact";
 
-gsap.registerPlugin(ScrollToPlugin, ScrollTrigger, SplitText, useGSAP);
+gsap.registerPlugin(ScrollTrigger, SplitText, useGSAP);
 
 /**
  * Every entrance and scroll effect on the landing page, choreographed in one place.
@@ -35,7 +36,7 @@ gsap.registerPlugin(ScrollToPlugin, ScrollTrigger, SplitText, useGSAP);
  *
  * IN-PAGE LINKS
  *
- * A nav link glides the page to its section rather than jumping, taking longer for
+ * The page scrolls lazily (Lenis, driven by GSAP's ticker). A nav link glides the page to its section rather than jumping, taking longer for
  * a longer trip, and the section greets the arrival: its label pops and its heading
  * settles into place. Scrolling by hand mid-glide hands control straight back.
  *
@@ -50,18 +51,37 @@ export function LandingScroll({ children }: { children: React.ReactNode }) {
 
       media.add("(prefers-reduced-motion: reduce)", () => {
         gsap.set("[data-hero]", { autoAlpha: 1 });
+        gsap.set("[data-loader]", { display: "none" });
+        document.documentElement.classList.add("no-scrollbar");
+
+        return () => document.documentElement.classList.remove("no-scrollbar");
       });
 
       media.add("(prefers-reduced-motion: no-preference)", () => {
         const ease = "expo.out";
         const cleanups: Array<() => void> = [];
 
+        /* ------------------------------------------------------ lazy scroll --- */
+
+        const lenis = new Lenis({ lerp: 0.075, wheelMultiplier: 0.9, smoothWheel: true });
+        const tick = (time: number) => lenis.raf(time * 1000);
+
+        lenis.on("scroll", ScrollTrigger.update);
+        gsap.ticker.add(tick);
+        gsap.ticker.lagSmoothing(0);
+        cleanups.push(() => {
+          gsap.ticker.remove(tick);
+          gsap.ticker.lagSmoothing(500, 33);
+          lenis.destroy();
+        });
+
         /* ------------------------------------------------------ hero intro --- */
 
         const lines = gsap.utils.toArray<HTMLElement>('[data-hero="line"]');
         const split = SplitText.create('[data-hero="line"] [data-split]', { type: "chars", charsClass: "inline-block" });
 
-        const intro = gsap.timeline({ defaults: { ease } });
+        // Held until the loader lifts; see the loader section below.
+        const intro = gsap.timeline({ defaults: { ease }, paused: true });
 
         intro
           .fromTo(
@@ -132,6 +152,137 @@ export function LandingScroll({ children }: { children: React.ReactNode }) {
             panel.removeEventListener("pointermove", lean);
             panel.removeEventListener("pointerleave", rest);
           });
+        }
+
+        /* ---------------------------------------------------------- loader --- */
+
+        const loader = root.current?.querySelector<HTMLElement>("[data-loader]");
+
+        if (loader) {
+          const counter = loader.querySelector<HTMLElement>("[data-loader-count]");
+          const words = gsap.utils.shuffle(gsap.utils.toArray<HTMLElement>("[data-loader-word]", loader));
+          const count = { value: 0 };
+          const HIT = 0.16;
+          // The name hits the moment the last word has landed, then holds on screen
+          // a moment before everything goes.
+          const hitsEnd = 0.25 + (words.length - 1) * HIT + 0.55;
+          const nameAt = hitsEnd;
+          const nameIn = 0.6;
+          const HOLD = 1.1;
+          const outAt = nameAt + nameIn + HOLD;
+          const floats: gsap.core.Tween[] = [];
+
+          // No scrolling the page out from under the curtain.
+          lenis.stop();
+
+          const load = gsap.timeline({
+            onComplete: () => {
+              floats.forEach((float) => float.kill());
+              lenis.start();
+              gsap.set(loader, { display: "none" });
+            },
+          });
+
+          load
+            .from("[data-loader-fade]", { autoAlpha: 0, y: -10, duration: 0.6, stagger: 0.1, ease }, 0)
+            .to("[data-loader-bar]", { scaleX: 1, duration: outAt, ease: "power2.inOut" }, 0)
+            .to(
+              count,
+              {
+                value: 100,
+                duration: outAt,
+                ease: "power2.inOut",
+                onUpdate: () => {
+                  if (counter) {
+                    counter.textContent = `${Math.round(count.value)}%`;
+                  }
+                },
+              },
+              0,
+            );
+
+          const stage = loader.querySelector<HTMLElement>("[data-loader-content]") ?? loader;
+
+          // Each word is stamped down at its own spot, in a random order: it drops
+          // from large and tilted, overshoots, and settles. Once landed it starts to
+          // float, drifting on its own slow loop until the curtain goes.
+          words.forEach((word, index) => {
+            gsap.set(word, { xPercent: -50, yPercent: -50 });
+
+            load.fromTo(
+              word,
+              { autoAlpha: 0, scale: 2.6, rotate: gsap.utils.random(-25, 25) },
+              {
+                autoAlpha: 1,
+                scale: 1,
+                rotate: gsap.utils.random(-7, 7),
+                duration: 0.55,
+                ease: "back.out(2.2)",
+                onComplete: () => {
+                  floats.push(
+                    gsap.to(word, {
+                      x: `+=${gsap.utils.random(-28, 28)}`,
+                      y: `+=${gsap.utils.random(-22, 22)}`,
+                      rotate: `+=${gsap.utils.random(-4, 4)}`,
+                      duration: gsap.utils.random(1.6, 2.6),
+                      ease: "sine.inOut",
+                      yoyo: true,
+                      repeat: -1,
+                    }),
+                  );
+                },
+              },
+              0.25 + index * HIT,
+            );
+
+            // The burst underneath fires as it touches down.
+            load.add(() => {
+              impact(stage, spotOf(stage, word), getComputedStyle(word).color);
+            }, 0.25 + index * HIT + 0.17);
+          });
+
+          // The name hits centre stage the same way the words did, only harder: it
+          // slams down from huge, and the floating words flinch outward on impact.
+          load
+            .fromTo(
+              "[data-loader-name]",
+              { autoAlpha: 0, scale: 3.2, rotate: -4 },
+              { autoAlpha: 1, scale: 1, rotate: 0, duration: nameIn, ease: "back.out(1.6)" },
+              nameAt,
+            )
+            .add(() => {
+              const name = loader.querySelector<HTMLElement>("[data-loader-name]");
+
+              if (name) {
+                impact(stage, spotOf(stage, name), getComputedStyle(name).color, 1.8);
+              }
+            }, nameAt + nameIn * 0.3)
+            .fromTo(
+              "[data-loader-content]",
+              { x: 0, y: 0 },
+              { keyframes: [{ x: -10, y: 6 }, { x: 8, y: -5 }, { x: -4, y: 3 }, { x: 0, y: 0 }], duration: 0.35, ease: "none" },
+              nameAt + nameIn * 0.45,
+            );
+
+          // Out: the words fly away from the centre, the name lifts, the frame fades,
+          // and the columns rise one after another. The hero starts underneath.
+          words.forEach((word) => {
+            const box = word.getBoundingClientRect();
+            const dx = box.left + box.width / 2 - window.innerWidth / 2;
+            const dy = box.top + box.height / 2 - window.innerHeight / 2;
+
+            load.to(word, { x: `+=${dx * 0.6}`, y: `+=${dy * 0.6}`, autoAlpha: 0, scale: 0.7, duration: 0.6, ease: "expo.in", overwrite: "auto" }, outAt);
+          });
+
+          load
+            .to("[data-loader-char]", { yPercent: -60, autoAlpha: 0, duration: 0.45, stagger: 0.015, ease: "expo.in" }, outAt + 0.1)
+            .to("[data-loader-fade], [data-loader-bar], [data-loader-count]", { autoAlpha: 0, duration: 0.3 }, outAt)
+            .to("[data-loader-column]", { yPercent: -100, duration: 0.9, stagger: 0.07, ease: "expo.inOut" }, outAt + 0.45)
+            .add(() => {
+              intro.play();
+            }, outAt + 0.7);
+        } else {
+          intro.play();
         }
 
         /* --------------------------------------------------- section by section */
@@ -276,11 +427,10 @@ export function LandingScroll({ children }: { children: React.ReactNode }) {
 
           const distance = Math.abs(target.getBoundingClientRect().top);
 
-          gsap.to(window, {
+          lenis.scrollTo(target, {
+            offset: -88,
             duration: gsap.utils.clamp(0.9, 1.8, distance / 1800),
-            ease: "power4.inOut",
-            overwrite: true,
-            scrollTo: { y: target, offsetY: 88, autoKill: true },
+            easing: (t) => (t < 0.5 ? 8 * t ** 4 : 1 - (-2 * t + 2) ** 4 / 2),
             onComplete: () => {
               history.replaceState(null, "", hash);
               arrive(target);
@@ -293,6 +443,9 @@ export function LandingScroll({ children }: { children: React.ReactNode }) {
 
         // Trigger positions are measured now; web fonts landing later reflow the
         // page, so measure again once they are in.
+        document.documentElement.classList.add("no-scrollbar");
+        cleanups.push(() => document.documentElement.classList.remove("no-scrollbar"));
+
         void document.fonts.ready.then(() => ScrollTrigger.refresh());
 
         return () => cleanups.forEach((cleanup) => cleanup());

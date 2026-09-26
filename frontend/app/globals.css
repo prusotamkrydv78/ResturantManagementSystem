@@ -97,9 +97,9 @@
    --------------------------------------------------------------------------- */
 
 :root {
-  /* Follows the operating system until something says otherwise. Also what the
-     `light-dark()` pairs below are answering. */
-  color-scheme: light dark;
+  /* Light unless somebody chooses dark in the product - the operating system's
+     dark mode does not change it. Also what the `light-dark()` pairs answer. */
+  color-scheme: light;
 
   /* Surfaces. Neutral, because the specified black is neutral; the light side
      carries a trace of warmth so a full page of it is not clinical. */
@@ -1228,6 +1228,16 @@ h4 {
   [data-hero] {
     visibility: visible;
   }
+
+  [data-loader] {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-loader] {
+    display: none;
+  }
 }
 
 .marquee-track {
@@ -1254,4 +1264,29 @@ h4 {
   .drift {
     animation: none;
   }
+}
+
+/* ---------------------------------------------------------------------------
+   The landing page: no visible scrollbar, and Lenis's lazy scroll.
+   --------------------------------------------------------------------------- */
+
+html.no-scrollbar {
+  scrollbar-width: none;
+}
+
+html.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+html.lenis,
+html.lenis body {
+  height: auto;
+}
+
+.lenis.lenis-smooth {
+  scroll-behavior: auto !important;
+}
+
+.lenis.lenis-stopped {
+  overflow: clip;
 }
