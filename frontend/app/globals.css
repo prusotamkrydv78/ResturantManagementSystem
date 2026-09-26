@@ -233,12 +233,21 @@
   --sidebar-fg: var(--text);
   --sidebar-muted: var(--text-muted);
   --sidebar-hover: var(--surface-3);
+
+  /* A dark panel inside a light page: the public hero, the sign-in panel. The same
+     ink as the console's sidebar, named for what it is used for rather than where. */
+  --contrast: var(--sidebar);
+  --contrast-fg: var(--sidebar-fg);
+  --contrast-muted: var(--sidebar-muted);
+  --contrast-raised: var(--sidebar-hover);
 }
 
 /* ---------------------------------------------------------------------------
    The platform surface: what a super admin sees.
 
-   Set as data-surface="admin" on the root by the admin shell, so it reaches
+   Set as data-surface="admin" on the root by the admin shell - and as
+   data-surface="brand" by the public pages and sign-in, which wear the same
+   look so the product reads as one thing from the front door inward - so it reaches
    portals - dialogs, toasts, the select menus - that render outside the shell
    itself, and the chart probe, which resolves colours from the document.
 
@@ -265,7 +274,7 @@
    Every type token still clears 4.5:1 on the ground it sits on, and input
    edges clear 3:1, which is the constraint the application's palette meets too.
    --------------------------------------------------------------------------- */
-:root[data-surface="admin"] {
+:root:is([data-surface="admin"], [data-surface="brand"]) {
   --canvas: light-dark(#f1f2f5, #0e0f12);
   --surface: light-dark(#ffffff, #16181d);
   --surface-2: light-dark(#f7f8fa, #1b1e24);
@@ -345,71 +354,71 @@
   box-shadow: var(--surface-shadow);
 }
 
-:root[data-surface="admin"] .ui-surface-header {
+:root:is([data-surface="admin"], [data-surface="brand"]) .ui-surface-header {
   border-bottom-color: transparent;
   padding: 0.75rem 1rem 0;
 }
 
-:root[data-surface="admin"] .ui-surface-header h2 {
+:root:is([data-surface="admin"], [data-surface="brand"]) .ui-surface-header h2 {
   font-size: var(--text-lg);
   line-height: var(--text-lg--line-height);
   letter-spacing: -0.015em;
 }
 
-:root[data-surface="admin"] .ui-page-header {
+:root:is([data-surface="admin"], [data-surface="brand"]) .ui-page-header {
   background: transparent;
   border-bottom-color: transparent;
 }
 
 /* Dense on purpose: this is a dashboard, and every gap has to earn its place. */
-:root[data-surface="admin"] .ui-page-header > div {
+:root:is([data-surface="admin"], [data-surface="brand"]) .ui-page-header > div {
   gap: 0.25rem;
   padding: 0.25rem 1rem 0;
 }
 
-:root[data-surface="admin"] .ui-page-title {
+:root:is([data-surface="admin"], [data-surface="brand"]) .ui-page-title {
   font-size: 1.375rem;
   line-height: 1.75rem;
   letter-spacing: -0.02em;
 }
 
-:root[data-surface="admin"] .ui-page-header p {
+:root:is([data-surface="admin"], [data-surface="brand"]) .ui-page-header p {
   font-size: var(--text-xs);
   line-height: var(--text-xs--line-height);
 }
 
-:root[data-surface="admin"] .ui-page-body {
+:root:is([data-surface="admin"], [data-surface="brand"]) .ui-page-body {
   gap: 0.75rem;
   padding: 0.75rem 1rem 1rem;
 }
 
-:root[data-surface="admin"] .ui-th {
+:root:is([data-surface="admin"], [data-surface="brand"]) .ui-th {
   background: transparent;
   color: var(--text-subtle);
   font-weight: 500;
   letter-spacing: 0.02em;
 }
 
-:root[data-surface="admin"] .ui-td {
+:root:is([data-surface="admin"], [data-surface="brand"]) .ui-td {
   padding-top: 0.625rem;
   padding-bottom: 0.625rem;
 }
 
-:root[data-surface="admin"] .ui-control {
+:root:is([data-surface="admin"], [data-surface="brand"]) .ui-control {
   background: var(--surface-2);
 }
 
-:root[data-surface="admin"] .ui-chip {
+:root:is([data-surface="admin"], [data-surface="brand"]) .ui-chip {
   padding: 0.25rem 0.75rem;
 }
 
-:root[data-surface="admin"] .ui-chip[aria-pressed="true"] {
+:root:is([data-surface="admin"], [data-surface="brand"]) .ui-chip[aria-pressed="true"] {
   background: var(--ink);
   border-color: var(--ink);
   color: var(--surface);
 }
 
-:root[data-surface="admin"] .ui-chip[aria-pressed="true"] > span {
+:root:is([data-surface="admin"], [data-surface="brand"]) .ui-chip[aria-pressed="true"] > span {
   color: var(--surface);
   opacity: 0.7;
 }
@@ -465,6 +474,10 @@
   --color-sidebar-fg: var(--sidebar-fg);
   --color-sidebar-muted: var(--sidebar-muted);
   --color-sidebar-hover: var(--sidebar-hover);
+  --color-contrast: var(--contrast);
+  --color-contrast-fg: var(--contrast-fg);
+  --color-contrast-muted: var(--contrast-muted);
+  --color-contrast-raised: var(--contrast-raised);
 
   /* Type scale, tuned for an application rather than a marketing page. */
   --text-2xs: 0.6875rem; /* 11px  uppercase labels, table meta */
@@ -1182,5 +1195,63 @@ h4 {
 
   @page {
     margin: 12mm;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   The landing page's two ambient motions.
+
+   The marquee is the capability strip under the hero; its track holds the list
+   twice, so sliding it by exactly half loops without a seam. The float is the
+   gentle bob of the event chips around the live board. Both are decoration, so
+   reduced motion stops them rather than speeding them up: the strip then simply
+   shows its first screenful, and the chips sit still.
+   --------------------------------------------------------------------------- */
+
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+/* The hero's parts wait hidden until LandingScroll's intro timeline takes them.
+   Without script, or with reduced motion, they are simply shown. */
+[data-hero] {
+  visibility: hidden;
+}
+
+@media (scripting: none) {
+  [data-hero] {
+    visibility: visible;
+  }
+}
+
+.marquee-track {
+  animation: marquee 60s linear infinite;
+}
+
+@keyframes drift {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+.drift {
+  animation: drift 5s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .marquee-track,
+  .drift {
+    animation: none;
   }
 }

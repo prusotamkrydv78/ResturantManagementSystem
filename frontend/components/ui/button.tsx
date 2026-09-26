@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { cn } from "@/lib/utils/cn";
 
-type Variant = "primary" | "secondary" | "ghost" | "danger";
+type Variant = "primary" | "secondary" | "ghost" | "danger" | "accent";
 type Size = "sm" | "md";
 
 const VARIANTS: Record<Variant, string> = {
@@ -16,6 +16,9 @@ const VARIANTS: Record<Variant, string> = {
     "bg-transparent text-muted border border-transparent hover:bg-surface-3 hover:text-text",
   danger:
     "bg-danger-solid text-white border border-danger-solid hover:bg-danger-hover active:bg-danger-hover",
+  // The lime: for the one action on a dark panel, where an ink button would vanish.
+  accent:
+    "bg-accent text-accent-fg border border-accent hover:brightness-95 active:brightness-90",
 };
 
 const SIZES: Record<Size, string> = {

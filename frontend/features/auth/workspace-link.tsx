@@ -28,10 +28,13 @@ export function WorkspaceLink({
   /** What the button says to somebody with no session. */
   signedOutLabel = "Sign in",
   size,
+  variant,
   className,
 }: {
   signedOutLabel?: string;
   size?: "sm" | "md";
+  /** Lime on a dark panel; the default ink everywhere else. */
+  variant?: "primary" | "accent";
   className?: string;
 }) {
   const { user, isAuthenticated, isLoading } = useAuth();
@@ -44,6 +47,7 @@ export function WorkspaceLink({
       <LinkButton
         href="/login"
         size={size}
+        variant={variant}
         icon={<ArrowRight />}
         className={className}
       >
@@ -56,6 +60,7 @@ export function WorkspaceLink({
     <LinkButton
       href={homeFor(user.platformRole, user.staffRole)}
       size={size}
+      variant={variant}
       icon={<ArrowRight />}
       className={className}
     >
