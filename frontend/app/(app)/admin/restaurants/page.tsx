@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { forwardRef, useCallback, useEffect, useState } from "react";
+import { forwardRef, useEffect, useState } from "react";
 import {
   Ban,
   Pencil,
@@ -40,8 +40,9 @@ import { Table, TableWrap, Td, Th, Tr } from "@/components/ui/table";
 import { Tooltip } from "@/components/ui/tooltip";
 import { PageBody, PageHeader } from "@/components/layout/page-header";
 import { cn } from "@/lib/utils/cn";
+import { useInvalidateEstate, usePlatformPulse, useRestaurants } from "@/queries/admin";
+import { errorMessage } from "@/lib/query/errors";
 import { RequireAuth } from "@/features/auth/require-auth";
-import { getPlatformPulse } from "@/features/platform/api";
 
 import { formatDate, money } from "@/features/analytics/format";
 import { sinceLabel, timeOf, useNow } from "@/lib/time/since";
@@ -54,12 +55,11 @@ import {
 import {
   getRestaurant,
   listRestaurantStaff,
-  listRestaurants,
   setRestaurantActive,
   updateRestaurant,
 } from "@/features/restaurants/api";
 import type { Manager } from "@/types/manager";
-import type { PlatformPulse, PlatformPulseRestaurant } from "@/types/platform";
+import type { PlatformPulseRestaurant } from "@/types/platform";
 import type { RestaurantSummary } from "@/types/restaurant";
 import type { StaffMember } from "@/types/staff";
 
@@ -80,82 +80,25 @@ export default function AdminRestaurantsPage() {
 }
 
 function AdminRestaurants() {
-  const [restaurants, setRestaurants] = useState<RestaurantSummary[] | null>(null);
-  const [pulse, setPulse] = useState<PlatformPulse | null>(null);
-  const [pulseFailed, setPulseFailed] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // Cached queries rather than copies in state. Coming back to this list renders it
+  // at once instead of refetching from nothing, and the overview's figures and this
+  // list's "today" columns are the same request.
+  const restaurantsQuery = useRestaurants();
+  const pulseQuery = usePlatformPulse();
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<StatusFilter>("All");
   const [sort, setSort] = useState<SortKey>("name");
   const now = useNow();
 
-  const refresh = useCallback(async () => {
-    try {
-      const loaded = await listRestaurants();
-      setRestaurants(loaded);
-      setError(null);
-    } catch (caught) {
-      setError(
-        caught instanceof Error ? caught.message : "Unable to load restaurants.",
-      );
-    }
+  const restaurants = restaurantsQuery.data ?? null;
+  const pulse = pulseQuery.data ?? null;
+  const pulseFailed = pulseQuery.isError;
+  const error = errorMessage(restaurantsQuery.error, "Unable to load restaurants.");
 
-    // Trading is read separately and allowed to fail separately. It is the one call
-    // on this page that touches every order and payment on the platform, and if it
-    // ever gets slow the list still has to load: assigning a manager to a restaurant
-    // that cannot trade must not depend on a figure about restaurants that can.
-    try {
-      setPulse(await getPlatformPulse());
-      setPulseFailed(false);
-    } catch {
-      setPulseFailed(true);
-    }
-  }, []);
+  // What every dialog on this page calls after a change: the estate is stale.
+  const refresh = useInvalidateEstate();
 
-  useEffect(() => {
-    let cancelled = false;
 
-    async function load() {
-      try {
-        const loaded = await listRestaurants();
-        if (!cancelled) {
-          setRestaurants(loaded);
-          setError(null);
-        }
-      } catch (caught) {
-        if (!cancelled) {
-          setError(
-            caught instanceof Error ? caught.message : "Unable to load restaurants.",
-          );
-        }
-      }
-    }
-
-    async function loadPulse() {
-      try {
-        const loaded = await getPlatformPulse();
-        if (!cancelled) {
-          setPulse(loaded);
-          setPulseFailed(false);
-        }
-      } catch {
-        if (!cancelled) {
-          setPulseFailed(true);
-        }
-      }
-    }
-
-    void load();
-    void loadPulse();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  // One row is a restaurant's configuration and its day, joined here rather than on
-  // the server. They come from two endpoints that answer two different questions and
-  // are allowed to fail apart, so the join has to survive either half being missing.
   const live = new Map(
     (pulse?.restaurants ?? []).map((row) => [row.id, row] as const),
   );

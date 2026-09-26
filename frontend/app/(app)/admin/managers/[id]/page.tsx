@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { ArrowRight, Mail, Store } from "lucide-react";
@@ -16,14 +16,14 @@ import { PageBody, PageHeader } from "@/components/layout/page-header";
 import { RequireAuth } from "@/features/auth/require-auth";
 import {
   assignManagerToRestaurant,
-  getManager,
   resetManagerPassword,
   setManagerActive,
   unassignManager,
   updateManager,
 } from "@/features/managers/api";
 import { Report, useAction } from "@/features/platform/use-action";
-import { listRestaurants } from "@/features/restaurants/api";
+import { useInvalidateEstate, useManager, useRestaurants } from "@/queries/admin";
+import { errorMessage } from "@/lib/query/errors";
 import type { Manager } from "@/types/manager";
 import type { RestaurantSummary } from "@/types/restaurant";
 
@@ -51,50 +51,22 @@ function ManagerEdit() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
 
-  const [manager, setManager] = useState<Manager | null>(null);
-  const [restaurants, setRestaurants] = useState<RestaurantSummary[]>([]);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [reloadKey, setReloadKey] = useState(0);
+  // Cached: returning to a manager already opened this session is instant, and the
+  // restaurant list the assignment picker needs is the same one every other
+  // platform screen has already fetched.
+  const managerQuery = useManager(id);
+  const restaurantsQuery = useRestaurants();
 
-  const refresh = useCallback(async () => {
-    const [loadedManager, loadedRestaurants] = await Promise.all([
-      getManager(id),
-      listRestaurants(),
-    ]);
+  const manager = managerQuery.data ?? null;
+  const restaurants = restaurantsQuery.data ?? [];
+  const loadError = errorMessage(
+    managerQuery.error ?? restaurantsQuery.error,
+    "Unable to load the manager.",
+  );
 
-    setManager(loadedManager);
-    setRestaurants(loadedRestaurants);
-  }, [id]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      try {
-        const [loadedManager, loadedRestaurants] = await Promise.all([
-          getManager(id),
-          listRestaurants(),
-        ]);
-        if (!cancelled) {
-          setManager(loadedManager);
-          setRestaurants(loadedRestaurants);
-          setLoadError(null);
-        }
-      } catch (caught) {
-        if (!cancelled) {
-          setLoadError(
-            caught instanceof Error ? caught.message : "Unable to load the manager.",
-          );
-        }
-      }
-    }
-
-    void load();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [id, reloadKey]);
+  // What every card calls after a change. Assigning, renaming or suspending a
+  // manager can move the estate's figures too, so the whole estate goes stale.
+  const refresh = useInvalidateEstate();
 
   if (loadError !== null) {
     return (
@@ -104,7 +76,7 @@ function ManagerEdit() {
           <Surface>
             <ErrorState
               message={loadError}
-              onRetry={() => setReloadKey((key) => key + 1)}
+              onRetry={() => void managerQuery.refetch()}
             />
           </Surface>
         </PageBody>

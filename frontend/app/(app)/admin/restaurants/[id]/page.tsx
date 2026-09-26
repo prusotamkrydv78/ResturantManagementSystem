@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
@@ -21,19 +20,17 @@ import type { LucideIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { LinkButton } from "@/components/ui/button";
 import { StatTile } from "@/components/ui/stat-tile";
+import { usePlatformRestaurant } from "@/queries/admin";
+import { errorMessage } from "@/lib/query/errors";
 import { Surface, SurfaceHeader } from "@/components/ui/surface";
 import { ErrorState, Skeleton } from "@/components/ui/states";
 import { Table, TableWrap, Td, Th, Tr } from "@/components/ui/table";
 import { PageBody, PageHeader } from "@/components/layout/page-header";
 import { RequireAuth } from "@/features/auth/require-auth";
-import { getPlatformRestaurant } from "@/features/platform/api";
 import { RecentDaysCard, TenderCard } from "@/features/analytics/charts";
 import { sinceLabel, useNow } from "@/lib/time/since";
 import { cn } from "@/lib/utils/cn";
-import type {
-  PlatformRestaurantDetail,
-  PlatformRestaurantOrder,
-} from "@/types/platform";
+import type { PlatformRestaurantOrder } from "@/types/platform";
 
 /**
  * One restaurant, whole, for a platform administrator.
@@ -64,51 +61,13 @@ function PlatformRestaurant() {
   // API resolves the restaurant from it and authorises the caller separately.
   const { id } = useParams<{ id: string }>();
 
-  const [detail, setDetail] = useState<PlatformRestaurantDetail | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [reloadKey, setReloadKey] = useState(0);
+  // Live every thirty seconds while open, refreshed on returning to the tab, and
+  // instant when coming back to a restaurant already seen this session.
+  const detailQuery = usePlatformRestaurant(id);
   const now = useNow();
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      try {
-        const loaded = await getPlatformRestaurant(id);
-        if (!cancelled) {
-          setDetail(loaded);
-          setError(null);
-        }
-      } catch (caught) {
-        if (!cancelled) {
-          setError(
-            caught instanceof Error ? caught.message : "Unable to load the restaurant.",
-          );
-        }
-      }
-    }
-
-    void load();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [id, reloadKey]);
-
-  // A restaurant page opened during a service is a page somebody is watching. The
-  // same thirty-second beat the other platform screens use, plus a refresh when the
-  // tab comes back, so the floor below is never quietly stale.
-  useEffect(() => {
-    const timer = setInterval(() => setReloadKey((key) => key + 1), 30_000);
-    const onFocus = () => setReloadKey((key) => key + 1);
-
-    window.addEventListener("focus", onFocus);
-
-    return () => {
-      clearInterval(timer);
-      window.removeEventListener("focus", onFocus);
-    };
-  }, []);
+  const detail = detailQuery.data ?? null;
+  const error = errorMessage(detailQuery.error, "Unable to load the restaurant.");
 
   if (error !== null) {
     return (
@@ -120,7 +79,7 @@ function PlatformRestaurant() {
           <Surface>
             <ErrorState
               message={error}
-              onRetry={() => setReloadKey((key) => key + 1)}
+              onRetry={() => void detailQuery.refetch()}
             />
           </Surface>
         </PageBody>

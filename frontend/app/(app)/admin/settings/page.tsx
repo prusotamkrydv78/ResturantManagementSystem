@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import {
   CircleCheck,
@@ -27,21 +27,19 @@ import {
   signOutEverywhere,
   updateMyProfile,
 } from "@/features/auth/api";
+import { updatePlatformSettings } from "@/features/platform/api";
 import {
-  getPlatformSettings,
-  getPlatformSystem,
-  listPlatformActivity,
-  updatePlatformSettings,
-} from "@/features/platform/api";
+  useInvalidatePlatformSettings,
+  usePlatformActivity,
+  usePlatformSettings,
+  usePlatformSystem,
+} from "@/queries/admin";
+import { errorMessage } from "@/lib/query/errors";
 import { sinceLabel, useNow } from "@/lib/time/since";
 import { Report, useAction } from "@/features/platform/use-action";
 import { cn } from "@/lib/utils/cn";
 import type { AuthUser } from "@/types/auth";
-import type {
-  PlatformActivity,
-  PlatformSettings,
-  PlatformSystem,
-} from "@/types/platform";
+import type { PlatformActivity, PlatformSettings } from "@/types/platform";
 
 /**
  * Platform settings.
@@ -106,34 +104,9 @@ function PlatformSettingsView() {
  * reaches the one column that is missing, and nothing in the product said a word.
  */
 function SystemCard() {
-  const [system, setSystem] = useState<PlatformSystem | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      try {
-        const loaded = await getPlatformSystem();
-        if (!cancelled) {
-          setSystem(loaded);
-          setError(null);
-        }
-      } catch (caught) {
-        if (!cancelled) {
-          setError(
-            caught instanceof Error ? caught.message : "Unable to read the system.",
-          );
-        }
-      }
-    }
-
-    void load();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const systemQuery = usePlatformSystem();
+  const system = systemQuery.data ?? null;
+  const error = errorMessage(systemQuery.error, "Unable to read the system.");
 
   if (error !== null) {
     return (
@@ -489,41 +462,8 @@ function PasswordCard() {
  * backwards into a bill that has been printed.
  */
 function DefaultsCard() {
-  const [settings, setSettings] = useState<PlatformSettings | null>(null);
-  const [vat, setVat] = useState("");
-  const [service, setService] = useState("");
-  const [reloadKey, setReloadKey] = useState(0);
-  const action = useAction();
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      try {
-        const loaded = await getPlatformSettings();
-
-        if (!cancelled) {
-          setSettings(loaded);
-          setVat(asPercent(loaded.defaultVatRate));
-          setService(asPercent(loaded.defaultServiceChargeRate));
-        }
-      } catch {
-        // The card renders its skeleton and the save button stays out of reach.
-        // A settings screen that cannot read one section is not a broken screen.
-      }
-    }
-
-    void load();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [reloadKey]);
-
-  const unchanged =
-    settings !== null &&
-    vat === asPercent(settings.defaultVatRate) &&
-    service === asPercent(settings.defaultServiceChargeRate);
+  const settingsQuery = usePlatformSettings();
+  const settings = settingsQuery.data ?? null;
 
   return (
     <Surface className="flex flex-col">
@@ -544,39 +484,56 @@ function DefaultsCard() {
           <Skeleton className="h-9 w-full" />
         </div>
       ) : (
-        <>
-          <div className="flex flex-col gap-3 p-3.5 sm:flex-row">
-            <Report action={action} />
-
-            <Field htmlFor="default-vat" label="VAT" className="sm:w-48">
-              <Rate id="default-vat" value={vat} onChange={setVat} />
-            </Field>
-
-            <Field htmlFor="default-service" label="Service charge" className="sm:w-48">
-              <Rate id="default-service" value={service} onChange={setService} />
-            </Field>
-          </div>
-
-          <div className="flex justify-end border-t border-border px-4 py-3">
-            <Button
-              type="button"
-              disabled={unchanged || action.busy}
-              onClick={() =>
-                void action.run(async () => {
-                  await updatePlatformSettings({
-                    defaultVatRate: fromPercent(vat),
-                    defaultServiceChargeRate: fromPercent(service),
-                  });
-                  setReloadKey((key) => key + 1);
-                }, "Saved. The next restaurant created will start on these.")
-              }
-            >
-              {action.busy ? "Saving…" : "Save defaults"}
-            </Button>
-          </div>
-        </>
+        // Keyed on when the defaults last changed, so a save starts the form again
+        // from what the server now holds rather than from what was typed.
+        <DefaultsForm key={settings.updatedAtUtc ?? "never"} settings={settings} />
       )}
     </Surface>
+  );
+}
+
+function DefaultsForm({ settings }: { settings: PlatformSettings }) {
+  const [vat, setVat] = useState(() => asPercent(settings.defaultVatRate));
+  const [service, setService] = useState(() => asPercent(settings.defaultServiceChargeRate));
+  const action = useAction();
+  const invalidateSettings = useInvalidatePlatformSettings();
+
+  const unchanged =
+    vat === asPercent(settings.defaultVatRate) &&
+    service === asPercent(settings.defaultServiceChargeRate);
+
+  return (
+    <>
+      <div className="flex flex-col gap-3 p-3.5 sm:flex-row">
+        <Report action={action} />
+
+        <Field htmlFor="default-vat" label="VAT" className="sm:w-48">
+          <Rate id="default-vat" value={vat} onChange={setVat} />
+        </Field>
+
+        <Field htmlFor="default-service" label="Service charge" className="sm:w-48">
+          <Rate id="default-service" value={service} onChange={setService} />
+        </Field>
+      </div>
+
+      <div className="flex justify-end border-t border-border px-4 py-3">
+        <Button
+          type="button"
+          disabled={unchanged || action.busy}
+          onClick={() =>
+            void action.run(async () => {
+              await updatePlatformSettings({
+                defaultVatRate: fromPercent(vat),
+                defaultServiceChargeRate: fromPercent(service),
+              });
+              await invalidateSettings();
+            }, "Saved. The next restaurant created will start on these.")
+          }
+        >
+          {action.busy ? "Saving…" : "Save defaults"}
+        </Button>
+      </div>
+    </>
   );
 }
 
@@ -648,31 +605,11 @@ const ACTIONS: Record<string, { label: string; tone: "neutral" | "warning" | "da
  * list on a platform that has been running for months is expected, and says so.
  */
 function ActivityCard() {
-  const [rows, setRows] = useState<PlatformActivity[] | null>(null);
+  const activityQuery = usePlatformActivity(50);
   const now = useNow();
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      try {
-        const loaded = await listPlatformActivity(50);
-        if (!cancelled) {
-          setRows(loaded);
-        }
-      } catch {
-        if (!cancelled) {
-          setRows([]);
-        }
-      }
-    }
-
-    void load();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  // A log that cannot be read shows as empty rather than as an error: it is a
+  // record of the past, and nothing on this page depends on it.
+  const rows = activityQuery.isError ? [] : (activityQuery.data ?? null);
 
   return (
     <Surface className="flex flex-col">

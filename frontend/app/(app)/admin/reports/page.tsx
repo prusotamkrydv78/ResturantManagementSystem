@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import {
   ArrowDown,
@@ -25,7 +25,8 @@ import { EmptyState, ErrorState, TableSkeleton } from "@/components/ui/states";
 import { Table, TableWrap, Td, Th, Tr } from "@/components/ui/table";
 import { PageBody, PageHeader } from "@/components/layout/page-header";
 import { RequireAuth } from "@/features/auth/require-auth";
-import { getPlatformReport } from "@/features/platform/api";
+import { usePlatformReport } from "@/queries/admin";
+import { errorMessage } from "@/lib/query/errors";
 import { ReportRangeCard, TenderCard, WeekdayCard } from "@/features/analytics/charts";
 import { money as amount } from "@/features/analytics/format";
 import { cn } from "@/lib/utils/cn";
@@ -59,49 +60,25 @@ export default function PlatformReportsPage() {
 }
 
 function PlatformReports() {
-  const [report, setReport] = useState<PlatformReport | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [applied, setApplied] = useState<Range>(() => presetRange("30d"));
   const [preset, setPreset] = useState<PresetKey | "custom">("30d");
   const [from, setFrom] = useState(() => presetRange("30d").from);
   const [to, setTo] = useState(() => presetRange("30d").to);
-  const [reloadKey, setReloadKey] = useState(0);
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<SortKey>("takings");
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      try {
-        const loaded = await getPlatformReport(applied);
-
-        if (!cancelled) {
-          setReport(loaded);
-          setError(null);
-        }
-      } catch (caught) {
-        if (!cancelled) {
-          setError(
-            caught instanceof Error ? caught.message : "Unable to load the report.",
-          );
-        }
-      }
-    }
-
-    void load();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [applied, reloadKey]);
+  // One cached report per range. Switching between presets already looked at is
+  // instant, and a new range keeps the last figures on screen until its own arrive
+  // instead of dropping the whole page to a skeleton between two answers.
+  const reportQuery = usePlatformReport(applied);
+  const report = reportQuery.data ?? null;
+  const error = errorMessage(reportQuery.error, "Unable to load the report.");
 
   function apply(next: Range, key: PresetKey | "custom") {
     setFrom(next.from);
     setTo(next.to);
     setPreset(key);
     setApplied(next);
-    setReport(null);
   }
 
   const rows = useMemo(() => {
@@ -230,10 +207,7 @@ function PlatformReports() {
 
         {error !== null && (
           <Surface>
-            <ErrorState
-              message={error}
-              onRetry={() => setReloadKey((key) => key + 1)}
-            />
+            <ErrorState message={error} onRetry={() => void reportQuery.refetch()} />
           </Surface>
         )}
 

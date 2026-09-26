@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
 import { motion, MotionConfig } from "motion/react";
 import {
   ArrowRight,
@@ -28,13 +27,11 @@ import {
   TenderCard,
 } from "@/features/analytics/charts";
 import { money } from "@/features/analytics/format";
-import { listManagers } from "@/features/managers/api";
-import { getPlatformPulse } from "@/features/platform/api";
-import { listRestaurants } from "@/features/restaurants/api";
+import { useManagers, usePlatformPulse, useRestaurants } from "@/queries/admin";
+import { errorMessage } from "@/lib/query/errors";
 import { nepalHourOf } from "@/lib/time/nepal";
 import { sinceLabel, timeOf, useNow } from "@/lib/time/since";
 import { cn } from "@/lib/utils/cn";
-import type { Manager } from "@/types/manager";
 import type { PlatformPulse } from "@/types/platform";
 import type { RestaurantSummary } from "@/types/restaurant";
 
@@ -56,79 +53,34 @@ import type { RestaurantSummary } from "@/types/restaurant";
  * screen already had; the redesign is the composition, not the arithmetic.
  */
 export function SuperAdminOverview() {
-  const [restaurants, setRestaurants] = useState<RestaurantSummary[] | null>(null);
-  const [managers, setManagers] = useState<Manager[] | null>(null);
-  const [pulse, setPulse] = useState<PlatformPulse | null>(null);
-  const [pulseError, setPulseError] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [reloadKey, setReloadKey] = useState(0);
+  // Three cached queries, live every thirty seconds while this screen is open and
+  // refreshed when the tab comes back into view - a second admin can assign a
+  // manager while this sits open. Coming back to the overview renders at once from
+  // the cache instead of starting again from a skeleton.
+  //
+  // Trading is its own query and allowed to fail on its own. It is the one read here
+  // that touches every order and payment on the platform, so if it ever gets slow
+  // or falls over, the estate still draws and the admin can still act.
+  const restaurantsQuery = useRestaurants({ live: true });
+  const managersQuery = useManagers({}, { live: true });
+  const pulseQuery = usePlatformPulse({ live: true });
   const now = useNow();
 
-  useEffect(() => {
-    let cancelled = false;
+  const restaurants = restaurantsQuery.data ?? null;
+  const managers = managersQuery.data ?? null;
+  const pulse = pulseQuery.data ?? null;
 
-    async function load() {
-      try {
-        const [loadedRestaurants, loadedManagers] = await Promise.all([
-          listRestaurants(),
-          listManagers(),
-        ]);
+  const error = errorMessage(
+    restaurantsQuery.error ?? managersQuery.error,
+    "Unable to load the overview.",
+  );
+  const pulseError = errorMessage(pulseQuery.error, "Unable to read today's trading.");
 
-        if (!cancelled) {
-          setRestaurants(loadedRestaurants);
-          setManagers(loadedManagers);
-          setError(null);
-        }
-      } catch (caught) {
-        if (!cancelled) {
-          setError(caught instanceof Error ? caught.message : "Unable to load the overview.");
-        }
-      }
-    }
-
-    // Trading is fetched on its own and allowed to fail on its own. It is the one
-    // call here that reads every order and payment on the platform, so if it ever
-    // gets slow or falls over, the estate still draws and the admin can still act.
-    async function loadPulse() {
-      try {
-        const loaded = await getPlatformPulse();
-
-        if (!cancelled) {
-          setPulse(loaded);
-          setPulseError(null);
-        }
-      } catch (caught) {
-        if (!cancelled) {
-          setPulseError(
-            caught instanceof Error ? caught.message : "Unable to read today's trading.",
-          );
-        }
-      }
-    }
-
-    void load();
-    void loadPulse();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [reloadKey]);
-
-  // A second admin can assign a manager while this sits open; thirty seconds, and
-  // again whenever the tab comes back into view.
-  useEffect(() => {
-    const timer = setInterval(() => setReloadKey((key) => key + 1), 30_000);
-    const onFocus = () => setReloadKey((key) => key + 1);
-
-    window.addEventListener("focus", onFocus);
-
-    return () => {
-      clearInterval(timer);
-      window.removeEventListener("focus", onFocus);
-    };
-  }, []);
-
-  const reload = () => setReloadKey((key) => key + 1);
+  const reload = () => {
+    void restaurantsQuery.refetch();
+    void managersQuery.refetch();
+    void pulseQuery.refetch();
+  };
 
   if (error !== null) {
     return (

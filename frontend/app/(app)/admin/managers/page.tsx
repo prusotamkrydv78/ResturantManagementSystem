@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Pencil, Search, TriangleAlert, UserPlus, Users } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -28,14 +28,14 @@ import {
 import { Table, TableWrap, Td, Th, Tr } from "@/components/ui/table";
 import { PageBody, PageHeader } from "@/components/layout/page-header";
 import { RequireAuth } from "@/features/auth/require-auth";
-import { getPlatformPulse } from "@/features/platform/api";
+import { useInvalidateEstate, useManagers, usePlatformPulse, useRestaurants } from "@/queries/admin";
+import { errorMessage } from "@/lib/query/errors";
 
 import { formatDate, money } from "@/features/analytics/format";
 import { sinceLabel, timeOf, useNow } from "@/lib/time/since";
-import { createManager, listManagers } from "@/features/managers/api";
-import { listRestaurants } from "@/features/restaurants/api";
+import { createManager } from "@/features/managers/api";
 import type { Manager } from "@/types/manager";
-import type { PlatformPulse, PlatformPulseRestaurant } from "@/types/platform";
+import type { PlatformPulseRestaurant } from "@/types/platform";
 import type { RestaurantSummary } from "@/types/restaurant";
 
 /**
@@ -53,102 +53,39 @@ export default function ManagersPage() {
 }
 
 function Managers() {
-  const [managers, setManagers] = useState<Manager[] | null>(null);
-  const [restaurants, setRestaurants] = useState<RestaurantSummary[]>([]);
-  const [pulse, setPulse] = useState<PlatformPulse | null>(null);
-  const [pulseFailed, setPulseFailed] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [bucket, setBucket] = useState<ManagerBucket>("All");
   const [sort, setSort] = useState<ManagerSort>("name");
   const now = useNow();
   const router = useRouter();
 
-  const load = useCallback(async (term: string) => {
-    try {
-      const [loadedManagers, loadedRestaurants] = await Promise.all([
-        listManagers({ search: term, status: "All" }),
-        listRestaurants(),
-      ]);
-      setManagers(loadedManagers);
-      setRestaurants(loadedRestaurants);
-      setError(null);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to load managers.");
-    }
+  // The search is sent to the server a moment after typing stops, so a name
+  // typed quickly is one request rather than one per letter.
+  const [term, setTerm] = useState("");
 
-    try {
-      setPulse(await getPlatformPulse());
-      setPulseFailed(false);
-    } catch {
-      setPulseFailed(true);
-    }
-  }, []);
-
-  // Search still goes to the server, so it covers every manager rather than only the
-  // rows already downloaded. The buckets below are worked out here instead, for two
-  // reasons: the endpoint has no filter for a suspended account, which is the bucket
-  // most worth having, and counting on the client is what lets each chip carry its
-  // own figure. The endpoint returns the whole list either way.
   useEffect(() => {
-    let cancelled = false;
+    const timer = setTimeout(() => setTerm(search), 200);
 
-    async function run() {
-      try {
-        const [loadedManagers, loadedRestaurants] = await Promise.all([
-          listManagers({ search, status: "All" }),
-          listRestaurants(),
-        ]);
-        if (!cancelled) {
-          setManagers(loadedManagers);
-          setRestaurants(loadedRestaurants);
-          setError(null);
-        }
-      } catch (caught) {
-        if (!cancelled) {
-          setError(
-            caught instanceof Error ? caught.message : "Unable to load managers.",
-          );
-        }
-      }
-    }
-
-    const timer = setTimeout(() => void run(), 200);
-
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
+    return () => clearTimeout(timer);
   }, [search]);
 
-  // Trading is read once and separately. It decorates this page rather than driving
-  // it: a manager who cannot be found is a problem whether or not their restaurant's
-  // takings loaded.
-  useEffect(() => {
-    let cancelled = false;
+  // Cached queries. The list keeps showing its last answer while a new search is
+  // in flight, instead of blinking to a skeleton between keystrokes.
+  const managersQuery = useManagers({ search: term, status: "All" });
+  const restaurantsQuery = useRestaurants();
+  const pulseQuery = usePlatformPulse();
 
-    async function run() {
-      try {
-        const loaded = await getPlatformPulse();
-        if (!cancelled) {
-          setPulse(loaded);
-          setPulseFailed(false);
-        }
-      } catch {
-        if (!cancelled) {
-          setPulseFailed(true);
-        }
-      }
-    }
+  const managers = managersQuery.data ?? null;
+  const restaurants = restaurantsQuery.data ?? [];
+  const pulse = pulseQuery.data ?? null;
+  const pulseFailed = pulseQuery.isError;
+  const error = errorMessage(
+    managersQuery.error ?? restaurantsQuery.error,
+    "Unable to load managers.",
+  );
 
-    void run();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const refresh = useCallback(() => load(search), [load, search]);
+  // What creating a manager calls afterwards: the estate is stale.
+  const refresh = useInvalidateEstate();
 
   /**
    * Open the manager this row is about.

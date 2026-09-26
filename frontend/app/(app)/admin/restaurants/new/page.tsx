@@ -14,6 +14,7 @@ import { PageBody, PageHeader } from "@/components/layout/page-header";
 import { RequireAuth } from "@/features/auth/require-auth";
 import { listManagers } from "@/features/managers/api";
 import { createRestaurant } from "@/features/restaurants/api";
+import { useInvalidateEstate } from "@/queries/admin";
 import type { Manager } from "@/types/manager";
 import type { CreateRestaurantPayload } from "@/types/restaurant";
 
@@ -41,6 +42,7 @@ type ManagerMode = "create" | "existing" | "later";
 
 function NewRestaurant() {
   const router = useRouter();
+  const invalidateEstate = useInvalidateEstate();
 
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
@@ -111,6 +113,11 @@ function NewRestaurant() {
 
     try {
       await createRestaurant(payload);
+
+      // Marked stale before leaving. The list is cached, and without this the admin
+      // would land back on it and not see the restaurant they just created - and a
+      // manager chosen here is no longer free, which the estate figures count too.
+      await invalidateEstate();
 
       // Back to the list, which is where the new restaurant and its next steps are.
       router.push("/admin/restaurants");
