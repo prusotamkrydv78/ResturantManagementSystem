@@ -7,23 +7,20 @@ import {
   CalendarDays,
   LogOut,
   Menu,
-  Moon,
   PanelLeftClose,
   PanelLeftOpen,
-  Sun,
   UtensilsCrossed,
 } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
 import { Dialog, DialogTrigger, DrawerContent } from "@/components/ui/dialog";
 import { Tooltip } from "@/components/ui/tooltip";
 import { ToastSoundToggle } from "@/components/ui/toast";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { navigationFor, roleLabel, type NavItem } from "@/components/layout/nav-config";
 import { useAuth } from "@/features/auth/auth-context";
-import { useTheme } from "@/lib/theme/use-theme";
 import { useRealtimeStatus } from "@/lib/realtime/realtime-context";
 import { useAdminLiveUpdates } from "@/queries/admin";
+import { useManagerLiveUpdates, usePrefetchManagerRoute } from "@/queries/manager";
 import { LiveUpdatesBanner } from "@/lib/realtime/live-updates-banner";
-import { THEMES, THEME_LABELS, type ThemePreference } from "@/lib/theme/theme";
 import { cn } from "@/lib/utils/cn";
 import { useStoredPreference } from "@/lib/hooks/use-stored-preference";
 
@@ -173,7 +170,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
 
           <div className="ml-auto flex items-center gap-1.5">
             <LiveIndicator />
-            <ThemeSwitch />
+            <ThemeToggle />
             <ToastSoundToggle className="rounded-full hover:bg-surface" />
           </div>
         </header>
@@ -195,12 +192,21 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
       {/* The platform figures follow the server's signals while the console is
           open. Only the platform owner is sent those signals. */}
       {user?.platformRole === "SuperAdmin" && <AdminLiveUpdates />}
+      {/* The restaurant's screens follow the server's order and ticket signals
+          from one place, rather than each page reloading itself. */}
+      {user?.platformRole === "RestaurantManager" && <ManagerLiveUpdates />}
     </div>
   );
 }
 
 function AdminLiveUpdates() {
   useAdminLiveUpdates();
+
+  return null;
+}
+
+function ManagerLiveUpdates() {
+  useManagerLiveUpdates();
 
   return null;
 }
@@ -243,6 +249,10 @@ function BrandMark() {
  */
 function AdminNav({ onNavigate, collapsed = false }: { onNavigate?: () => void; collapsed?: boolean }) {
   const { user } = useAuth();
+  // A manager's links warm the cache for their screen on hover or focus, so the
+  // page opens filled in. The platform owner's screens are small enough not to need it.
+  const prefetchRoute = usePrefetchManagerRoute();
+  const prefetch = user?.platformRole === "RestaurantManager" ? prefetchRoute : undefined;
   const pathname = usePathname();
   const groups = navigationFor(user?.platformRole, user?.staffRole);
 
@@ -270,6 +280,7 @@ function AdminNav({ onNavigate, collapsed = false }: { onNavigate?: () => void; 
               isActive={isActive(item, pathname, exactMatchElsewhere)}
               onNavigate={onNavigate}
               collapsed={collapsed}
+              onPrefetch={prefetch}
             />
           ))}
         </div>
@@ -293,11 +304,13 @@ function AdminNavLink({
   isActive: active,
   onNavigate,
   collapsed = false,
+  onPrefetch,
 }: {
   item: NavItem;
   isActive: boolean;
   onNavigate?: () => void;
   collapsed?: boolean;
+  onPrefetch?: (href: string | undefined) => void;
 }) {
   const Icon = item.icon;
 
@@ -318,6 +331,8 @@ function AdminNavLink({
     <Link
       href={item.href ?? "#"}
       onClick={onNavigate}
+      onPointerEnter={() => onPrefetch?.(item.href)}
+      onFocus={() => onPrefetch?.(item.href)}
       aria-current={active ? "page" : undefined}
       className={cn(
         "flex items-center gap-3 rounded-xl py-2 text-sm transition-colors",
@@ -447,51 +462,5 @@ function LiveIndicator() {
       </span>
       {status.connected ? "Live" : "Connecting"}
     </span>
-  );
-}
-
-const THEME_ICONS: Record<ThemePreference, LucideIcon> = {
-  light: Sun,
-  dark: Moon,
-};
-
-/**
- * Three icons in a pill.
- *
- * Icons with tooltips rather than labelled segments, which is what used to be
- * squeezed into the sidebar footer and clipped its last word under the bell.
- */
-function ThemeSwitch() {
-  const { theme, setTheme } = useTheme();
-
-  return (
-    <div
-      role="radiogroup"
-      aria-label="Theme"
-      className="flex items-center gap-0.5 rounded-full bg-surface p-1 shadow-(--surface-shadow)"
-    >
-      {THEMES.map((option) => {
-        const Icon = THEME_ICONS[option];
-        const selected = option === theme;
-
-        return (
-          <button
-            key={option}
-            type="button"
-            role="radio"
-            aria-checked={selected}
-            aria-label={THEME_LABELS[option]}
-            title={THEME_LABELS[option]}
-            onClick={() => setTheme(option)}
-            className={cn(
-              "flex size-7 items-center justify-center rounded-full transition-colors",
-              selected ? "bg-ink text-surface" : "text-subtle hover:text-text",
-            )}
-          >
-            <Icon className="size-3.5" aria-hidden="true" />
-          </button>
-        );
-      })}
-    </div>
   );
 }

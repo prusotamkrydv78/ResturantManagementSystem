@@ -1,17 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowRight, CircleCheck, TriangleAlert } from "lucide-react";
 import { Skeleton } from "@/components/ui/states";
 import { PageBody, PageHeader } from "@/components/layout/page-header";
 import { SETTINGS_SECTIONS } from "@/components/layout/settings-nav";
-import { getMyRestaurant } from "@/features/restaurants/api";
-import { listTables } from "@/features/tables/api";
-import { listStaff } from "@/features/staff/api";
-import { listInventory } from "@/features/inventory/api";
-import { listCustomers } from "@/features/customers/api";
 import { cn } from "@/lib/utils/cn";
+import { useCustomers, useInventory, useMyRestaurant, useStaff, useTables } from "@/queries/manager";
 import type { Restaurant } from "@/types/restaurant";
 import type { RestaurantTable } from "@/types/table";
 import type { StaffMember } from "@/types/staff";
@@ -106,46 +101,25 @@ interface Setup {
  * "still coming" from "not available" and show a placeholder only for the first.
  */
 function useSetup(): Setup {
-  const [setup, setSetup] = useState<Setup>({
-    restaurant: undefined,
-    tables: undefined,
-    staff: undefined,
-    inventory: undefined,
-    customers: undefined,
-  });
+  // From the shared cache - the same reads the pages behind these cards use - so the
+  // hub opens filled in once any of them has been seen, and the pages open filled in
+  // once the hub has. Undefined while loading, null if that one read failed.
+  const restaurant = useMyRestaurant();
+  const tables = useTables();
+  const staff = useStaff("");
+  const inventory = useInventory(false);
+  const customers = useCustomers({ search: "", includeInactive: false });
 
-  useEffect(() => {
-    let cancelled = false;
+  const state = <T,>(query: { data: T | undefined; error: unknown }): T | null | undefined =>
+    query.data !== undefined ? query.data : query.error !== null ? null : undefined;
 
-    void Promise.allSettled([
-      getMyRestaurant(),
-      listTables(),
-      listStaff(),
-      listInventory(false),
-      listCustomers({ search: "", includeInactive: false }),
-    ]).then(([restaurant, tables, staff, inventory, customers]) => {
-      if (cancelled) {
-        return;
-      }
-
-      const value = <T,>(result: PromiseSettledResult<T>) =>
-        result.status === "fulfilled" ? result.value : null;
-
-      setSetup({
-        restaurant: value(restaurant),
-        tables: value(tables),
-        staff: value(staff),
-        inventory: value(inventory),
-        customers: value(customers),
-      });
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  return setup;
+  return {
+    restaurant: state(restaurant),
+    tables: state(tables),
+    staff: state(staff),
+    inventory: state(inventory),
+    customers: state(customers),
+  };
 }
 
 /** Profile completeness, counted from the optional fields rather than scored. */

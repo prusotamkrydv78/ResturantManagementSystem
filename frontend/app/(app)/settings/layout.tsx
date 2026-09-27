@@ -12,6 +12,7 @@ import {
 import { NavSection, useClosedSections } from "@/components/layout/nav-section";
 import { RailLabel, Tooltip } from "@/components/ui/tooltip";
 import { useStoredPreference } from "@/lib/hooks/use-stored-preference";
+import { usePrefetchManagerRoute } from "@/queries/manager";
 import { cn } from "@/lib/utils/cn";
 
 /**
@@ -56,6 +57,8 @@ function useIsCurrent(): (link: SettingsLink) => boolean {
 /** The settings navigation at desktop width. */
 function SettingsRail() {
   const isCurrent = useIsCurrent();
+  // Each link warms its page's data on hover or focus, so it opens filled in.
+  const prefetch = usePrefetchManagerRoute();
   const pathname = usePathname();
   const [isCollapsed, setIsCollapsed] = useStoredPreference(RAIL_KEY, false);
   const [isSectionClosed, toggleSection] = useClosedSections(SECTIONS_KEY);
@@ -137,6 +140,8 @@ function SettingsRail() {
               >
                 <Link
                   href={link.href}
+                  onPointerEnter={() => prefetch(link.href)}
+                  onFocus={() => prefetch(link.href)}
                   aria-current={active ? "page" : undefined}
                   aria-label={isCollapsed ? link.label : undefined}
                   className={cn(
@@ -230,6 +235,7 @@ function SettingsRail() {
  */
 function SettingsTabs() {
   const isCurrent = useIsCurrent();
+  const prefetch = usePrefetchManagerRoute();
 
   return (
     <nav
@@ -244,6 +250,8 @@ function SettingsTabs() {
           <Link
             key={link.href}
             href={link.href}
+                  onPointerEnter={() => prefetch(link.href)}
+                  onFocus={() => prefetch(link.href)}
             aria-current={active ? "page" : undefined}
             className={cn(
               "flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm transition-colors",

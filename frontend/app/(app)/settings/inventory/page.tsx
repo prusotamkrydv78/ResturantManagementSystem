@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import Link from "next/link";
 import { Boxes, Package, PackageX, Plus, Search, SlidersHorizontal, TrendingDown, TriangleAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -26,14 +26,14 @@ import {
 import { PageBody, PageHeader } from "@/components/layout/page-header";
 import { RequireAuth } from "@/features/auth/require-auth";
 import { NoRestaurantAssigned } from "@/features/restaurants/no-restaurant";
-import { createInventoryItem, listInventory } from "@/features/inventory/api";
+import { createInventoryItem } from "@/features/inventory/api";
+import { useInvalidateRestaurant, useInventory } from "@/queries/manager";
 import { ApiError, isMissingRestaurant } from "@/lib/api/client";
 import { cn } from "@/lib/utils/cn";
 import { apiAssetSrc } from "@/lib/api/asset-url";
 import { INVENTORY_LIMITS, UNITS, UNIT_SHORT } from "@/types/inventory";
 import type {
   InventoryItem,
-  InventoryOverview,
   UnitOfMeasure,
 } from "@/types/inventory";
 
@@ -93,48 +93,24 @@ export default function InventoryPage() {
 }
 
 function InventoryList() {
-  const [overview, setOverview] = useState<InventoryOverview | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [noRestaurant, setNoRestaurant] = useState(false);
   const [includeArchived, setIncludeArchived] = useState(false);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<StockFilter>("all");
-  const [reloadKey, setReloadKey] = useState(0);
 
-  const refresh = useCallback(() => setReloadKey((key) => key + 1), []);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      try {
-        const loaded = await listInventory(includeArchived);
-
-        if (!cancelled) {
-          setOverview(loaded);
-          setError(null);
-          setNoRestaurant(false);
-        }
-      } catch (caught) {
-        if (!cancelled) {
-          setNoRestaurant(isMissingRestaurant(caught));
-          setError(
-            isMissingRestaurant(caught)
-              ? null
-              : caught instanceof Error
-                ? caught.message
-                : "Unable to load the inventory.",
-          );
-        }
-      }
-    }
-
-    void load();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [includeArchived, reloadKey]);
+  // From the shared cache; showing archived keeps the current list up until the
+  // wider one arrives.
+  const inventoryQuery = useInventory(includeArchived);
+  const invalidate = useInvalidateRestaurant();
+  const overview = inventoryQuery.data ?? null;
+  const noRestaurant = inventoryQuery.error !== null && isMissingRestaurant(inventoryQuery.error);
+  const error = inventoryQuery.data === undefined && inventoryQuery.error !== null && !isMissingRestaurant(inventoryQuery.error)
+      ? inventoryQuery.error instanceof Error
+        ? inventoryQuery.error.message
+        : "Unable to load the inventory."
+      : null;
+  const refresh = useCallback(() => {
+    void invalidate(["restaurant", "setup", "inventory"]);
+  }, [invalidate]);
 
   // Narrowed here rather than in the query, so the header counts keep covering the
   // whole shelf: a warning that could be hidden by typing in the search box would
@@ -252,7 +228,6 @@ function InventoryList() {
                       checked={includeArchived}
                       onChange={(event) => {
                         setIncludeArchived(event.target.checked);
-                        setOverview(null);
                       }}
                       className="size-4 accent-primary"
                     />

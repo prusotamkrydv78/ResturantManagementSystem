@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Ban, CircleCheck, History } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -9,7 +9,7 @@ import { Surface } from "@/components/ui/surface";
 import { EmptyState, ErrorState, Skeleton } from "@/components/ui/states";
 import { PageBody, PageHeader } from "@/components/layout/page-header";
 import { RequireAuth } from "@/features/auth/require-auth";
-import { listOrderHistory } from "@/features/billing/api";
+import { useOrderHistory } from "@/queries/manager";
 import { cn } from "@/lib/utils/cn";
 import { money } from "@/features/analytics/format";
 import type { OrderHistoryEntry } from "@/types/billing";
@@ -38,38 +38,18 @@ export default function OrderHistoryPage() {
 }
 
 function OrderHistory() {
-  const [entries, setEntries] = useState<OrderHistoryEntry[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>("All");
-  const [reloadKey, setReloadKey] = useState(0);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      try {
-        const loaded = await listOrderHistory(
-          filter === "All" ? undefined : filter,
-        );
-        if (!cancelled) {
-          setEntries(loaded);
-          setError(null);
-        }
-      } catch (caught) {
-        if (!cancelled) {
-          setError(
-            caught instanceof Error ? caught.message : "Unable to load the history.",
-          );
-        }
-      }
-    }
-
-    void load();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [filter, reloadKey]);
+  // From the shared cache; switching filter keeps the previous list on screen until
+  // the next arrives, rather than blanking to a skeleton.
+  const historyQuery = useOrderHistory(filter);
+  const entries = historyQuery.data ?? null;
+  const error =
+    historyQuery.data === undefined && historyQuery.error !== null
+      ? historyQuery.error instanceof Error
+        ? historyQuery.error.message
+        : "Unable to load the history."
+      : null;
+  const reload = () => void historyQuery.refetch();
 
   return (
     <>
@@ -97,7 +77,6 @@ function OrderHistory() {
                 aria-current={isActive ? "true" : undefined}
                 onClick={() => {
                   setFilter(option);
-                  setEntries(null);
                 }}
                 className={cn(
                   "shrink-0 rounded-full px-3.5 py-1.5 text-sm transition-colors",
@@ -116,7 +95,7 @@ function OrderHistory() {
           <Surface>
             <ErrorState
               message={error}
-              onRetry={() => setReloadKey((key) => key + 1)}
+              onRetry={reload}
             />
           </Surface>
         ) : entries === null ? (

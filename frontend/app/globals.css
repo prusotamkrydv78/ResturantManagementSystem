@@ -1385,3 +1385,30 @@ html.lenis body {
 .console-scroll:active {
   scrollbar-color: var(--accent) transparent;
 }
+
+/* ---------------------------------------------------------------------------
+   Changing theme: the new page seeps in as slow, merging patches - the first at
+   the switch, the rest at random - while the old one darkens and drains of colour
+   (useTheme drives both). The browser's own cross-fade is
+   turned off so the two pictures do not also blend, and the new one sits on top.
+   --------------------------------------------------------------------------- */
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+::view-transition-old(root) {
+  z-index: 1;
+}
+
+::view-transition-new(root) {
+  z-index: 2;
+}
+
+/* The public pages - the landing page and sign-in - are always light, whatever the
+   visitor chose inside the product. Specific enough to beat the data-theme rule. */
+html:root[data-surface="brand"] {
+  color-scheme: light;
+}

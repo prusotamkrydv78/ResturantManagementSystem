@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import Link from "next/link";
 import { Armchair, Check, Timer, UtensilsCrossed } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -10,9 +10,10 @@ import { StatTile } from "@/components/ui/stat-tile";
 import { EmptyState, ErrorState, FormError, Skeleton } from "@/components/ui/states";
 import { PageBody, PageHeader } from "@/components/layout/page-header";
 import { RequireAuth } from "@/features/auth/require-auth";
+import { useQueryClient } from "@tanstack/react-query";
+import { managerKeys, usePass } from "@/queries/manager";
 import { useAuth } from "@/features/auth/auth-context";
 import {
-  listPass,
   markTicketItemServed,
   markTicketServed,
 } from "@/features/orders/api";
@@ -61,8 +62,6 @@ export default function PassPage() {
  */
 const STALE_NOTICE_MS = 6000;
 
-/** How often the queue refreshes itself, for when the live connection is not there. */
-const REFRESH_MS = 20_000;
 
 /**
  * When a plate stops being fresh, and when it stops being acceptable.
@@ -96,56 +95,36 @@ function heatOf(isoString: string, since: number): Heat {
 function Pass() {
   const { user } = useAuth();
   const isManager = user?.platformRole === "RestaurantManager";
-  const [tickets, setTickets] = useState<PassTicket[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [serveError, setServeError] = useState<string | null>(null);
   // Keyed by whatever is mid-request - a ticket or a single dish - because a waiter
   // clearing three plates off one slip taps them in a row and locking the card after
   // the first would read as broken.
   const [serving, setServing] = useState<ReadonlySet<string>>(() => new Set());
-  const [reloadKey, setReloadKey] = useState(0);
-  // Captured when the data arrived rather than read while rendering, because calling
-  // the clock during render is impure and the ages below all measure from it.
-  const [loadedAt, setLoadedAt] = useState(() => Date.now());
 
-  const reload = useCallback(() => setReloadKey((key) => key + 1), []);
+  // From the shared cache, polled as a net (food at the pass should not depend on a
+  // socket that may be asleep in a pocket), and marked stale by the events below.
+  const passQuery = usePass();
+  const client = useQueryClient();
+  const tickets = passQuery.data ?? null;
+  const error =
+    passQuery.data === undefined && passQuery.error !== null
+      ? passQuery.error instanceof Error
+        ? passQuery.error.message
+        : "Unable to load the pass."
+      : null;
+  // When the data arrived, which every age below measures from.
+  const loadedAt = passQuery.dataUpdatedAt;
+  const setTickets = (update: (current: PassTicket[] | null) => PassTicket[] | null) =>
+    client.setQueryData(managerKeys.pass(), (data: PassTicket[] | undefined) =>
+      data === undefined ? data : (update(data) ?? data),
+    );
+
+  const reload = useCallback(() => {
+    void client.invalidateQueries({ queryKey: managerKeys.pass() });
+  }, [client]);
 
   // Anything sent while the connection was down is not coming, so re-read on return.
   useRealtimeResync(reload);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      try {
-        const loaded = await listPass();
-
-        if (!cancelled) {
-          setTickets(loaded);
-          setLoadedAt(Date.now());
-          setError(null);
-        }
-      } catch (caught) {
-        if (!cancelled) {
-          setError(
-            caught instanceof Error ? caught.message : "Unable to load the pass.",
-          );
-        }
-      }
-    }
-
-    void load();
-
-    // Still polls. The socket is the thing most likely to be missing - a phone in a
-    // pocket, a tunnel, a laptop that slept - and food at the pass is the last thing
-    // that should depend on it.
-    const timer = setInterval(reload, REFRESH_MS);
-
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
-  }, [reloadKey, reload]);
 
   // Live, when the connection is there. Both directions: something new to carry, and
   // something a colleague has already carried.

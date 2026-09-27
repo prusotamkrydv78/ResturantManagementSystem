@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { Ban, Calculator, CircleCheck, FileText, Receipt, ReceiptText, Search, Wallet } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -17,7 +17,7 @@ import {
 } from "@/features/analytics/charts";
 import { RequireAuth } from "@/features/auth/require-auth";
 import { NoRestaurantAssigned } from "@/features/restaurants/no-restaurant";
-import { getReportSummary } from "@/features/reports/api";
+import { useReport } from "@/queries/manager";
 import { isMissingRestaurant } from "@/lib/api/client";
 import { cn } from "@/lib/utils/cn";
 import { StatTile } from "@/components/ui/stat-tile";
@@ -45,12 +45,6 @@ export default function ReportsPage() {
 }
 
 function Reports() {
-  const [report, setReport] = useState<ReportSummary | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [noRestaurant, setNoRestaurant] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  const [reloadKey, setReloadKey] = useState(0);
-
   // The dates the manager typed, held separately from the range actually reported on,
   // so the figures never claim to cover something that has not been fetched.
   const [from, setFrom] = useState("");
@@ -60,49 +54,28 @@ function Reports() {
     to: "",
   });
 
-  // Fetching lives inside the effect and only touches state after awaiting, so the
-  // effect never sets state synchronously as it runs. Showing the spinner is the
-  // button job, because that is a real user action rather than a render.
-  useEffect(() => {
-    let cancelled = false;
+  // From the shared cache, per range: a range already looked at opens at once, and a
+  // new one keeps the previous figures on screen until it arrives.
+  const reportQuery = useReport(applied);
+  const report = reportQuery.data ?? null;
+  const noRestaurant = reportQuery.error !== null && isMissingRestaurant(reportQuery.error);
+  const error =
+    reportQuery.data === undefined && reportQuery.error !== null && !isMissingRestaurant(reportQuery.error)
+      ? reportQuery.error instanceof Error
+        ? reportQuery.error.message
+        : "Unable to load the report."
+      : null;
+  const isLoading = reportQuery.isFetching;
 
-    async function load() {
-      try {
-        const loaded = await getReportSummary(applied.from, applied.to);
-
-        if (!cancelled) {
-          setReport(loaded);
-          setError(null);
-          setNoRestaurant(false);
-          // Adopt what the server actually reported on, which fills the inputs in on
-          // the first load and corrects them if one date was read as a single day.
-          setFrom(loaded.fromLocalDate);
-          setTo(loaded.toLocalDate);
-        }
-      } catch (caught) {
-        if (!cancelled) {
-          setNoRestaurant(isMissingRestaurant(caught));
-          setError(
-            isMissingRestaurant(caught)
-              ? null
-              : caught instanceof Error
-                ? caught.message
-                : "Unable to load the report.",
-          );
-        }
-      } finally {
-        if (!cancelled) {
-          setIsLoading(false);
-        }
-      }
-    }
-
-    void load();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [applied, reloadKey]);
+  // Adopt what the server actually reported on, which fills the inputs in on the
+  // first load and corrects them if one date was read as a single day. Done while
+  // rendering, once per new report, rather than in an effect.
+  const [adopted, setAdopted] = useState<ReportSummary | null>(null);
+  if (report !== null && report !== adopted) {
+    setAdopted(report);
+    setFrom(report.fromLocalDate);
+    setTo(report.toLocalDate);
+  }
 
   return (
     <>
@@ -131,7 +104,6 @@ function Reports() {
 
                   setFrom(range.from);
                   setTo(range.to);
-                  setIsLoading(true);
                   setApplied(range);
                 }}
                 className="rounded-full bg-surface-2 px-3.5 py-1.5 text-xs font-semibold text-text transition-colors hover:bg-ink hover:text-surface focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
@@ -162,7 +134,6 @@ function Reports() {
             </Field>
             <Button
               onClick={() => {
-                setIsLoading(true);
                 setApplied({ from, to });
               }}
               disabled={isLoading}
@@ -173,7 +144,6 @@ function Reports() {
             <Button
               variant="secondary"
               onClick={() => {
-                setIsLoading(true);
                 setApplied({ from: "", to: "" });
               }}
               disabled={isLoading}
@@ -193,8 +163,7 @@ function Reports() {
             <ErrorState
               message={error}
               onRetry={() => {
-                setIsLoading(true);
-                setReloadKey((key) => key + 1);
+                void reportQuery.refetch();
               }}
             />
           </Surface>

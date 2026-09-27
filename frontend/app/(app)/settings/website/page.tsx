@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowUpRight, ExternalLink, Globe } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -8,14 +7,14 @@ import { Button, LinkButton } from "@/components/ui/button";
 import { Surface } from "@/components/ui/surface";
 import { ErrorState, Skeleton } from "@/components/ui/states";
 import { PageBody, PageHeader } from "@/components/layout/page-header";
-import { getSite, setSitePublished, type Site } from "@/features/website/api";
+import { setSitePublished, type Site } from "@/features/website/api";
+import { useQueryClient } from "@tanstack/react-query";
+import { managerKeys, useMyRestaurant, useSite } from "@/queries/manager";
 import { siteAddress } from "@/features/website/address";
 import { DESIGNS, designById, type Design } from "@/features/website/designs";
 import { DesignSketchView } from "@/features/website/design-sketch";
-import { getMyRestaurant } from "@/features/restaurants/api";
 import { Report, useAction } from "@/features/platform/use-action";
 import { cn } from "@/lib/utils/cn";
-import type { Restaurant } from "@/types/restaurant";
 
 /**
  * The designs a restaurant can build its public page on.
@@ -79,47 +78,21 @@ export default function WebsiteDesignsPage() {
  * keeps the copy of Publish that belongs next to the work.
  */
 function SiteStatus() {
-  const [site, setSite] = useState<Site | null>(null);
-  const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [reloadKey, setReloadKey] = useState(0);
+  // From the shared cache: the site and the restaurant it answers for.
+  const siteQuery = useSite();
+  const restaurantQuery = useMyRestaurant();
+  const client = useQueryClient();
   const action = useAction();
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      try {
-        const [loadedSite, loadedRestaurant] = await Promise.all([
-          getSite(),
-          getMyRestaurant(),
-        ]);
-
-        if (!cancelled) {
-          setSite(loadedSite);
-          setRestaurant(loadedRestaurant);
-          setError(null);
-        }
-      } catch (caught) {
-        if (!cancelled) {
-          setError(
-            caught instanceof Error ? caught.message : "Unable to read your website.",
-          );
-        }
-      }
-    }
-
-    void load();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [reloadKey]);
+  const site = siteQuery.data ?? null;
+  const restaurant = restaurantQuery.data ?? null;
+  const failure = site === null ? siteQuery.error : restaurant === null ? restaurantQuery.error : null;
+  const error = failure !== null ? (failure instanceof Error ? failure.message : "Unable to read your website.") : null;
+  const setSite = (next: Site) => client.setQueryData(managerKeys.site(), next);
 
   if (error !== null) {
     return (
       <Surface>
-        <ErrorState message={error} onRetry={() => setReloadKey((key) => key + 1)} />
+        <ErrorState message={error} onRetry={() => { void siteQuery.refetch(); void restaurantQuery.refetch(); }} />
       </Surface>
     );
   }

@@ -30,9 +30,8 @@ import { PageBody, PageHeader } from "@/components/layout/page-header";
 import { useAuth } from "@/features/auth/auth-context";
 import { isMissingRestaurant } from "@/lib/api/client";
 import { cn } from "@/lib/utils/cn";
-import { getMyRestaurant } from "@/features/restaurants/api";
 import { NoRestaurantAssigned } from "@/features/restaurants/no-restaurant";
-import { getManagerDashboard } from "@/features/dashboard/api";
+import { useManagerDashboard, useMyRestaurant } from "@/queries/manager";
 import { SuperAdminOverview } from "@/features/platform/admin-overview";
 import { Ticker } from "@/components/ui/ticker";
 import { StatTile } from "@/components/ui/stat-tile";
@@ -46,13 +45,11 @@ import {
 } from "@/features/analytics/charts";
 import { listKitchenTickets } from "@/features/kitchen/api";
 import { getWaiterContext, listOpenOrders } from "@/features/orders/api";
-import type { Restaurant } from "@/types/restaurant";
 import type {
   ActivityEntry,
   ActivityKind,
   Floor,
   KitchenLoad,
-  ManagerDashboard,
   OrderActivity,
   Readiness,
 } from "@/types/dashboard";
@@ -134,91 +131,42 @@ const ACTIVITY_LIMIT = 8;
  *    the live picture rather than above it.
  */
 function ManagerOverview() {
-  const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
-  const [dashboard, setDashboard] = useState<ManagerDashboard | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [reloadKey, setReloadKey] = useState(0);
+  // From the shared cache: a manager coming back to the overview sees it at once and
+  // it refreshes behind itself. Kept current by the server's signals (see
+  // useManagerLiveUpdates), with a slow poll and a refetch on focus as the net -
+  // which replaces the thirty-second timer and focus listener this screen carried.
+  const dashboardQuery = useManagerDashboard();
+  const restaurantQuery = useMyRestaurant();
   const now = useNow();
 
-  useEffect(() => {
-    let cancelled = false;
+  const restaurant = restaurantQuery.data ?? null;
+  const dashboard = dashboardQuery.data ?? null;
+  const failure = dashboardQuery.error ?? restaurantQuery.error;
 
-    async function load() {
-      try {
-        const [loadedRestaurant, loadedDashboard] = await Promise.all([
-          getMyRestaurant(),
-          getManagerDashboard(),
-        ]);
-        if (!cancelled) {
-          setRestaurant(loadedRestaurant);
-          setDashboard(loadedDashboard);
-          setError(null);
-        }
-      } catch (caught) {
-        if (!cancelled) {
-          // A manager with no restaurant yet is a real state, not a failure: an
-          // admin can create the account and assign the restaurant later. Reported
-          // as an error it looked broken, and offered a retry that could never work.
-          if (isMissingRestaurant(caught)) {
-            setError(null);
-          } else {
-            setError(
-              caught instanceof Error
-                ? caught.message
-                : "Unable to load your restaurant.",
-            );
-          }
-        }
-      } finally {
-        if (!cancelled) {
-          setIsLoading(false);
-        }
-      }
-    }
-
-    void load();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [reloadKey]);
-
-  // A quiet refresh on a timer, because this is a screen a manager leaves open
-  // during service. Plus one when the tab comes back: a laptop shut at the end of
-  // a lunch and opened at dinner should not show lunch.
-  useEffect(() => {
-    const timer = setInterval(() => setReloadKey((key) => key + 1), 30_000);
-    const onFocus = () => setReloadKey((key) => key + 1);
-
-    window.addEventListener("focus", onFocus);
-
-    return () => {
-      clearInterval(timer);
-      window.removeEventListener("focus", onFocus);
-    };
-  }, []);
-
-  if (isLoading) {
+  if (restaurant === null && dashboard === null && failure === null) {
     return <ManagerOverviewSkeleton />;
   }
 
-  if (error !== null) {
-    return (
-      <Surface>
-        <ErrorState
-          message={error}
-          onRetry={() => {
-            setIsLoading(true);
-            setReloadKey((key) => key + 1);
-          }}
-        />
-      </Surface>
-    );
+  // A manager with no restaurant yet is a real state, not a failure: an admin can
+  // create the account and assign the restaurant later.
+  if (failure !== null && isMissingRestaurant(failure)) {
+    return <NoRestaurantAssigned />;
   }
 
   if (restaurant === null || dashboard === null) {
-    return <NoRestaurantAssigned />;
+    return failure !== null ? (
+      <Surface>
+        <ErrorState
+          message={failure instanceof Error ? failure.message : "Unable to load your restaurant."}
+          onRetry={() => {
+            void dashboardQuery.refetch();
+            void restaurantQuery.refetch();
+          }}
+        />
+      </Surface>
+    ) : (
+      <ManagerOverviewSkeleton />
+    );
   }
 
   const { orders, floor, kitchen, today, yesterday, days, hours, readiness, activity } =

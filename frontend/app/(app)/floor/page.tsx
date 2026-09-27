@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import Link from "next/link";
 import {
   Armchair,
@@ -26,19 +26,11 @@ import { EmptyState, ErrorState, Skeleton } from "@/components/ui/states";
 import { PageBody, PageHeader } from "@/components/layout/page-header";
 import { RequireAuth } from "@/features/auth/require-auth";
 import { useAuth } from "@/features/auth/auth-context";
-import { getManagerFloor, getWaiterFloor } from "@/features/floor/api";
+import { useQueryClient } from "@tanstack/react-query";
+import { managerKeys, useFloor } from "@/queries/manager";
 import { useRealtimeEvent, useRealtimeResync } from "@/lib/realtime/realtime-context";
 import { cn } from "@/lib/utils/cn";
-import type { FloorOverview, FloorTable } from "@/types/floor";
-
-/**
- * How often the floor re-reads itself when nothing has been pushed.
- *
- * A backstop, not the mechanism. Every change this screen draws now arrives as an
- * event; this is what keeps the elapsed labels honest and what recovers a connection
- * that died quietly.
- */
-const REFRESH_MS = 60_000;
+import type { FloorTable } from "@/types/floor";
 
 /**
  * The live floor.
@@ -63,24 +55,32 @@ function FloorOverviewScreen() {
   const { user } = useAuth();
   const isManager = user?.platformRole === "RestaurantManager";
 
-  const [floor, setFloor] = useState<FloorOverview | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [reloadKey, setReloadKey] = useState(0);
   const [view, setView] = useState<FloorView>("All");
   const [search, setSearch] = useState("");
 
-  const reload = useCallback(() => setReloadKey((key) => key + 1), []);
+  // From the shared cache, so coming back to the floor shows the room at once and
+  // refreshes behind it. A manager's floor is kept current centrally (see
+  // useManagerLiveUpdates); a waiter's by the listeners below. Either way an event
+  // only marks the cached floor stale - it no longer refetches from nothing - and
+  // the query's slow poll and focus refetch replace this screen's own timer.
+  const floorQuery = useFloor(isManager ? "manager" : "waiter");
+  const floor = floorQuery.data ?? null;
+  const error =
+    floorQuery.data === undefined && floorQuery.error !== null
+      ? floorQuery.error instanceof Error
+        ? floorQuery.error.message
+        : "Unable to load the floor."
+      : null;
+  const client = useQueryClient();
+  const reload = useCallback(() => {
+    void client.invalidateQueries({ queryKey: managerKeys.floor(isManager ? "manager" : "waiter") });
+  }, [client, isManager]);
 
   // Anything sent while the connection was down is not coming, so re-read on return.
   useRealtimeResync(reload);
 
-  // The floor is the one screen two people watch at once, and it was the only
-  // operational screen still finding out on a timer. A waiter seating a table and a
-  // manager deciding whether to walk over should be looking at the same room, not at
-  // the same room twenty seconds apart.
-  //
-  // Every event below already reaches this client - the kitchen rail and the pass
-  // have been using them for a while - so this is a subscription, not new plumbing.
+  // The floor is the one screen two people watch at once: a waiter seating a table
+  // and a manager deciding whether to walk over should see the same room.
   useRealtimeEvent("orderPlaced", reload);
   useRealtimeEvent("orderConfirmed", reload);
   useRealtimeEvent("ticketQueued", reload);
@@ -92,51 +92,6 @@ function FloorOverviewScreen() {
   // A paid or cancelled order frees its table, which is what this screen is for.
   useRealtimeEvent("orderSettled", reload);
   useRealtimeEvent("orderCancelled", reload);
-  // Settling and cancelling are deliberately absent: the notifier tells the customer
-  // about those, not the operations hub, so subscribing here would register handlers
-  // for names that never arrive. The timer below is what covers them.
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      try {
-        const loaded = isManager ? await getManagerFloor() : await getWaiterFloor();
-        if (!cancelled) {
-          setFloor(loaded);
-          setError(null);
-        }
-      } catch (caught) {
-        if (!cancelled) {
-          setError(
-            caught instanceof Error ? caught.message : "Unable to load the floor.",
-          );
-        }
-      }
-    }
-
-    void load();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [isManager, reloadKey]);
-
-  // Every state this screen draws is now pushed, so the timer is no longer the
-  // mechanism - it is what re-ages the elapsed labels, which no event would do, and
-  // what covers a connection that dropped without anybody noticing. Slower than it
-  // was, because it is no longer racing the service.
-  useEffect(() => {
-    const timer = setInterval(reload, REFRESH_MS);
-    const onFocus = () => reload();
-
-    window.addEventListener("focus", onFocus);
-
-    return () => {
-      clearInterval(timer);
-      window.removeEventListener("focus", onFocus);
-    };
-  }, [reload]);
 
   const term = search.trim().toLowerCase();
   const shown = (floor?.tables ?? []).filter(
@@ -181,7 +136,7 @@ function FloorOverviewScreen() {
             )}
             <Button
               variant="secondary"
-              onClick={() => setReloadKey((key) => key + 1)}
+              onClick={reload}
               icon={<RefreshCw />}
             >
               Refresh
@@ -195,7 +150,7 @@ function FloorOverviewScreen() {
           <Surface>
             <ErrorState
               message={error}
-              onRetry={() => setReloadKey((key) => key + 1)}
+              onRetry={reload}
             />
           </Surface>
         ) : floor === null ? (

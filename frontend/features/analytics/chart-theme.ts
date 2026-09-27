@@ -79,16 +79,13 @@ export function useChartTheme(): ChartTheme | null {
       attributeFilter: ["data-theme", "data-surface"],
     });
 
-    const dark = window.matchMedia("(prefers-color-scheme: dark)");
     const motion = window.matchMedia("(prefers-reduced-motion: reduce)");
 
-    dark.addEventListener("change", read);
     motion.addEventListener("change", read);
 
     return () => {
       clearTimeout(first);
       observer.disconnect();
-      dark.removeEventListener("change", read);
       motion.removeEventListener("change", read);
     };
   }, []);

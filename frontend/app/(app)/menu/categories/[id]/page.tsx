@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { managerKeys, useInvalidateRestaurant } from "@/queries/manager";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, ImagePlus, Tags, Trash2 } from "lucide-react";
@@ -51,6 +52,11 @@ export default function MenuCategoryPage() {
 }
 
 function MenuCategoryView() {
+  // Whatever was changed here - details, photograph, availability, deletion -
+  // reaches the menu list: leaving this page marks the menu stale, so the list
+  // refreshes the moment it is shown again.
+  const invalidateMenu = useInvalidateRestaurant();
+  useEffect(() => () => void invalidateMenu(managerKeys.menu, managerKeys.dashboard()), [invalidateMenu]);
   const params = useParams<{ id: string }>();
   const id = params.id;
   const router = useRouter();

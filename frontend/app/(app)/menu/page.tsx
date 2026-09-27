@@ -47,14 +47,15 @@ import {
   createItems,
   deleteCategory,
   deleteItem,
-  listCategories,
-  listItems,
+  
   reorderCategories,
   setCategoryActive,
   setItemActive,
   updateCategory,
   updateItem,
 } from "@/features/menu/api";
+import { useQueryClient } from "@tanstack/react-query";
+import { managerKeys, useInvalidateRestaurant, useMenuCategories, useMenuItems } from "@/queries/manager";
 import { ApiError } from "@/lib/api/client";
 import type { MenuCategory, MenuItem } from "@/types/menu";
 
@@ -73,56 +74,38 @@ export default function MenuPage() {
 }
 
 function MenuManager() {
-  const [categories, setCategories] = useState<MenuCategory[] | null>(null);
-  const [items, setItems] = useState<MenuItem[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
   const [isReordering, setIsReordering] = useState(false);
+  const [actionError, setError] = useState<string | null>(null);
+
+  // The search goes to the server a beat after typing stops, so every keystroke is
+  // not a request; the list on screen stays put until the new one arrives.
+  const [appliedSearch, setAppliedSearch] = useState("");
+  useEffect(() => {
+    const timer = setTimeout(() => setAppliedSearch(search), 200);
+
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  // From the shared cache: the menu opens at once, and a change made here marks the
+  // menu stale - along with the overview, whose "ready to trade" depends on it.
+  const categoriesQuery = useMenuCategories();
+  const itemsQuery = useMenuItems({ search: appliedSearch, categoryId: categoryFilter });
+  const client = useQueryClient();
+  const invalidate = useInvalidateRestaurant();
+  const categories = categoriesQuery.data ?? null;
+  const items = itemsQuery.data ?? null;
+  const loadFailure = categoriesQuery.data === undefined ? categoriesQuery.error : itemsQuery.data === undefined ? itemsQuery.error : null;
+  const error =
+    actionError ??
+    (loadFailure !== null ? (loadFailure instanceof Error ? loadFailure.message : "Unable to load the menu.") : null);
+  const setCategories = (next: MenuCategory[]) => client.setQueryData(managerKeys.categories(), next);
 
   const refresh = useCallback(async () => {
-    try {
-      const [loadedCategories, loadedItems] = await Promise.all([
-        listCategories(),
-        listItems({ search, categoryId: categoryFilter }),
-      ]);
-      setCategories(loadedCategories);
-      setItems(loadedItems);
-      setError(null);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to load the menu.");
-    }
-  }, [search, categoryFilter]);
-
-  // Search and filtering go back to the server, so they cover the whole menu.
-  useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      try {
-        const [loadedCategories, loadedItems] = await Promise.all([
-          listCategories(),
-          listItems({ search, categoryId: categoryFilter }),
-        ]);
-        if (!cancelled) {
-          setCategories(loadedCategories);
-          setItems(loadedItems);
-          setError(null);
-        }
-      } catch (caught) {
-        if (!cancelled) {
-          setError(caught instanceof Error ? caught.message : "Unable to load the menu.");
-        }
-      }
-    }
-
-    const timer = setTimeout(() => void load(), 200);
-
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [search, categoryFilter]);
+    setError(null);
+    await invalidate(managerKeys.menu, managerKeys.dashboard());
+  }, [invalidate]);
 
   const isFiltering = search.trim() !== "" || categoryFilter !== "";
 

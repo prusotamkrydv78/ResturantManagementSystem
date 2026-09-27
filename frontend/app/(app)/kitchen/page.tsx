@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   ChefHat,
   CircleCheck,
@@ -20,7 +20,6 @@ import { EmptyState, ErrorState, FormError, Skeleton } from "@/components/ui/sta
 import { PageBody, PageHeader } from "@/components/layout/page-header";
 import { RequireAuth } from "@/features/auth/require-auth";
 import {
-  listKitchenTickets,
   markKitchenItemReady,
   markKitchenTicketReady,
   recallKitchenItem,
@@ -29,6 +28,8 @@ import {
 } from "@/features/kitchen/api";
 import { ApiError } from "@/lib/api/client";
 import { useRealtimeEvent, useRealtimeResync } from "@/lib/realtime/realtime-context";
+import { useQueryClient } from "@tanstack/react-query";
+import { managerKeys, useKitchenTickets } from "@/queries/manager";
 import { cn } from "@/lib/utils/cn";
 import type { KitchenItem, KitchenTicket } from "@/types/kitchen";
 
@@ -41,9 +42,6 @@ import type { KitchenItem, KitchenTicket } from "@/types/kitchen";
  * that stayed would be an alarm sitting over an accurate screen.
  */
 const STALE_NOTICE_MS = 6000;
-
-/** How often the rail refreshes itself, which also re-ages every label on it. */
-const REFRESH_MS = 20_000;
 
 /**
  * When a ticket stops being ordinary, in minutes.
@@ -130,30 +128,37 @@ export default function KitchenPage() {
 }
 
 function Kitchen() {
-  const [tickets, setTickets] = useState<KitchenTicket[] | null>(null);
-  /**
-   * What is sitting at the pass, so the kitchen can see what it just sent.
-   *
-   * A ticket used to vanish off this screen the instant it was marked ready, which
-   * left a chef with no confirmation that the tap had landed, no way to check what
-   * went out, and no way back from tapping the wrong card. Fetched separately because
-   * the rail's own query is live work only, and mixing finished tickets into it would
-   * push real work off the screen.
-   */
-  const [atPass, setAtPass] = useState<KitchenTicket[]>([]);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [reloadKey, setReloadKey] = useState(0);
+  // The rail and the pass strip, from the shared cache: coming back to the kitchen
+  // shows the rail at once and refreshes behind it. A move updates the cached lists
+  // from the server's reply straight away, so a tap never waits on a refetch.
+  const kitchenQuery = useKitchenTickets();
+  const client = useQueryClient();
+  const tickets = kitchenQuery.data?.live ?? null;
+  const atPass = kitchenQuery.data?.ready ?? [];
+  const loadError =
+    kitchenQuery.data === undefined && kitchenQuery.error !== null
+      ? kitchenQuery.error instanceof Error
+        ? kitchenQuery.error.message
+        : "Unable to load the kitchen."
+      : null;
   /**
    * When the data arrived, which is what every age on this screen is measured from.
-   *
-   * Captured rather than read while rendering. `Date.now()` in a render is impure, and
-   * the pass screen already avoided exactly this - the rail was the one place still
-   * calling the clock mid-render, which meant its labels were only as true as the last
-   * thing that happened to cause a re-render.
+   * The cache's own timestamp, so the ages re-count on every refetch.
    */
-  const [loadedAt, setLoadedAt] = useState(() => Date.now());
+  const loadedAt = kitchenQuery.dataUpdatedAt;
 
-  const reload = useCallback(() => setReloadKey((key) => key + 1), []);
+  const setTickets = (update: (current: KitchenTicket[] | null) => KitchenTicket[] | null) =>
+    client.setQueryData(managerKeys.kitchen(), (data: { live: KitchenTicket[]; ready: KitchenTicket[] } | undefined) =>
+      data === undefined ? data : { ...data, live: update(data.live) ?? data.live },
+    );
+  const setAtPass = (update: (current: KitchenTicket[]) => KitchenTicket[]) =>
+    client.setQueryData(managerKeys.kitchen(), (data: { live: KitchenTicket[]; ready: KitchenTicket[] } | undefined) =>
+      data === undefined ? data : { ...data, ready: update(data.ready) },
+    );
+
+  const reload = useCallback(() => {
+    void client.invalidateQueries({ queryKey: managerKeys.kitchen() });
+  }, [client]);
 
   // Anything sent while the connection was down is not coming, so re-read on return.
   useRealtimeResync(reload);
@@ -170,53 +175,6 @@ function Kitchen() {
 
   const [actionError, setActionError] = useState<string | null>(null);
   const [busyIds, setBusyIds] = useState<ReadonlySet<string>>(() => new Set());
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      try {
-        // Both at once. The pass strip is a second query rather than a filter over
-        // one, because the rail's default is deliberately live work only.
-        const [loaded, ready] = await Promise.all([
-          listKitchenTickets(),
-          listKitchenTickets("Ready"),
-        ]);
-
-        if (!cancelled) {
-          setTickets(loaded);
-          setAtPass(ready);
-          setLoadedAt(Date.now());
-          setLoadError(null);
-        }
-      } catch (caught) {
-        if (!cancelled) {
-          setLoadError(
-            caught instanceof Error ? caught.message : "Unable to load the kitchen.",
-          );
-        }
-      }
-    }
-
-    void load();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [reloadKey]);
-
-  // One timer for the whole screen. Refetching also re-renders every elapsed
-  // label, so there is no second clock to keep in step and nothing stored in the
-  // database counting anything.
-  //
-  // Kept even though the rail is now live, and not as a belt-and-braces habit: the
-  // ages on these cards are the point of this screen, and they have to keep counting
-  // during the stretches when nothing happens and no event arrives.
-  useEffect(() => {
-    const timer = setInterval(() => setReloadKey((key) => key + 1), REFRESH_MS);
-
-    return () => clearInterval(timer);
-  }, []);
 
   // A new ticket should appear the moment a waiter sends it, not up to twenty seconds
   // later. Started too, so two chefs do not both reach for the same one.
@@ -403,7 +361,7 @@ function Kitchen() {
       );
       // A refusal almost always means someone else moved it, so the fastest fix is
       // to show the chef what is actually on the rail.
-      setReloadKey((key) => key + 1);
+      reload();
 
       // And the message goes once the rail has caught up with it. It describes a tap
       // that did nothing on a card that has already changed underneath.
@@ -468,7 +426,7 @@ function Kitchen() {
           ? caught.message
           : "Could not update that dish.",
       );
-      setReloadKey((key) => key + 1);
+      reload();
     } finally {
       setBusyIds((current) => {
         const next = new Set(current);
@@ -487,7 +445,7 @@ function Kitchen() {
           <div className="flex items-center gap-2">
             <Button
               variant="secondary"
-              onClick={() => setReloadKey((key) => key + 1)}
+              onClick={reload}
               icon={<RefreshCw />}
             >
               Refresh
@@ -558,7 +516,7 @@ function Kitchen() {
           <Surface>
             <ErrorState
               message={loadError}
-              onRetry={() => setReloadKey((key) => key + 1)}
+              onRetry={reload}
             />
           </Surface>
         ) : tickets === null ? (

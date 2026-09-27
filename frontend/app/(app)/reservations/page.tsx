@@ -42,16 +42,16 @@ import {
   completeReservation,
   confirmReservation,
   createReservation,
-  getReservationBoard,
   seatReservation,
   updateReservation,
 } from "@/features/reservations/api";
+import { managerKeys, useInvalidateRestaurant, useReservationBoard } from "@/queries/manager";
 import { listTables } from "@/features/tables/api";
 import { ApiError, isMissingRestaurant } from "@/lib/api/client";
 import { useNow } from "@/lib/time/since";
 import { cn } from "@/lib/utils/cn";
 import { RESERVATION_LIMITS } from "@/types/reservation";
-import type { Reservation, ReservationBoard, ReservationStatus } from "@/types/reservation";
+import type { Reservation, ReservationStatus } from "@/types/reservation";
 import type { Customer } from "@/types/customer";
 import type { RestaurantTable } from "@/types/table";
 
@@ -75,55 +75,32 @@ export default function ReservationsPage() {
 }
 
 function Reservations() {
-  const [board, setBoard] = useState<ReservationBoard | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [noRestaurant, setNoRestaurant] = useState(false);
   const [onDate, setOnDate] = useState("");
   const [includeClosed, setIncludeClosed] = useState(false);
   const [view, setView] = useState<BookingView>("All");
-  const [reloadKey, setReloadKey] = useState(0);
 
   // A ticking clock, because the only thing that changes on this screen without
   // anybody touching it is the time. A booking does not become late when somebody
-  // presses a button; it becomes late because a quarter of an hour went by, and a
-  // board that only re-read itself on an action would keep saying a party was due in
-  // five minutes an hour after they failed to turn up.
+  // presses a button; it becomes late because a quarter of an hour went by.
   const now = useNow();
 
-  const refresh = useCallback(() => setReloadKey((key) => key + 1), []);
+  // From the shared cache, per day: the board opens at once, and changing the day or
+  // the closed toggle keeps the previous board up until the next arrives.
+  const boardQuery = useReservationBoard({ onDate, includeClosed });
+  const board = boardQuery.data ?? null;
+  const noRestaurant = boardQuery.error !== null && isMissingRestaurant(boardQuery.error);
+  const error =
+    boardQuery.data === undefined && boardQuery.error !== null && !isMissingRestaurant(boardQuery.error)
+      ? boardQuery.error instanceof Error
+        ? boardQuery.error.message
+        : "Unable to load the reservations."
+      : null;
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      try {
-        const loaded = await getReservationBoard({ onDate, includeClosed });
-
-        if (!cancelled) {
-          setBoard(loaded);
-          setError(null);
-          setNoRestaurant(false);
-        }
-      } catch (caught) {
-        if (!cancelled) {
-          setNoRestaurant(isMissingRestaurant(caught));
-          setError(
-            isMissingRestaurant(caught)
-              ? null
-              : caught instanceof Error
-                ? caught.message
-                : "Unable to load the reservations.",
-          );
-        }
-      }
-    }
-
-    void load();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [includeClosed, onDate, reloadKey]);
+  // A booking change can seat or free a table, so the floor is refreshed with it.
+  const invalidate = useInvalidateRestaurant();
+  const refresh = useCallback(() => {
+    void invalidate(["restaurant", "reservations"], managerKeys.service, managerKeys.dashboard());
+  }, [invalidate]);
 
   // Every booking, tagged with where it stands against the clock. Worked out once
   // here rather than per card, so the strip at the top and the cards underneath can

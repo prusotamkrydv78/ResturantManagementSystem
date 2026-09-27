@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { managerKeys, useInvalidateRestaurant } from "@/queries/manager";
 import { useParams, useRouter } from "next/navigation";
 import {
   ArrowLeft,
@@ -65,6 +66,10 @@ export default function TablePage() {
 }
 
 function TableView() {
+  // Whatever was changed here reaches the list behind it: leaving this page marks
+  // it stale, so the list refreshes the moment it is shown again.
+  const invalidateOnLeave = useInvalidateRestaurant();
+  useEffect(() => () => void invalidateOnLeave(["restaurant", "setup", "tables"], managerKeys.service, managerKeys.dashboard()), [invalidateOnLeave]);
   const params = useParams<{ id: string }>();
   const id = params.id;
   const router = useRouter();

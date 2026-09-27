@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useInvalidateRestaurant } from "@/queries/manager";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import {
@@ -80,6 +81,10 @@ export default function InventoryItemPage() {
 }
 
 function ItemDetail() {
+  // Whatever was changed here reaches the list behind it: leaving this page marks
+  // it stale, so the list refreshes the moment it is shown again.
+  const invalidateOnLeave = useInvalidateRestaurant();
+  useEffect(() => () => void invalidateOnLeave(["restaurant", "setup", "inventory"]), [invalidateOnLeave]);
   const params = useParams<{ id: string }>();
   const itemId = params.id;
   const router = useRouter();

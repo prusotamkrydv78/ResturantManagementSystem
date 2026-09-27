@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import Link from "next/link";
 import { Armchair, CircleCheck, LayoutGrid, Plus, QrCode, SlidersHorizontal } from "lucide-react";
 import { StatTile } from "@/components/ui/stat-tile";
@@ -24,10 +24,10 @@ import {
 } from "@/components/ui/states";
 import { PageBody, PageHeader } from "@/components/layout/page-header";
 import { RequireAuth } from "@/features/auth/require-auth";
-import { createTable, listTables } from "@/features/tables/api";
+import { createTable } from "@/features/tables/api";
+import { managerKeys, useInvalidateRestaurant, useTables } from "@/queries/manager";
 import { ApiError } from "@/lib/api/client";
 import { TABLE_CAPACITY } from "@/types/table";
-import type { RestaurantTable } from "@/types/table";
 
 /**
  * Tables for the signed-in manager restaurant.
@@ -45,42 +45,19 @@ export default function TablesPage() {
 }
 
 function Tables() {
-  const [tables, setTables] = useState<RestaurantTable[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
+  // From the shared cache. A change here also reaches the floor and the overview,
+  // which count the same tables.
+  const tablesQuery = useTables();
+  const invalidate = useInvalidateRestaurant();
+  const tables = tablesQuery.data ?? null;
+  const error = tablesQuery.data === undefined && tablesQuery.error !== null
+    ? tablesQuery.error instanceof Error
+      ? tablesQuery.error.message
+      : "Unable to load tables."
+    : null;
   const refresh = useCallback(async () => {
-    try {
-      const loaded = await listTables();
-      setTables(loaded);
-      setError(null);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to load tables.");
-    }
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      try {
-        const loaded = await listTables();
-        if (!cancelled) {
-          setTables(loaded);
-          setError(null);
-        }
-      } catch (caught) {
-        if (!cancelled) {
-          setError(caught instanceof Error ? caught.message : "Unable to load tables.");
-        }
-      }
-    }
-
-    void load();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    await invalidate(managerKeys.tables(), managerKeys.service, managerKeys.dashboard());
+  }, [invalidate]);
 
   const activeCount = tables?.filter((table) => table.isActive).length ?? 0;
   const seats = tables

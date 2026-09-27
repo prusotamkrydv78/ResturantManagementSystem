@@ -31,7 +31,9 @@ import {
 import { PageBody, PageHeader } from "@/components/layout/page-header";
 import { RequireAuth } from "@/features/auth/require-auth";
 import { NoRestaurantAssigned } from "@/features/restaurants/no-restaurant";
-import { getMyRestaurant, updateMyRestaurant } from "@/features/restaurants/api";
+import { updateMyRestaurant } from "@/features/restaurants/api";
+import { useQueryClient } from "@tanstack/react-query";
+import { managerKeys, useMyRestaurant } from "@/queries/manager";
 import { ApiError, isMissingRestaurant } from "@/lib/api/client";
 import type { Restaurant } from "@/types/restaurant";
 
@@ -87,10 +89,17 @@ function toForm(restaurant: Restaurant): FormState {
 }
 
 function MyRestaurant() {
-  const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [reloadKey, setReloadKey] = useState(0);
+  // From the shared cache: the same record the overview and the settings hub read.
+  const restaurantQuery = useMyRestaurant();
+  const client = useQueryClient();
+  const restaurant = restaurantQuery.data ?? null;
+  const isLoading = restaurantQuery.data === undefined && restaurantQuery.error === null;
+  const error = restaurantQuery.data === undefined && restaurantQuery.error !== null && !isMissingRestaurant(restaurantQuery.error)
+      ? restaurantQuery.error instanceof Error
+        ? restaurantQuery.error.message
+        : "Unable to load your restaurant."
+      : null;
+  const setRestaurant = (next: Restaurant) => client.setQueryData(managerKeys.profile(), next);
 
   const [isEditing, setIsEditing] = useState(false);
   const [form, setForm] = useState<FormState | null>(null);
@@ -100,50 +109,8 @@ function MyRestaurant() {
   const [isSaving, setIsSaving] = useState(false);
 
   const retry = useCallback(() => {
-    setIsLoading(true);
-    setError(null);
-    setReloadKey((key) => key + 1);
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      try {
-        const loaded = await getMyRestaurant();
-        if (!cancelled) {
-          setRestaurant(loaded);
-          setForm(toForm(loaded));
-          setError(null);
-        }
-      } catch (caught) {
-        if (!cancelled) {
-          // Not yet assigned a restaurant is a real state rather than a failure, so
-          // it falls through to the empty state below instead of a red panel with a
-          // retry that could never succeed.
-          if (isMissingRestaurant(caught)) {
-            setError(null);
-          } else {
-            setError(
-              caught instanceof Error
-                ? caught.message
-                : "Unable to load your restaurant.",
-            );
-          }
-        }
-      } finally {
-        if (!cancelled) {
-          setIsLoading(false);
-        }
-      }
-    }
-
-    void load();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [reloadKey]);
+    void restaurantQuery.refetch();
+  }, [restaurantQuery]);
 
   // The confirmation withdraws itself. Keyed on the timestamp so a second save
   // restarts the clock rather than inheriting the first one's remaining time.

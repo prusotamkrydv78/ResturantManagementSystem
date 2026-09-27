@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback } from "react";
 import Link from "next/link";
 import {
   ChevronRight,
@@ -19,7 +19,8 @@ import { money } from "@/features/analytics/format";
 import { EmptyState, ErrorState, Skeleton } from "@/components/ui/states";
 import { PageBody, PageHeader } from "@/components/layout/page-header";
 import { RequireAuth } from "@/features/auth/require-auth";
-import { listBillingOrders } from "@/features/billing/api";
+import { useQueryClient } from "@tanstack/react-query";
+import { managerKeys, useBillingOrders } from "@/queries/manager";
 import { useRealtimeEvent, useRealtimeResync } from "@/lib/realtime/realtime-context";
 import { cn } from "@/lib/utils/cn";
 import type { BillingOrderSummary } from "@/types/billing";
@@ -42,11 +43,20 @@ export default function BillingPage() {
 }
 
 function Billing() {
-  const [orders, setOrders] = useState<BillingOrderSummary[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [reloadKey, setReloadKey] = useState(0);
-
-  const reload = useCallback(() => setReloadKey((key) => key + 1), []);
+  // From the shared cache, so billing opens at once with the orders last seen and
+  // refreshes behind itself. The events below only mark the list stale.
+  const ordersQuery = useBillingOrders();
+  const client = useQueryClient();
+  const orders = ordersQuery.data ?? null;
+  const error =
+    ordersQuery.data === undefined && ordersQuery.error !== null
+      ? ordersQuery.error instanceof Error
+        ? ordersQuery.error.message
+        : "Unable to load orders."
+      : null;
+  const reload = useCallback(() => {
+    void client.invalidateQueries({ queryKey: managerKeys.billingList() });
+  }, [client]);
 
   // Anything sent while the connection was down is not coming, so re-read on return.
   useRealtimeResync(reload);
@@ -62,32 +72,6 @@ function Billing() {
   useRealtimeEvent("billRequested", reload);
   useRealtimeEvent("orderSettled", reload);
   useRealtimeEvent("orderCancelled", reload);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      try {
-        // Recently settled orders come back too, so the manager can confirm the
-        // last few without leaving the screen.
-        const loaded = await listBillingOrders(true);
-        if (!cancelled) {
-          setOrders(loaded);
-          setError(null);
-        }
-      } catch (caught) {
-        if (!cancelled) {
-          setError(caught instanceof Error ? caught.message : "Unable to load orders.");
-        }
-      }
-    }
-
-    void load();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [reloadKey]);
 
   const open = orders?.filter((order) => order.status === "Open") ?? [];
   const settled = orders?.filter((order) => order.status === "Completed") ?? [];
@@ -164,7 +148,7 @@ function Billing() {
           <Surface>
             <ErrorState
               message={error}
-              onRetry={() => setReloadKey((key) => key + 1)}
+              onRetry={reload}
             />
           </Surface>
         ) : orders === null ? (

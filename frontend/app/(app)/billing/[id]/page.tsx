@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { useParams } from "next/navigation";
 import {
   ArrowLeft,
@@ -30,7 +30,9 @@ import { Surface, SurfaceHeader } from "@/components/ui/surface";
 import { ErrorState, FormError, Skeleton } from "@/components/ui/states";
 import { PageBody, PageHeader } from "@/components/layout/page-header";
 import { RequireAuth } from "@/features/auth/require-auth";
-import { cancelOrder, getBillingOrder, recordPayment } from "@/features/billing/api";
+import { cancelOrder, recordPayment } from "@/features/billing/api";
+import { useQueryClient } from "@tanstack/react-query";
+import { managerKeys, useBill, useInvalidateRestaurant } from "@/queries/manager";
 import { ApiError } from "@/lib/api/client";
 import { cn } from "@/lib/utils/cn";
 import { money } from "@/features/analytics/format";
@@ -66,9 +68,25 @@ function BillingOrderDetail() {
   const params = useParams<{ id: string }>();
   const orderId = params.id;
 
-  const [order, setOrder] = useState<BillingOrder | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [reloadKey, setReloadKey] = useState(0);
+  // From the shared cache: opening a bill from the list or the floor shows it at once
+  // if it was seen, and a payment writes the server's reply straight into the cache
+  // and marks everything the money touched stale - the list, the floor, today's
+  // figures and the reports - so every screen agrees without reloading itself.
+  const billQuery = useBill(orderId);
+  const client = useQueryClient();
+  const invalidate = useInvalidateRestaurant();
+  const order = billQuery.data ?? null;
+  const loadError =
+    billQuery.data === undefined && billQuery.error !== null
+      ? billQuery.error instanceof Error
+        ? billQuery.error.message
+        : "Unable to load this order."
+      : null;
+  const reload = () => void billQuery.refetch();
+  const setOrder = (next: BillingOrder) => {
+    client.setQueryData(managerKeys.bill(orderId), next);
+    void invalidate(managerKeys.billingList(), managerKeys.service, managerKeys.dashboard(), managerKeys.reports);
+  };
 
   const [method, setMethod] = useState<PaymentMethod>("Cash");
   // Blank means "the rest of it", which is the ordinary case. A figure is only
@@ -84,33 +102,7 @@ function BillingOrderDetail() {
   const [cancelError, setCancelError] = useState<string | null>(null);
   const [isCancelOpen, setIsCancelOpen] = useState(false);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      try {
-        const loaded = await getBillingOrder(orderId);
-        if (!cancelled) {
-          setOrder(loaded);
-          setLoadError(null);
-        }
-      } catch (caught) {
-        if (!cancelled) {
-          setLoadError(
-            caught instanceof Error ? caught.message : "Unable to load this order.",
-          );
-        }
-      }
-    }
-
-    void load();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [orderId, reloadKey]);
-
-  const settle = useCallback(async () => {
+  const settle = async () => {
     if (order === null || isSaving) {
       return;
     }
@@ -137,13 +129,13 @@ function BillingOrderDetail() {
           : "Could not record the payment.",
       );
       // A refusal usually means the order moved, so show what it actually is now.
-      setReloadKey((key) => key + 1);
+      reload();
     } finally {
       setIsSaving(false);
     }
-  }, [order, method, tendered, isSaving]);
+  };
 
-  const callOff = useCallback(async () => {
+  const callOff = async () => {
     if (order === null || isCancelling) {
       return;
     }
@@ -166,7 +158,7 @@ function BillingOrderDetail() {
     } finally {
       setIsCancelling(false);
     }
-  }, [order, reason, isCancelling]);
+  };
 
   if (loadError !== null) {
     return (
@@ -176,7 +168,7 @@ function BillingOrderDetail() {
           <Surface>
             <ErrorState
               message={loadError}
-              onRetry={() => setReloadKey((key) => key + 1)}
+              onRetry={reload}
             />
           </Surface>
           <LinkButton href="/billing" variant="secondary" icon={<ArrowLeft />}>

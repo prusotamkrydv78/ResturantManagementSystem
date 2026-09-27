@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import {
   ArrowDown,
@@ -21,7 +21,7 @@ import { Table, TableWrap, Td, Th, Tr } from "@/components/ui/table";
 import { EmptyState, ErrorState, Skeleton } from "@/components/ui/states";
 import { PageBody, PageHeader } from "@/components/layout/page-header";
 import { RequireAuth } from "@/features/auth/require-auth";
-import { listReviews } from "@/features/reviews/api";
+import { useReviews } from "@/queries/manager";
 import { sinceLabel, useNow } from "@/lib/time/since";
 import { cn } from "@/lib/utils/cn";
 import { StatTile, type StatTone } from "@/components/ui/stat-tile";
@@ -55,52 +55,22 @@ export default function ReviewsPage() {
   );
 }
 
-/**
- * How many reviews the list holds.
- *
- * Deliberately more than fits on a screen. The headline figures are worked out over
- * every review by the server, so this number only decides how far back the list and the
- * filters below reach - and a manager narrowing to one-star reviews wants more than a
- * fortnight of them.
- */
-const PAGE_SIZE = 100;
-
 function Reviews() {
-  const [summary, setSummary] = useState<ReviewSummary | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [reloadKey, setReloadKey] = useState(0);
-
   const [filter, setFilter] = useState<Filter>({ kind: "all" });
   const [sort, setSort] = useState<Sort>("newest");
 
   const now = useNow(60_000);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      try {
-        const loaded = await listReviews(PAGE_SIZE);
-
-        if (!cancelled) {
-          setSummary(loaded);
-          setError(null);
-        }
-      } catch (caught) {
-        if (!cancelled) {
-          setError(
-            caught instanceof Error ? caught.message : "Unable to load reviews.",
-          );
-        }
-      }
-    }
-
-    void load();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [reloadKey]);
+  // From the shared cache: reviews seen a moment ago open at once.
+  const summaryQuery = useReviews();
+  const summary = summaryQuery.data ?? null;
+  const error =
+    summaryQuery.data === undefined && summaryQuery.error !== null
+      ? summaryQuery.error instanceof Error
+        ? summaryQuery.error.message
+        : "Unable to load reviews."
+      : null;
+  const reload = () => void summaryQuery.refetch();
 
   const reviews = useMemo(() => summary?.reviews ?? [], [summary]);
 
@@ -141,7 +111,7 @@ function Reviews() {
               variant="ghost"
               size="sm"
               icon={<RefreshCw />}
-              onClick={() => setReloadKey((key) => key + 1)}
+              onClick={reload}
             >
               Refresh
             </Button>
@@ -154,7 +124,7 @@ function Reviews() {
           <Surface>
             <ErrorState
               message={error}
-              onRetry={() => setReloadKey((key) => key + 1)}
+              onRetry={reload}
             />
           </Surface>
         ) : summary === null ? (

@@ -26,11 +26,12 @@ import {
 } from "@/components/ui/states";
 import { PageBody, PageHeader } from "@/components/layout/page-header";
 import { RequireAuth } from "@/features/auth/require-auth";
-import { createStaff, listStaff } from "@/features/staff/api";
+import { createStaff } from "@/features/staff/api";
+import { useInvalidateRestaurant, useStaff } from "@/queries/manager";
 import { ApiError } from "@/lib/api/client";
 import { apiAssetSrc } from "@/lib/api/asset-url";
 import { STAFF_ROLES } from "@/types/staff";
-import type { StaffMember, StaffRole } from "@/types/staff";
+import type { StaffRole } from "@/types/staff";
 
 /**
  * Staff roster for the signed-in manager restaurant.
@@ -47,46 +48,28 @@ export default function StaffPage() {
 }
 
 function StaffRoster() {
-  const [staff, setStaff] = useState<StaffMember[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-
-  const refresh = useCallback(async () => {
-    try {
-      const loaded = await listStaff(search);
-      setStaff(loaded);
-      setError(null);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to load staff.");
-    }
-  }, [search]);
-
-  // Searching goes back to the server, so it covers the whole roster rather than
-  // only the rows already downloaded.
+  // The search goes to the server a beat after typing stops; the list on screen
+  // stays put until the new one arrives.
+  const [appliedSearch, setAppliedSearch] = useState("");
   useEffect(() => {
-    let cancelled = false;
+    const timer = setTimeout(() => setAppliedSearch(search), 200);
 
-    async function load() {
-      try {
-        const loaded = await listStaff(search);
-        if (!cancelled) {
-          setStaff(loaded);
-          setError(null);
-        }
-      } catch (caught) {
-        if (!cancelled) {
-          setError(caught instanceof Error ? caught.message : "Unable to load staff.");
-        }
-      }
-    }
-
-    const timer = setTimeout(() => void load(), 200);
-
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
+    return () => clearTimeout(timer);
   }, [search]);
+
+  // From the shared cache, per search.
+  const staffQuery = useStaff(appliedSearch);
+  const invalidate = useInvalidateRestaurant();
+  const staff = staffQuery.data ?? null;
+  const error = staffQuery.data === undefined && staffQuery.error !== null
+    ? staffQuery.error instanceof Error
+      ? staffQuery.error.message
+      : "Unable to load staff."
+    : null;
+  const refresh = useCallback(async () => {
+    await invalidate(["restaurant", "setup", "staff"]);
+  }, [invalidate]);
 
   const activeCount = staff?.filter((member) => member.isActive).length ?? 0;
   const isSearching = search.trim() !== "";

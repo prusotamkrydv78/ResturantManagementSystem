@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import Link from "next/link";
 import {
   Archive,
   CalendarClock,
   ArchiveRestore,
   Contact,
+  Pencil,
   Phone,
   Plus,
   Repeat,
@@ -27,6 +28,7 @@ import { Field, describedBy } from "@/components/ui/field";
 import { Input, Textarea } from "@/components/ui/input";
 import { Surface } from "@/components/ui/surface";
 import { StatTile } from "@/components/ui/stat-tile";
+import { cn } from "@/lib/utils/cn";
 import {
   EmptyState,
   ErrorState,
@@ -38,10 +40,10 @@ import { NoRestaurantAssigned } from "@/features/restaurants/no-restaurant";
 import {
   createCustomer,
   deleteCustomer,
-  listCustomers,
   setCustomerActive,
   updateCustomer,
 } from "@/features/customers/api";
+import { useCustomers, useInvalidateRestaurant } from "@/queries/manager";
 import { ApiError, isMissingRestaurant } from "@/lib/api/client";
 import { CUSTOMER_LIMITS } from "@/types/customer";
 import type { Customer } from "@/types/customer";
@@ -62,48 +64,23 @@ export default function CustomersPage() {
 }
 
 function CustomerList() {
-  const [customers, setCustomers] = useState<Customer[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [noRestaurant, setNoRestaurant] = useState(false);
   const [includeInactive, setIncludeInactive] = useState(false);
   const [search, setSearch] = useState("");
   const [applied, setApplied] = useState("");
-  const [reloadKey, setReloadKey] = useState(0);
 
-  const refresh = useCallback(() => setReloadKey((key) => key + 1), []);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      try {
-        const loaded = await listCustomers({ search: applied, includeInactive });
-
-        if (!cancelled) {
-          setCustomers(loaded);
-          setError(null);
-          setNoRestaurant(false);
-        }
-      } catch (caught) {
-        if (!cancelled) {
-          setNoRestaurant(isMissingRestaurant(caught));
-          setError(
-            isMissingRestaurant(caught)
-              ? null
-              : caught instanceof Error
-                ? caught.message
-                : "Unable to load the customers.",
-          );
-        }
-      }
-    }
-
-    void load();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [applied, includeInactive, reloadKey]);
+  // From the shared cache, per search and toggle.
+  const customersQuery = useCustomers({ search: applied, includeInactive });
+  const invalidate = useInvalidateRestaurant();
+  const customers = customersQuery.data ?? null;
+  const noRestaurant = customersQuery.error !== null && isMissingRestaurant(customersQuery.error);
+  const error = customersQuery.data === undefined && customersQuery.error !== null && !isMissingRestaurant(customersQuery.error)
+      ? customersQuery.error instanceof Error
+        ? customersQuery.error.message
+        : "Unable to load the customers."
+      : null;
+  const refresh = useCallback(() => {
+    void invalidate(["restaurant", "setup", "customers"]);
+  }, [invalidate]);
 
   const archived = customers?.filter((customer) => !customer.isActive).length ?? 0;
 
@@ -111,7 +88,7 @@ function CustomerList() {
     <>
       <PageHeader
         title="Customers"
-        description="Regulars, bookings and anyone worth remembering. Nobody signs in here; these are your own records."
+        description="Regulars and anyone worth remembering. Your own records - nobody signs in here."
         actions={<CustomerDialog onSaved={refresh} />}
       />
 
@@ -201,47 +178,52 @@ function CustomerList() {
                 {customers.map((customer) => (
                   <Card
                     key={customer.id}
-                    className={customer.isActive ? "p-3.5" : "p-3.5 opacity-70"}
+                    className={cn("gap-3 p-3.5", !customer.isActive && "opacity-70")}
                   >
-                    <div className="flex items-start justify-between gap-2">
-                      <Link
-                        href={`/settings/customers/${customer.id}`}
-                        className="min-w-0 font-medium text-text hover:underline"
+                    {/* Who they are. */}
+                    <div className="flex items-start gap-2.5">
+                      <span
+                        aria-hidden="true"
+                        className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-accent text-sm font-semibold text-accent-fg"
                       >
-                        {customer.name}
-                      </Link>
+                        {customer.name.trim().charAt(0).toUpperCase() || "?"}
+                      </span>
+                      <span className="flex min-w-0 flex-1 flex-col">
+                        <Link
+                          href={`/settings/customers/${customer.id}`}
+                          className="truncate font-semibold text-text hover:underline"
+                        >
+                          {customer.name}
+                        </Link>
+                        <span className="truncate text-2xs text-muted">
+                          {customer.phone ?? customer.email ?? "No contact details"}
+                        </span>
+                      </span>
                       {!customer.isActive && <Badge tone="neutral">Archived</Badge>}
                     </div>
 
-                    <p className="mt-0.5 truncate text-2xs text-muted">
-                      {customer.phone ?? "No phone number"}
-                    </p>
-
                     {customer.notes !== null && (
-                      <p className="mt-1.5 line-clamp-2 text-xs text-muted italic">
-                        {customer.notes}
-                      </p>
+                      <p className="line-clamp-2 text-xs text-muted italic">{customer.notes}</p>
                     )}
 
                     {/* The two counts are why a customer record is kept at all, so
                         they read as figures rather than as columns to scan down. */}
-                    <dl className="mt-3 flex gap-4">
-                      <div>
+                    <dl className="grid grid-cols-2 gap-2">
+                      <div className="rounded-xl bg-surface-2 px-2.5 py-2">
                         <dt className="text-2xs text-subtle">Visits</dt>
-                        <dd className="text-base font-semibold text-text tabular">
-                          {customer.orderCount}
-                        </dd>
+                        <dd className="tabular text-base font-semibold text-text">{customer.orderCount}</dd>
                       </div>
-                      <div>
+                      <div className="rounded-xl bg-surface-2 px-2.5 py-2">
                         <dt className="text-2xs text-subtle">Bookings</dt>
-                        <dd className="text-base font-semibold text-text tabular">
-                          {customer.reservationCount}
-                        </dd>
+                        <dd className="tabular text-base font-semibold text-text">{customer.reservationCount}</dd>
                       </div>
                     </dl>
 
-                    <div className="mt-auto flex items-center justify-between gap-2 pt-3.5">
-                      <span className="text-2xs text-subtle">
+                    {/* When they were last in, on its own line, then the actions: a
+                        short card could not hold both side by side without folding the
+                        date into three lines and pushing a button off the edge. */}
+                    <div className="mt-auto flex items-center justify-between gap-2 border-t border-border pt-2.5">
+                      <span className="min-w-0 truncate text-2xs text-subtle">
                         {customer.lastVisitAtUtc === null
                           ? "Never been in"
                           : `Last in ${formatDate(customer.lastVisitAtUtc)}`}
@@ -496,51 +478,54 @@ function CustomerRowActions({
     }
   }
 
+  const icon = "flex size-8 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface-2 hover:text-text disabled:opacity-50";
+
   return (
-    <div className="flex items-center justify-end gap-1.5">
+    <div className="flex shrink-0 flex-col items-end gap-1">
+      <div className="flex items-center gap-0.5">
+        <CustomerDialog
+          customer={customer}
+          onSaved={onSaved}
+          trigger={
+            <button type="button" className={icon} aria-label={`Edit ${customer.name}`} title="Edit">
+              <Pencil className="size-4" aria-hidden="true" />
+            </button>
+          }
+        />
+
+        <button
+          type="button"
+          className={icon}
+          aria-label={customer.isActive ? `Archive ${customer.name}` : `Restore ${customer.name}`}
+          title={customer.isActive ? "Archive" : "Restore"}
+          disabled={busy !== "none"}
+          onClick={() => void run("status", () => setCustomerActive(customer.id, !customer.isActive))}
+        >
+          {customer.isActive ? (
+            <Archive className="size-4" aria-hidden="true" />
+          ) : (
+            <ArchiveRestore className="size-4" aria-hidden="true" />
+          )}
+        </button>
+
+        {!hasHistory && (
+          <button
+            type="button"
+            className={cn(icon, "hover:bg-danger-soft hover:text-danger")}
+            aria-label={`Delete ${customer.name}`}
+            title="Delete"
+            disabled={busy !== "none"}
+            onClick={() => void run("delete", () => deleteCustomer(customer.id))}
+          >
+            <Trash2 className="size-4" aria-hidden="true" />
+          </button>
+        )}
+      </div>
+
       {error !== null && (
-        <span role="alert" className="text-xs text-danger">
+        <span role="alert" className="text-2xs text-danger">
           {error}
         </span>
-      )}
-
-      <CustomerDialog
-        customer={customer}
-        onSaved={onSaved}
-        trigger={
-          <Button variant="ghost" size="sm">
-            Edit
-          </Button>
-        }
-      />
-
-      <Button
-        variant="ghost"
-        size="sm"
-        icon={customer.isActive ? <Archive /> : <ArchiveRestore />}
-        disabled={busy !== "none"}
-        onClick={() =>
-          void run("status", () => setCustomerActive(customer.id, !customer.isActive))
-        }
-      >
-        {busy === "status"
-          ? "Saving…"
-          : customer.isActive
-            ? "Archive"
-            : "Restore"}
-      </Button>
-
-      {!hasHistory && (
-        <Button
-          variant="ghost"
-          size="sm"
-          icon={<Trash2 />}
-          className="text-danger hover:bg-danger-soft hover:text-danger"
-          disabled={busy !== "none"}
-          onClick={() => void run("delete", () => deleteCustomer(customer.id))}
-        >
-          {busy === "delete" ? "Deleting…" : "Delete"}
-        </Button>
       )}
     </div>
   );

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useInvalidateRestaurant } from "@/queries/manager";
 import { useParams } from "next/navigation";
 import { CalendarClock, Contact, ReceiptText } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -33,6 +34,10 @@ export default function CustomerDetailPage() {
 }
 
 function CustomerView() {
+  // Whatever was changed here reaches the list behind it: leaving this page marks
+  // it stale, so the list refreshes the moment it is shown again.
+  const invalidateOnLeave = useInvalidateRestaurant();
+  useEffect(() => () => void invalidateOnLeave(["restaurant", "setup", "customers"]), [invalidateOnLeave]);
   const params = useParams<{ id: string }>();
   const id = params.id;
 
