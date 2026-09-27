@@ -6,6 +6,7 @@ import {
   ChevronRight,
   CircleCheck,
   Flame,
+  Hand,
   History,
   ReceiptText,
   Wallet,
@@ -13,6 +14,8 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { LinkButton } from "@/components/ui/button";
 import { Surface, SurfaceHeader } from "@/components/ui/surface";
+import { StatTile } from "@/components/ui/stat-tile";
+import { money } from "@/features/analytics/format";
 import { EmptyState, ErrorState, Skeleton } from "@/components/ui/states";
 import { PageBody, PageHeader } from "@/components/layout/page-header";
 import { RequireAuth } from "@/features/auth/require-auth";
@@ -101,19 +104,6 @@ function Billing() {
         description="Settle a table and close its order. Recording a payment does not connect to any payment provider."
         actions={
           <div className="flex items-center gap-2">
-            {/* First, because a table that has asked to pay is a person waiting rather
-                than a bill that happens to be settleable. */}
-            {asking > 0 && (
-              <Badge tone="warning" dot>
-                {asking} asking to pay
-              </Badge>
-            )}
-            <Badge tone={ready.length > 0 ? "success" : "neutral"} dot>
-              {ready.length} ready to settle
-            </Badge>
-            <Badge tone="neutral">
-              <span className="tabular">{outstanding.toFixed(2)}</span> outstanding
-            </Badge>
             <LinkButton
               href="/billing/history"
               variant="secondary"
@@ -126,6 +116,50 @@ function Billing() {
       />
 
       <PageBody>
+        {/* The money owed, then the three things that decide who to go to first. A
+            table that has asked to pay is a person waiting, so it comes before a
+            bill that merely could be settled. */}
+        {orders !== null && (
+          <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+            <StatTile
+              featured
+              className="col-span-2 xl:col-span-1"
+              icon={Wallet}
+              label="Outstanding"
+              value={
+                <>
+                  <span className="mr-1 text-lg font-medium opacity-70">NPR</span>
+                  {money(outstanding, 2)}
+                </>
+              }
+              footnote={open.length === 0 ? "Every table has paid" : "owed across open orders"}
+            />
+            <StatTile
+              icon={Hand}
+              tone="peach"
+              label="Asking to pay"
+              value={asking}
+              footnote={
+                asking > 0 ? <span className="font-semibold text-warning">Go to these first</span> : "Nobody waiting"
+              }
+            />
+            <StatTile
+              icon={CircleCheck}
+              tone="teal"
+              label="Ready to settle"
+              value={ready.length}
+              footnote="kitchen has finished"
+            />
+            <StatTile
+              icon={ReceiptText}
+              tone="indigo"
+              label="Open orders"
+              value={open.length}
+              footnote={`${settled.length} settled recently`}
+            />
+          </div>
+        )}
+
         {error !== null ? (
           <Surface>
             <ErrorState
@@ -134,15 +168,19 @@ function Billing() {
             />
           </Surface>
         ) : orders === null ? (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {[0, 1, 2].map((row) => (
-              <Surface key={row} className="flex flex-col gap-2 p-4">
-                <Skeleton className="h-5 w-24" />
-                <Skeleton className="h-7 w-28" />
-                <Skeleton className="h-4 w-36" />
-              </Surface>
-            ))}
-          </div>
+          <>
+            <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+              <Skeleton className="col-span-2 h-32 rounded-2xl bg-accent/60 xl:col-span-1" />
+              <Skeleton className="h-32 rounded-2xl" />
+              <Skeleton className="h-32 rounded-2xl" />
+              <Skeleton className="h-32 rounded-2xl" />
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {[0, 1, 2].map((row) => (
+                <Skeleton key={row} className="h-40 rounded-2xl" />
+              ))}
+            </div>
+          </>
         ) : (
           <>
             {open.length === 0 ? (
@@ -180,10 +218,10 @@ function Billing() {
                   actions={
                     <Link
                       href="/billing/history"
-                      className="inline-flex items-center gap-1 rounded text-sm font-medium text-primary hover:underline"
+                      className="inline-flex items-center gap-1 rounded-full bg-surface-2 px-3 py-1.5 text-xs font-semibold text-text transition-colors hover:bg-ink hover:text-surface"
                     >
                       Full history
-                      <ChevronRight className="size-3.5" aria-hidden="true" />
+                      <ChevronRight className="size-3" aria-hidden="true" />
                     </Link>
                   }
                 />
@@ -212,10 +250,8 @@ function Billing() {
                       </div>
                       <div className="flex items-center gap-3">
                         <span className="tabular text-sm font-semibold text-text">
-                          {(order.payments.length === 0
-                            ? order.total
-                            : order.amountPaid
-                          ).toFixed(2)}
+                          NPR{" "}
+                          {money(order.payments.length === 0 ? order.total : order.amountPaid, 2)}
                         </span>
                         <Badge tone="success" dot>
                           Paid
@@ -247,12 +283,12 @@ function OrderCard({ order }: { order: BillingOrderSummary }) {
     <Link
       href={`/billing/${order.id}`}
       className={cn(
-        "flex h-full flex-col gap-3 rounded-lg border bg-surface p-4 transition-colors",
+        "ui-surface flex h-full flex-col gap-3 rounded-2xl border bg-surface p-4 transition-all hover:-translate-y-0.5 hover:shadow-lg",
         order.billRequestedAtUtc !== null
-          ? "border-warning-border hover:bg-warning-soft"
+          ? "border-warning-border ring-1 ring-warning-border"
           : order.canSettle
-            ? "border-success-border hover:bg-success-soft"
-            : "border-border hover:border-primary-border hover:bg-primary-soft",
+            ? "border-success-border ring-1 ring-success-border"
+            : "border-border hover:border-ink",
       )}
     >
       <div className="flex items-start justify-between gap-3">
@@ -288,8 +324,11 @@ function OrderCard({ order }: { order: BillingOrderSummary }) {
 
       <div className="flex items-end justify-between gap-3">
         <div className="flex min-w-0 flex-col">
+          {/* What the table owes - the total, with tax and service - rather than the
+              food subtotal, which understated every open bill. */}
           <span className="tabular text-2xl leading-7 font-semibold text-text">
-            {order.subtotal.toFixed(2)}
+            <span className="mr-1 text-sm font-medium text-subtle">NPR</span>
+            {money(order.amountOutstanding, 2)}
           </span>
           <span className="text-2xs text-muted">
             {order.itemCount} {order.itemCount === 1 ? "item" : "items"} ·{" "}

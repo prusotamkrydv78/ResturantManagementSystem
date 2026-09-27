@@ -5,9 +5,12 @@ import Link from "next/link";
 import {
   ArrowDown,
   ArrowUp,
+  CalendarRange,
+  HandPlatter,
   MessageSquareQuote,
   RefreshCw,
   Star,
+  UtensilsCrossed,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -21,6 +24,8 @@ import { RequireAuth } from "@/features/auth/require-auth";
 import { listReviews } from "@/features/reviews/api";
 import { sinceLabel, useNow } from "@/lib/time/since";
 import { cn } from "@/lib/utils/cn";
+import { StatTile, type StatTone } from "@/components/ui/stat-tile";
+import type { LucideIcon } from "lucide-react";
 import type { RestaurantReview, ReviewSummary } from "@/types/review";
 
 /**
@@ -155,12 +160,10 @@ function Reviews() {
         ) : summary === null ? (
           <div className="flex flex-col gap-3">
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              {[0, 1, 2, 3].map((cell) => (
-                <Surface key={cell} className="flex flex-col gap-2 p-4">
-                  <Skeleton className="h-3 w-16" />
-                  <Skeleton className="h-7 w-24" />
-                </Surface>
-              ))}
+              <Skeleton className="h-32 rounded-2xl bg-accent/60" />
+              <Skeleton className="h-32 rounded-2xl" />
+              <Skeleton className="h-32 rounded-2xl" />
+              <Skeleton className="h-32 rounded-2xl" />
             </div>
 
             {[0, 1, 2].map((row) => (
@@ -187,19 +190,25 @@ function Reviews() {
                 lifetime mean down ever since. */}
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
               <Average
+                featured
+                icon={Star}
                 label="Overall"
                 value={summary.averageRating}
-                hint="Every review, since the day this opened."
+                hint={`${summary.count} reviews, since the day this opened`}
               />
               <Average
+                icon={UtensilsCrossed}
+                tone="peach"
                 label="Food"
                 value={summary.averageFoodRating}
-                hint="Over the tables that rated it separately."
+                hint="Tables that rated it separately"
               />
               <Average
+                icon={HandPlatter}
+                tone="sky"
                 label="Service"
                 value={summary.averageServiceRating}
-                hint="Over the tables that rated it separately."
+                hint="Tables that rated it separately"
               />
               <Lately recent={summary.recent} previous={summary.previous} />
             </div>
@@ -381,37 +390,42 @@ const COMPARE: Record<Sort, (a: RestaurantReview, b: RestaurantReview) => number
 
 /* -------------------------------------------------------------------- figures --- */
 
-/** One of the three lifetime figures. */
+/** One of the three lifetime figures, on a tile. */
 function Average({
+  icon,
   label,
   value,
   hint,
+  tone = "indigo",
+  featured = false,
 }: {
+  icon: LucideIcon;
   label: string;
   value: number | null;
   hint: string;
+  tone?: StatTone;
+  featured?: boolean;
 }) {
   return (
-    <Surface className="flex flex-col gap-1 p-4">
-      <span className="text-2xs font-semibold tracking-wider text-subtle uppercase">
-        {label}
-      </span>
-
-      {value === null ? (
-        // Not a zero. Nobody has rated this restaurant nothing, and showing 0.0 would
-        // read as the worst possible score rather than as an unanswered question.
-        <span className="text-sm text-subtle">Not rated yet</span>
-      ) : (
-        <span className="flex items-baseline gap-2">
-          <span className="tabular text-2xl font-semibold text-text">
+    <StatTile
+      featured={featured}
+      tone={tone}
+      icon={icon}
+      label={label}
+      value={
+        value === null ? (
+          // Not a zero. Nobody has rated this restaurant nothing, and showing 0.0
+          // would read as the worst possible score rather than an unanswered question.
+          <span className="text-lg font-medium opacity-60">Not rated yet</span>
+        ) : (
+          <span className="flex items-baseline gap-2">
             {value.toFixed(1)}
+            <Stars value={Math.round(value)} />
           </span>
-          <Stars value={Math.round(value)} />
-        </span>
-      )}
-
-      <span className="text-xs text-muted">{hint}</span>
-    </Surface>
+        )
+      }
+      footnote={hint}
+    />
   );
 }
 
@@ -432,30 +446,24 @@ function Lately({
   previous: ReviewSummary["previous"];
 }) {
   return (
-    <Surface className="flex flex-col gap-1 p-4">
-      <span className="text-2xs font-semibold tracking-wider text-subtle uppercase">
-        Last 30 days
-      </span>
-
-      {recent.averageRating === null ? (
-        <span className="text-sm text-subtle">Nobody reviewed</span>
-      ) : (
-        <span className="flex items-baseline gap-2">
-          <span className="tabular text-2xl font-semibold text-text">
-            {recent.averageRating.toFixed(1)}
-          </span>
-          <Movement
-            current={recent.averageRating}
-            previous={previous.averageRating}
-          />
-        </span>
-      )}
-
-      <span className="text-xs text-muted">
-        {recent.count} review{recent.count === 1 ? "" : "s"}
-        {previous.count > 0 ? `, against ${previous.count} the month before` : ""}.
-      </span>
-    </Surface>
+    <StatTile
+      icon={CalendarRange}
+      tone="teal"
+      label="Last 30 days"
+      value={
+        recent.averageRating === null ? (
+          <span className="text-lg font-medium opacity-60">Nobody reviewed</span>
+        ) : (
+          recent.averageRating.toFixed(1)
+        )
+      }
+      delta={
+        recent.averageRating === null ? undefined : (
+          <Movement current={recent.averageRating} previous={previous.averageRating} />
+        )
+      }
+      footnote={`${recent.count} review${recent.count === 1 ? "" : "s"}${previous.count > 0 ? `, against ${previous.count} the month before` : ""}`}
+    />
   );
 }
 
@@ -537,7 +545,7 @@ function Distribution({
               onClick={() => onPick(bucket.rating)}
               aria-pressed={active}
               className={cn(
-                "flex items-center gap-3 rounded-md px-2 py-1.5 text-left transition-colors",
+                "flex items-center gap-3 rounded-xl px-2 py-1.5 text-left transition-colors",
                 "focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
                 active ? "bg-surface-3" : "hover:bg-surface-2",
               )}

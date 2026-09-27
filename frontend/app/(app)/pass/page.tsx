@@ -2,13 +2,15 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Check, UtensilsCrossed } from "lucide-react";
+import { Armchair, Check, Timer, UtensilsCrossed } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Surface } from "@/components/ui/surface";
+import { StatTile } from "@/components/ui/stat-tile";
 import { EmptyState, ErrorState, FormError, Skeleton } from "@/components/ui/states";
 import { PageBody, PageHeader } from "@/components/layout/page-header";
 import { RequireAuth } from "@/features/auth/require-auth";
+import { useAuth } from "@/features/auth/auth-context";
 import {
   listPass,
   markTicketItemServed,
@@ -92,6 +94,8 @@ function heatOf(isoString: string, since: number): Heat {
 }
 
 function Pass() {
+  const { user } = useAuth();
+  const isManager = user?.platformRole === "RestaurantManager";
   const [tickets, setTickets] = useState<PassTicket[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [serveError, setServeError] = useState<string | null>(null);
@@ -258,43 +262,41 @@ function Pass() {
       <PageBody>
         {serveError !== null && <FormError message={serveError} />}
 
-        {/* What is standing there, before the cards. The first cell is filled because
-            it is the only one that is a countdown rather than a count. */}
+        {/* What is standing there, before the cards. The first tile is lime because
+            it is a countdown rather than a count - and amber once a plate is going
+            cold, which is the moment it matters. */}
         {tickets !== null && tickets.length > 0 && (
-          <div className="grid grid-cols-3 overflow-hidden rounded-lg border border-border">
-            <div
-              className={cn(
-                "flex flex-col gap-0.5 px-4 py-3",
-                goingCold > 0
-                  ? "bg-warning-soft text-warning"
-                  : "bg-primary-solid text-primary-fg",
-              )}
-            >
-              <span className="text-2xs font-semibold tracking-wider uppercase opacity-80">
-                Longest wait
-              </span>
-              <span className="tabular text-xl leading-7 font-semibold">
-                {oldest === null ? "—" : formatAge(oldest, loadedAt)}
-              </span>
-            </div>
-
-            <div className="flex flex-col gap-0.5 border-l border-border px-4 py-3">
-              <span className="text-2xs font-semibold tracking-wider text-subtle uppercase">
-                Plates
-              </span>
-              <span className="tabular text-xl leading-7 font-semibold text-text">
-                {waiting}
-              </span>
-            </div>
-
-            <div className="flex flex-col gap-0.5 border-l border-border px-4 py-3">
-              <span className="text-2xs font-semibold tracking-wider text-subtle uppercase">
-                Tables
-              </span>
-              <span className="tabular text-xl leading-7 font-semibold text-text">
-                {tables}
-              </span>
-            </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <StatTile
+              featured={goingCold === 0}
+              tone="peach"
+              icon={Timer}
+              label="Longest wait"
+              value={oldest === null ? "—" : formatAge(oldest, loadedAt)}
+              footnote={
+                goingCold > 0 ? (
+                  <span className="font-semibold text-warning">
+                    {goingCold} {goingCold === 1 ? "plate is" : "plates are"} going cold
+                  </span>
+                ) : (
+                  "Everything is still hot"
+                )
+              }
+            />
+            <StatTile
+              icon={UtensilsCrossed}
+              tone="indigo"
+              label="Plates"
+              value={waiting}
+              footnote="waiting to be carried"
+            />
+            <StatTile
+              icon={Armchair}
+              tone="sky"
+              label="Tables"
+              value={tables}
+              footnote={tables === 1 ? "table is waiting" : "tables are waiting"}
+            />
           </div>
         )}
 
@@ -305,11 +307,7 @@ function Pass() {
         ) : tickets === null ? (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {[0, 1, 2].map((row) => (
-              <Surface key={row} className="flex flex-col gap-2 p-4">
-                <Skeleton className="h-6 w-28" />
-                <Skeleton className="h-4 w-40" />
-                <Skeleton className="h-9 w-full" />
-              </Surface>
+              <Skeleton key={row} className="h-64 rounded-2xl" />
             ))}
           </div>
         ) : tickets.length === 0 ? (
@@ -394,7 +392,7 @@ function Pass() {
                             // Thumb-sized, like everything else a walking waiter has
                             // to hit. This screen is a phone held in one hand while
                             // the other is carrying a plate.
-                            className="pressable flex min-h-11 w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-success-soft"
+                            className="pressable flex min-h-11 w-full items-center gap-2.5 rounded-xl px-2 py-1.5 text-left transition-colors hover:bg-success-soft"
                           >
                             {/* Fills while the request is in flight. It was drawn
                                 permanently empty, so tapping a dish gave a waiter
@@ -445,8 +443,8 @@ function Pass() {
                       </Button>
 
                       <Link
-                        href={`/orders/${ticket.orderId}`}
-                        className="pressable flex min-h-11 items-center justify-center rounded-md text-2xs font-medium text-muted hover:bg-surface-3 hover:text-text"
+                        href={isManager ? `/billing/${ticket.orderId}` : `/orders/${ticket.orderId}`}
+                        className="pressable flex min-h-11 items-center justify-center rounded-full text-2xs font-semibold text-muted transition-colors hover:bg-ink hover:text-surface"
                       >
                         Open order #{ticket.orderNumber}
                       </Link>

@@ -29,6 +29,7 @@ import {
   setItemImage,
   updateItem,
 } from "@/features/menu/api";
+import { money } from "@/features/analytics/format";
 import { apiAssetSrc } from "@/lib/api/asset-url";
 import { MENU_IMAGE } from "@/types/menu";
 import type { MenuCategory, MenuItem } from "@/types/menu";
@@ -103,7 +104,7 @@ function MenuItemView() {
         description={
           item === null
             ? undefined
-            : `${item.categoryName} · ${item.price.toFixed(2)}`
+            : `${item.categoryName} · NPR ${money(item.price, 2)}`
         }
         crumb={item?.name}
         actions={

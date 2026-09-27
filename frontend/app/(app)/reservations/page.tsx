@@ -2,9 +2,12 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
+  Armchair,
   CalendarClock,
+  CalendarDays,
   Check,
   CircleSlash,
+  Clock,
   Plus,
   UserCheck,
   Users,
@@ -23,6 +26,7 @@ import {
 import { Field, describedBy } from "@/components/ui/field";
 import { Input, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { StatTile } from "@/components/ui/stat-tile";
 import { Surface } from "@/components/ui/surface";
 import {
   EmptyState,
@@ -153,21 +157,28 @@ function Reservations() {
               is anybody standing at the door I have not dealt with, and who is next.
               The counts for the day are the context for those, not the other way
               round, and they used to be the only thing here. */}
-            <div className="grid grid-cols-2 overflow-hidden rounded-lg border border-border lg:grid-cols-4">
+            <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+              {/* The clock tile: lime while nothing needs the door, amber when a party
+                  is due within the half hour, red once one is past its time. */}
               <div
                 className={cn(
-                  "flex flex-col gap-0.5 px-4 py-3",
+                  "relative col-span-2 flex flex-col gap-2 overflow-hidden rounded-2xl p-4 xl:col-span-1",
                   late > 0
                     ? "bg-danger-soft text-danger"
                     : dueSoon > 0
                       ? "bg-warning-soft text-warning"
-                      : "bg-primary-solid text-primary-fg",
+                      : "bg-accent text-accent-fg",
                 )}
               >
-                <span className="text-2xs font-semibold tracking-wider uppercase opacity-80">
+                <span
+                  aria-hidden="true"
+                  className="pointer-events-none absolute -top-12 -right-12 size-36 rounded-full bg-white/30"
+                />
+                <span className="relative flex items-center gap-2 text-xs font-semibold">
+                  <Clock className="size-4" aria-hidden="true" />
                   {late > 0 ? "Past their time" : dueSoon > 0 ? "Due soon" : "Next in"}
                 </span>
-                <span className="tabular text-xl leading-7 font-semibold">
+                <span className="tabular relative text-[2rem] leading-9 font-semibold tracking-tight">
                   {late > 0
                     ? late
                     : dueSoon > 0
@@ -176,7 +187,7 @@ function Reservations() {
                         ? "—"
                         : formatTime(next.reservation.reservedForUtc)}
                 </span>
-                <span className="text-2xs opacity-80">
+                <span className="relative truncate text-xs font-medium opacity-80">
                   {late > 0
                     ? "not seated or cancelled"
                     : dueSoon > 0
@@ -187,13 +198,27 @@ function Reservations() {
                 </span>
               </div>
 
-              <BoardStat label="Today" value={board?.todayCount} hint="Bookings" />
-              <BoardStat
-                label="Covers today"
-                value={board?.todayGuestCount}
-                hint="Guests expected"
+              <StatTile
+                icon={CalendarDays}
+                tone="indigo"
+                label="Today"
+                value={board?.todayCount ?? "—"}
+                footnote="bookings"
               />
-              <BoardStat label="Seated now" value={board?.seatedCount} hint="Parties in" />
+              <StatTile
+                icon={Users}
+                tone="peach"
+                label="Covers today"
+                value={board?.todayGuestCount ?? "—"}
+                footnote="guests expected"
+              />
+              <StatTile
+                icon={Armchair}
+                tone="teal"
+                label="Seated now"
+                value={board?.seatedCount ?? "—"}
+                footnote="parties in"
+              />
             </div>
 
             <Surface>
@@ -360,7 +385,7 @@ function Reservations() {
                           to compare against another number. */}
                       {reservation.tableCapacity !== null &&
                         reservation.guestCount > reservation.tableCapacity && (
-                          <p className="mt-1.5 rounded-md border border-warning-border bg-warning-soft px-2 py-1 text-2xs text-warning">
+                          <p className="mt-1.5 rounded-xl border border-warning-border bg-warning-soft px-2 py-1 text-2xs text-warning">
                             That table seats {reservation.tableCapacity}
                           </p>
                         )}
@@ -645,7 +670,7 @@ function ReservationDialog({
                 <div
                   role="group"
                   aria-label="Who the booking is for"
-                  className="flex rounded-md border border-border p-0.5"
+                  className="flex rounded-xl border border-border p-0.5"
                 >
                   <button
                     type="button"
@@ -1146,27 +1171,4 @@ function inBookingView(reservation: Reservation, view: BookingView): boolean {
     default:
       return true;
   }
-}
-
-/** One count in the strip along the top. */
-function BoardStat({
-  label,
-  value,
-  hint,
-}: {
-  label: string;
-  value: number | undefined;
-  hint: string;
-}) {
-  return (
-    <div className="flex flex-col gap-0.5 border-l border-border bg-surface px-4 py-3">
-      <span className="text-2xs font-semibold tracking-wider text-subtle uppercase">
-        {label}
-      </span>
-      <span className="tabular text-xl leading-7 font-semibold text-text">
-        {value ?? "—"}
-      </span>
-      <span className="text-2xs text-muted">{hint}</span>
-    </div>
-  );
 }

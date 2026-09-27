@@ -93,7 +93,7 @@ function SettingsRail() {
     <aside
       onClick={expandOnEmptyClick}
       className={cn(
-        "relative hidden shrink-0 border-r border-border bg-surface transition-[width] duration-200 ease-out lg:sticky lg:top-0 lg:flex lg:h-svh lg:flex-col",
+        "ui-surface relative hidden shrink-0 overflow-hidden rounded-2xl border border-border bg-surface transition-[width] duration-200 ease-out lg:sticky lg:top-2 lg:my-2 lg:ml-2 lg:flex lg:h-[calc(100svh_-_1rem)] lg:flex-col",
         isCollapsed ? "w-14 cursor-e-resize" : "w-56",
       )}
     >

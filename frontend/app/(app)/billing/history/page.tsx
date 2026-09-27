@@ -11,6 +11,7 @@ import { PageBody, PageHeader } from "@/components/layout/page-header";
 import { RequireAuth } from "@/features/auth/require-auth";
 import { listOrderHistory } from "@/features/billing/api";
 import { cn } from "@/lib/utils/cn";
+import { money } from "@/features/analytics/format";
 import type { OrderHistoryEntry } from "@/types/billing";
 import type { OrderStatus } from "@/types/order";
 
@@ -99,10 +100,10 @@ function OrderHistory() {
                   setEntries(null);
                 }}
                 className={cn(
-                  "shrink-0 rounded-md px-3 py-1.5 text-sm transition-colors",
+                  "shrink-0 rounded-full px-3.5 py-1.5 text-sm transition-colors",
                   isActive
-                    ? "bg-primary-soft font-medium text-primary"
-                    : "text-muted hover:bg-surface-3 hover:text-text",
+                    ? "bg-ink font-semibold text-surface"
+                    : "text-muted hover:bg-surface-2 hover:text-text",
                 )}
               >
                 {option === "All" ? "Everything" : option}
@@ -173,8 +174,8 @@ function HistoryRow({ entry }: { entry: OrderHistoryEntry }) {
     <Link
       href={`/billing/${entry.id}`}
       className={cn(
-        "flex flex-col gap-2 rounded-lg border border-l-4 bg-surface p-4 transition-colors",
-        "border-border hover:border-primary-border hover:bg-primary-soft",
+        "ui-surface flex flex-col gap-2 rounded-2xl border border-l-4 bg-surface p-4 transition-all",
+        "border-border hover:-translate-y-0.5 hover:shadow-lg",
         isCancelled ? "border-l-danger" : "border-l-success",
       )}
     >
@@ -203,7 +204,8 @@ function HistoryRow({ entry }: { entry: OrderHistoryEntry }) {
                 isCancelled ? "text-muted line-through" : "text-text",
               )}
             >
-              {(entry.payments.length === 0 ? entry.total : entry.amountPaid).toFixed(2)}
+              <span className="mr-1 text-xs font-medium text-subtle">NPR</span>
+              {money(entry.payments.length === 0 ? entry.total : entry.amountPaid, 2)}
             </span>
             {entry.payments.length > 0 && (
               <span className="text-2xs text-subtle">

@@ -33,6 +33,7 @@ import { RequireAuth } from "@/features/auth/require-auth";
 import { cancelOrder, getBillingOrder, recordPayment } from "@/features/billing/api";
 import { ApiError } from "@/lib/api/client";
 import { cn } from "@/lib/utils/cn";
+import { money } from "@/features/analytics/format";
 import {
   CANCELLATION_LIMITS,
   PAYMENT_METHOD_HINTS,
@@ -256,14 +257,14 @@ function BillingOrderDetail() {
                           {item.itemName}
                         </span>
                         <span className="tabular text-2xs text-subtle">
-                          {item.unitPrice.toFixed(2)} each
+                          {money(item.unitPrice, 2)} each
                           {item.kitchenTicketNumber !== null &&
                             ` · KOT #${item.kitchenTicketNumber}`}
                           {!item.isSubmittedToKitchen && " · never sent to the kitchen"}
                         </span>
                       </div>
                       <span className="tabular shrink-0 text-base font-semibold text-text">
-                        {item.lineTotal.toFixed(2)}
+                        {money(item.lineTotal, 2)}
                       </span>
                     </div>
 
@@ -280,10 +281,16 @@ function BillingOrderDetail() {
                 ))}
               </ul>
 
-              <div className="flex items-baseline justify-between border-t border-border bg-surface-2 px-4 py-3">
-                <span className="text-sm font-medium text-muted">Total</span>
-                <span className="tabular text-2xl font-semibold text-text">
-                  {order.subtotal.toFixed(2)}
+              {/* The whole amount - with tax and service - rather than the food
+                  subtotal, which this used to show under the word "Total". */}
+              <div className="flex items-baseline justify-between gap-3 bg-accent px-4 py-3 text-accent-fg">
+                <span className="flex flex-col">
+                  <span className="text-sm font-semibold">Total</span>
+                  <span className="text-2xs opacity-70">Food NPR {money(order.subtotal, 2)} + tax and service</span>
+                </span>
+                <span className="tabular text-2xl font-semibold">
+                  <span className="mr-1 text-sm font-medium opacity-70">NPR</span>
+                  {money(order.total, 2)}
                 </span>
               </div>
             </Surface>
@@ -358,7 +365,7 @@ function BillingOrderDetail() {
 
             {isCancelled ? (
               <div className="flex flex-col gap-3 p-4">
-                <div className="flex items-start gap-2.5 rounded-md border border-danger-border bg-danger-soft px-3 py-2.5">
+                <div className="flex items-start gap-2.5 rounded-xl border border-danger-border bg-danger-soft px-3 py-2.5">
                   <Ban
                     className="mt-0.5 size-4 shrink-0 text-danger"
                     aria-hidden="true"
@@ -376,7 +383,7 @@ function BillingOrderDetail() {
 
                 {order.cancellation !== null && (
                   <>
-                    <div className="rounded-md border border-border px-3 py-2.5">
+                    <div className="rounded-xl border border-border px-3 py-2.5">
                       <p className="text-2xs font-semibold tracking-wider text-subtle uppercase">
                         Reason
                       </p>
@@ -385,10 +392,10 @@ function BillingOrderDetail() {
                       </p>
                     </div>
 
-                    <dl className="flex flex-col gap-2 rounded-md border border-border px-3 py-2.5">
+                    <dl className="flex flex-col gap-2 rounded-xl border border-border px-3 py-2.5">
                       <Line
                         label="Would have been"
-                        value={order.subtotal.toFixed(2)}
+                        value={money(order.subtotal, 2)}
                       />
                       <Line
                         label="Cancelled by"
@@ -408,7 +415,7 @@ function BillingOrderDetail() {
               </div>
             ) : isSettled ? (
               <div className="flex flex-col gap-3 p-4">
-                <div className="flex items-start gap-2.5 rounded-md border border-success-border bg-success-soft px-3 py-2.5">
+                <div className="flex items-start gap-2.5 rounded-xl border border-success-border bg-success-soft px-3 py-2.5">
                   <CircleCheck
                     className="mt-0.5 size-4 shrink-0 text-success"
                     aria-hidden="true"
@@ -430,12 +437,12 @@ function BillingOrderDetail() {
                     {order.payments.map((payment, index) => (
                       <dl
                         key={payment.id ?? index}
-                        className="flex flex-col gap-2 rounded-md border border-border px-3 py-2.5"
+                        className="flex flex-col gap-2 rounded-xl border border-border px-3 py-2.5"
                       >
                         <Line label="Method" value={payment.method} />
                         <Line
                           label="Amount"
-                          value={payment.amount.toFixed(2)}
+                          value={money(payment.amount, 2)}
                           strong
                         />
                         <Line label="Taken by" value={payment.recordedByName} />
@@ -449,7 +456,7 @@ function BillingOrderDetail() {
                     {order.payments.length > 1 && (
                       <p className="text-2xs text-subtle">
                         Settled over {order.payments.length} payments, totalling{" "}
-                        {order.amountPaid.toFixed(2)}.
+                        {money(order.amountPaid, 2)}.
                       </p>
                     )}
                   </div>
@@ -474,7 +481,7 @@ function BillingOrderDetail() {
                 {/* When the action is unavailable, the reason is on screen next to
                     it rather than left to a disabled button to imply. */}
                 {waiting > 0 && (
-                  <div className="flex items-start gap-2.5 rounded-md border border-warning-border bg-warning-soft px-3 py-2.5">
+                  <div className="flex items-start gap-2.5 rounded-xl border border-warning-border bg-warning-soft px-3 py-2.5">
                     <Flame
                       className="mt-0.5 size-4 shrink-0 text-warning"
                       aria-hidden="true"
@@ -499,7 +506,7 @@ function BillingOrderDetail() {
                   waiter, so the message says whose job it is.
                 */}
                 {order.unsubmittedItemCount > 0 && (
-                  <div className="flex items-start gap-2.5 rounded-md border border-warning-border bg-warning-soft px-3 py-2.5">
+                  <div className="flex items-start gap-2.5 rounded-xl border border-warning-border bg-warning-soft px-3 py-2.5">
                     <TriangleAlert
                       className="mt-0.5 size-4 shrink-0 text-warning"
                       aria-hidden="true"
@@ -527,7 +534,7 @@ function BillingOrderDetail() {
                       <label
                         key={option}
                         className={cn(
-                          "flex cursor-pointer items-center gap-3 rounded-md border px-3 py-2.5 transition-colors",
+                          "flex cursor-pointer items-center gap-3 rounded-xl border px-3 py-2.5 transition-colors",
                           isChosen
                             ? "border-primary-border bg-primary-soft"
                             : "border-border hover:bg-surface-3",
@@ -564,40 +571,40 @@ function BillingOrderDetail() {
                 {/* The bill, itemised. This showed the subtotal under "Amount due",
                     which is the food before tax and the service charge - the same
                     figure the customer's own receipt was understating. */}
-                <div className="flex flex-col gap-1 border-t border-border pt-3">
-                  <Line label="Food" value={order.subtotal.toFixed(2)} />
+                <dl className="flex flex-col gap-1 border-t border-border pt-3">
+                  <Line label="Food" value={money(order.subtotal, 2)} />
 
                   {order.discountAmount > 0 && (
                     <Line
                       label="Discount"
-                      value={`-${order.discountAmount.toFixed(2)}`}
+                      value={`-${money(order.discountAmount, 2)}`}
                     />
                   )}
 
                   {order.serviceChargeAmount > 0 && (
                     <Line
                       label="Service charge"
-                      value={order.serviceChargeAmount.toFixed(2)}
+                      value={money(order.serviceChargeAmount, 2)}
                     />
                   )}
 
                   {order.vatAmount > 0 && (
-                    <Line label="VAT" value={order.vatAmount.toFixed(2)} />
+                    <Line label="VAT" value={money(order.vatAmount, 2)} />
                   )}
 
-                  <Line label="Total" value={order.total.toFixed(2)} strong />
+                  <Line label="Total" value={money(order.total, 2)} strong />
 
                   {order.amountPaid > 0 && (
                     <>
-                      <Line label="Paid so far" value={order.amountPaid.toFixed(2)} />
+                      <Line label="Paid so far" value={money(order.amountPaid, 2)} />
                       <Line
                         label="Still owed"
-                        value={order.amountOutstanding.toFixed(2)}
+                        value={money(order.amountOutstanding, 2)}
                         strong
                       />
                     </>
                   )}
-                </div>
+                </dl>
 
                 {/* Empty settles the rest, which is what happens almost every time.
                     A figure is typed only when a table is splitting the bill, and the
@@ -619,7 +626,7 @@ function BillingOrderDetail() {
                     disabled={!order.canSettle || isSaving}
                   />
                   <span className="text-2xs text-subtle">
-                    Leave empty to settle the whole {order.amountOutstanding.toFixed(2)}.
+                    Leave empty to settle the whole {money(order.amountOutstanding, 2)}.
                     Enter less to take part of it — the rest stays owed and the table
                     stays open.
                   </span>
@@ -680,7 +687,7 @@ function BillingOrderDetail() {
                         {/* What this actually throws away, stated rather than
                             implied. Cooking already done is the real cost. */}
                         {started > 0 && (
-                          <div className="flex items-start gap-2.5 rounded-md border border-warning-border bg-warning-soft px-3 py-2.5">
+                          <div className="flex items-start gap-2.5 rounded-xl border border-warning-border bg-warning-soft px-3 py-2.5">
                             <TriangleAlert
                               className="mt-0.5 size-4 shrink-0 text-warning"
                               aria-hidden="true"
@@ -700,11 +707,11 @@ function BillingOrderDetail() {
                           </div>
                         )}
 
-                        <dl className="flex flex-col gap-2 rounded-md border border-border px-3 py-2.5">
+                        <dl className="flex flex-col gap-2 rounded-xl border border-border px-3 py-2.5">
                           <Line label="Table" value={order.tableName} />
                           <Line
                             label="Would have been"
-                            value={order.subtotal.toFixed(2)}
+                            value={money(order.subtotal, 2)}
                             strong
                           />
                         </dl>

@@ -8,24 +8,20 @@ import {
 } from "motion/react";
 import {
   ArrowRight,
+  ArrowUpRight,
   Armchair,
   Ban,
-  CalendarDays,
-  ChartNoAxesColumn,
   ChefHat,
   CircleCheck,
   ClipboardList,
   Flame,
   Plus,
   ReceiptText,
-  Settings,
-  Star,
   Store,
   TriangleAlert,
-  UtensilsCrossed,
+  Wallet,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Button, LinkButton } from "@/components/ui/button";
 import { Surface, SurfaceHeader } from "@/components/ui/surface";
 import { EmptyState, ErrorState, Skeleton } from "@/components/ui/states";
@@ -39,6 +35,8 @@ import { NoRestaurantAssigned } from "@/features/restaurants/no-restaurant";
 import { getManagerDashboard } from "@/features/dashboard/api";
 import { SuperAdminOverview } from "@/features/platform/admin-overview";
 import { Ticker } from "@/components/ui/ticker";
+import { StatTile } from "@/components/ui/stat-tile";
+import { money } from "@/features/analytics/format";
 import { nepalHourOf } from "@/lib/time/nepal";
 import { sinceLabel, useNow } from "@/lib/time/since";
 import {
@@ -103,40 +101,12 @@ function descriptionFor(role: string | undefined): string {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Super Admin                                                                */
+/* Restaurant Manager                                                         */
 /* -------------------------------------------------------------------------- */
 
-/** A dot and a count, in the ring's own colours. */
-function Legend({
-  tone,
-  children,
-}: {
-  tone: "success" | "warning" | "danger";
-  children: React.ReactNode;
-}) {
-  return (
-    <span className="inline-flex items-center gap-1.5">
-      <span
-        aria-hidden="true"
-        className={cn("size-2 rounded-full", LEGEND_DOTS[tone])}
-      />
-      {children}
-    </span>
-  );
-}
-
-const LEGEND_DOTS: Record<"success" | "warning" | "danger", string> = {
-  success: "bg-success",
-  warning: "bg-warning",
-  danger: "bg-danger",
-};
-
-/** One restaurant in the needs-a-look list, whichever group it came from. */
-/** One heading and the rows under it. */
-/** UTC+05:45. The one boundary every daily figure in this product is counted against. */
-/** Everything in the hero enters the same way, so it enters as one thing. */
+/** Everything on the overview enters the same way, so it enters as one thing. */
 const RISE = {
-  hidden: { opacity: 0, y: 10 },
+  hidden: { opacity: 0, y: 12 },
   shown: {
     opacity: 1,
     y: 0,
@@ -144,96 +114,8 @@ const RISE = {
   },
 };
 
-/**
- * One live count in the strip: a number, what it counts, and an icon.
- *
- * Optionally the way to the screen that acts on it. A figure telling a manager that
- * four orders are open is only half an answer; the other half is the billing screen,
- * and making the figure itself the door there saves a trip through the sidebar.
- */
-function LiveCount({
-  icon: Icon,
-  value,
-  label,
-  tone = "neutral",
-  href,
-}: {
-  icon: LucideIcon;
-  value: number;
-  label: string;
-  tone?: "neutral" | "warning";
-  href?: string;
-}) {
-  const content = (
-    <>
-      <span
-        className={cn(
-          "tabular flex items-center gap-1.5 text-xl font-semibold",
-          tone === "warning" ? "text-warning" : "text-text",
-        )}
-      >
-        <Icon className="size-4 text-subtle" aria-hidden="true" />
-        <Ticker value={value} />
-      </span>
-      <span className="text-2xs whitespace-nowrap text-muted">{label}</span>
-    </>
-  );
-
-  return href === undefined ? (
-    <div className="flex flex-col items-end gap-0.5">{content}</div>
-  ) : (
-    <Link
-      href={href}
-      className="flex flex-col items-end gap-0.5 rounded transition-colors hover:[&_span]:text-primary"
-    >
-      {content}
-    </Link>
-  );
-}
-
-/** One labelled bar in the today-against-yesterday comparison. */
-function CompareBar({
-  label,
-  amount,
-  share,
-  tone,
-  delay = 0,
-}: {
-  label: string;
-  amount: number;
-  share: number;
-  tone: "primary" | "muted";
-  /** Yesterday follows today, so the two bars read in the order they are named. */
-  delay?: number;
-}) {
-  return (
-    <div className="flex items-center gap-3">
-      <span className="w-20 shrink-0 text-xs text-muted">{label}</span>
-      <span className="h-2 flex-1 overflow-hidden rounded-full bg-surface-3">
-        {/* Grown rather than drawn at full width. The CSS transition that used to
-            be here never fired: the bar's first paint was already its final
-            width, and there is nothing for a transition to run from. */}
-        <motion.span
-          className={cn(
-            "block h-full rounded-full",
-            tone === "primary" ? "bg-primary" : "bg-border",
-          )}
-          initial={{ width: 0 }}
-          animate={{ width: `${Math.max(0, Math.min(1, share)) * 100}%` }}
-          transition={{ duration: 0.7, delay, ease: [0.16, 1, 0.3, 1] }}
-        />
-      </span>
-      <span className="tabular w-24 shrink-0 text-right text-xs text-muted">
-        <Ticker value={amount} decimals={2} />
-      </span>
-    </div>
-  );
-}
-
-/** Done step gets a tick, pending step its number. */
-/* -------------------------------------------------------------------------- */
-/* Restaurant Manager                                                         */
-/* -------------------------------------------------------------------------- */
+/** How many activity rows the overview shows; the rest live in billing history. */
+const ACTIVITY_LIMIT = 8;
 
 /**
  * The manager operational overview.
@@ -242,13 +124,14 @@ function CompareBar({
  * is derived by the server from orders, tables, kitchen tickets and payments that
  * already exist, so nothing here is stored, estimated or invented.
  *
- * Scoped to today and to now on purpose. There is no date range, no comparison with
- * yesterday and no chart: those belong to a reporting system this product has not
- * built, and a dashboard that pretends to have one is worse than a plain one.
+ * Read top to bottom in the order a manager needs it during service:
  *
- * The restaurant profile fields that used to sit here have moved out rather than
- * been removed. They are static, they are already on the restaurant page, and they
- * were pushing live operations below the fold.
+ * 1. Four tiles - the money, and the three counts that are acted on (open orders,
+ *    the kitchen, free tables), each the door to the screen that acts on it.
+ * 2. Anything that needs attention, as one compact strip, only while it is true.
+ * 3. The room and what has just happened in it.
+ * 4. History - the recent days, how today was paid, and today by the hour - below
+ *    the live picture rather than above it.
  */
 function ManagerOverview() {
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
@@ -317,19 +200,7 @@ function ManagerOverview() {
   }, []);
 
   if (isLoading) {
-    return (
-      <>
-        <Surface className="flex flex-col gap-3 p-4">
-          <Skeleton className="h-3 w-20" />
-          <Skeleton className="h-9 w-44" />
-          <Skeleton className="h-3 w-64" />
-        </Surface>
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-          <Surface className="h-64 xl:col-span-2" />
-          <Surface className="h-64" />
-        </div>
-      </>
-    );
+    return <ManagerOverviewSkeleton />;
   }
 
   if (error !== null) {
@@ -366,372 +237,175 @@ function ManagerOverview() {
   const isComplete = filled === optional.length;
 
   const kitchenLoad = kitchen.pendingCount + kitchen.preparingCount;
-  const peak = Math.max(today.paymentTotal, yesterday.takings, 1);
   const ahead = yesterday.takings > 0 && today.paymentTotal >= yesterday.takings;
+  // Progress toward yesterday's finished day, not a percentage change: at ten in
+  // the morning "down 80%" is true and useless.
+  const share =
+    yesterday.takings > 0 ? Math.round((today.paymentTotal / yesterday.takings) * 100) : null;
 
   return (
     <MotionConfig reducedMotion="user">
-      {/* Taken today, and what is happening on the floor while it is being taken.
-
-          The card this replaced led with the restaurant's name, a badge and a
-          setup prompt. Useful on the first morning; furniture by the second week.
-          What a manager opens this screen for is the money and the room, so that
-          is what the top of it answers now. */}
+      {/* 1. The money, and the three counts a manager acts on. */}
       <motion.div
+        className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4"
         initial="hidden"
         animate="shown"
-        variants={{ shown: { transition: { staggerChildren: 0.05 } } }}
+        variants={{ shown: { transition: { staggerChildren: 0.06 } } }}
       >
-        <Surface className="p-4">
-          <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
-            <motion.div variants={RISE} className="flex min-w-0 flex-col gap-1">
-              <span className="flex items-center gap-2 text-2xs font-semibold tracking-wider text-subtle uppercase">
-                Taken today
-                {!readiness.canTakeOrders && (
-                  <Badge tone="warning" dot>
-                    Not ready to trade
-                  </Badge>
-                )}
-              </span>
-              <div className="flex flex-wrap items-baseline gap-2">
-                <p className="tabular text-[2rem] leading-10 font-semibold text-text">
-                  <Ticker value={today.paymentTotal} decimals={2} />
-                </p>
-                {ahead && (
-                  <motion.span
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ delay: 0.65, duration: 0.3 }}
-                  >
-                    <Badge tone="success" dot>
-                      Past yesterday
-                    </Badge>
-                  </motion.span>
-                )}
-              </div>
-              <p className="text-xs text-muted">
-                {today.paymentCount === 0
-                  ? "Nothing settled yet today."
-                  : `${today.paymentCount} ${today.paymentCount === 1 ? "bill" : "bills"} settled · ${today.completedCount} ${today.completedCount === 1 ? "order" : "orders"} closed${today.cancelledCount > 0 ? ` · ${today.cancelledCount} cancelled` : ""}`}
-              </p>
-            </motion.div>
+        <motion.div variants={RISE} className="flex">
+          <StatTile
+            featured
+            className="w-full"
+            icon={Wallet}
+            label={readiness.canTakeOrders ? "Taken today" : "Taken today · not ready to trade"}
+            value={
+              <>
+                <span className="mr-1 text-lg font-medium opacity-70">NPR</span>
+                <Ticker value={today.paymentTotal} decimals={2} />
+              </>
+            }
+            delta={
+              ahead ? (
+                <span className="inline-flex items-center gap-0.5 text-xs font-semibold text-accent-fg">
+                  <ArrowUpRight className="size-3" aria-hidden="true" />
+                  Past yesterday
+                </span>
+              ) : share !== null ? (
+                <span className="text-xs font-semibold text-accent-fg">{share}% of yesterday</span>
+              ) : undefined
+            }
+            footnote={
+              today.paymentCount === 0
+                ? "Nothing settled yet today"
+                : `${today.paymentCount} ${today.paymentCount === 1 ? "bill" : "bills"} settled${today.cancelledCount > 0 ? ` · ${today.cancelledCount} cancelled` : ""}`
+            }
+          />
+        </motion.div>
 
-            {/* The room, right now. Three counts a manager acts on rather than
-                admires, and each one is the way to the screen that acts on it. */}
-            <motion.div variants={RISE} className="flex shrink-0 items-start gap-5">
-              <LiveCount
-                icon={ClipboardList}
-                value={orders.openCount}
-                label="open orders"
-                href="/billing"
-              />
-              <LiveCount
-                icon={Flame}
-                value={kitchenLoad}
-                label="in the kitchen"
-                tone={kitchen.pendingCount > 0 ? "warning" : "neutral"}
-                href="/kitchen"
-              />
-              <LiveCount
-                icon={Armchair}
-                value={floor.availableCount}
-                label="tables free"
-                href="/floor"
-              />
-            </motion.div>
-          </div>
+        <motion.div variants={RISE} className="flex">
+          <StatTile
+            className="w-full"
+            icon={ClipboardList}
+            tone="indigo"
+            label="Open orders"
+            value={<Ticker value={orders.openCount} />}
+            footnote={
+              orders.readyToSettleCount > 0 ? (
+                <span className="font-semibold text-success">
+                  {orders.readyToSettleCount} ready to settle
+                </span>
+              ) : orders.openCount === 0 ? (
+                "No table is ordering"
+              ) : (
+                "None ready to settle yet"
+              )
+            }
+            href="/billing"
+          />
+        </motion.div>
 
-          <motion.div variants={RISE} className="mt-4 flex flex-col gap-1.5">
-            <CompareBar
-              label="Today"
-              amount={today.paymentTotal}
-              share={today.paymentTotal / peak}
-              tone="primary"
-            />
-            <CompareBar
-              label="Yesterday"
-              amount={yesterday.takings}
-              share={yesterday.takings / peak}
-              tone="muted"
-              delay={0.12}
-            />
-          </motion.div>
+        <motion.div variants={RISE} className="flex">
+          <StatTile
+            className="w-full"
+            icon={Flame}
+            tone="peach"
+            label="In the kitchen"
+            value={<Ticker value={kitchenLoad} />}
+            footnote={
+              kitchen.oldestPendingAtUtc !== null ? (
+                <span className="font-semibold text-warning">
+                  Oldest waiting {sinceLabel(kitchen.oldestPendingAtUtc, now)}
+                </span>
+              ) : kitchenLoad === 0 ? (
+                "Nothing on the rail"
+              ) : (
+                `${kitchen.preparingCount} cooking · ${kitchen.pendingCount} waiting`
+              )
+            }
+            href="/kitchen"
+          />
+        </motion.div>
 
-          <motion.p variants={RISE} className="mt-2.5 text-2xs text-subtle">
-            {restaurant.name} · since {formatDayStart(today.startedAtUtc)} · read at{" "}
-            {formatTime(dashboard.generatedAtUtc)}
-          </motion.p>
-        </Surface>
+        <motion.div variants={RISE} className="flex">
+          <StatTile
+            className="w-full"
+            icon={Armchair}
+            tone="sky"
+            label="Tables free"
+            value={
+              <>
+                <Ticker value={floor.availableCount} />
+                <span className="ml-1 text-lg font-medium text-subtle">/ {floor.inServiceCount}</span>
+              </>
+            }
+            footnote={`${floor.seatsInService} seats in service`}
+            href="/floor"
+          />
+        </motion.div>
       </motion.div>
 
-      {/* Anything actually demanding attention, said plainly and only when true. */}
-      <ManagerAlerts
-        orders={orders}
-        kitchen={kitchen}
-        readiness={readiness}
-        floor={floor}
-        now={now}
-      />
+      {/* 2. Anything actually demanding attention, said plainly and only when true. */}
+      <ManagerAlerts orders={orders} kitchen={kitchen} readiness={readiness} floor={floor} now={now} />
 
-      <ManagerQuickNav />
+      {/* 3. What has just happened, beside the room it happened in. */}
+      <div className="grid grid-cols-1 gap-3 xl:grid-cols-3">
+        <div className="xl:col-span-2">
+          <ActivityCard activity={activity} />
+        </div>
+        <FloorPanel floor={floor} />
+      </div>
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+      {/* 4. History: the recent days and how today was paid, then today by the hour. */}
+      <div className="grid grid-cols-1 gap-3 xl:grid-cols-3">
         <div className="xl:col-span-2">
           <RecentDaysCard days={days} />
         </div>
         <TenderCard byMethod={today.byMethod} />
       </div>
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-        <div className="xl:col-span-2">
+      <div className="grid grid-cols-1 gap-3 xl:grid-cols-3">
+        <div className={isComplete ? "xl:col-span-3" : "xl:col-span-2"}>
           <HourCard hours={hours} currentHour={nepalHourOf(dashboard.generatedAtUtc)} />
         </div>
-
-        {/* The floor as a shape rather than a number. Occupancy is the one figure
-            on this screen a manager can see out of the window, so drawing it is
-            what makes the rest of the screen trustworthy. */}
-        <Surface className="flex h-full flex-col">
-          <SurfaceHeader
-            title="The floor"
-            description={`${floor.occupiedCount} of ${floor.inServiceCount} in service occupied.`}
-            actions={
-              <Link
-                href="/floor"
-                className="inline-flex items-center gap-1 rounded text-sm font-medium text-primary hover:underline"
-              >
-                Open floor
-                <ArrowRight className="size-3.5" aria-hidden="true" />
-              </Link>
-            }
-          />
-          <div className="flex flex-1 flex-col justify-center gap-4 p-4">
-            <div
-              className="flex h-2.5 overflow-hidden rounded-full bg-surface-3"
-              role="img"
-              aria-label={`${floor.occupiedCount} occupied, ${floor.availableCount} free, ${floor.outOfServiceCount} out of service`}
-            >
-              {floor.occupiedCount > 0 && (
-                <motion.span
-                  className="h-full bg-primary"
-                  initial={{ width: 0 }}
-                  animate={{ width: `${(floor.occupiedCount / Math.max(floor.totalCount, 1)) * 100}%` }}
-                  transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-                />
-              )}
-              {floor.availableCount > 0 && (
-                <motion.span
-                  className="h-full bg-success"
-                  initial={{ width: 0 }}
-                  animate={{ width: `${(floor.availableCount / Math.max(floor.totalCount, 1)) * 100}%` }}
-                  transition={{ duration: 0.6, delay: 0.1, ease: [0.16, 1, 0.3, 1] }}
-                />
-              )}
-              {floor.outOfServiceCount > 0 && (
-                <motion.span
-                  className="h-full bg-border"
-                  initial={{ width: 0 }}
-                  animate={{ width: `${(floor.outOfServiceCount / Math.max(floor.totalCount, 1)) * 100}%` }}
-                  transition={{ duration: 0.6, delay: 0.2, ease: [0.16, 1, 0.3, 1] }}
-                />
-              )}
-            </div>
-
-            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
-              <Legend tone="success">{floor.availableCount} free</Legend>
-              <Legend tone="warning">{floor.occupiedCount} occupied</Legend>
-              <Legend tone="danger">{floor.outOfServiceCount} out of service</Legend>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4 border-t border-border pt-3">
-              <div className="flex flex-col gap-0.5">
-                <span className="tabular text-xl font-semibold text-text">
-                  {floor.seatsInService}
-                </span>
-                <span className="text-2xs text-muted">seats in service</span>
-              </div>
-              <div className="flex flex-col gap-0.5">
-                <span
-                  className={cn(
-                    "tabular text-xl font-semibold",
-                    orders.readyToSettleCount > 0 ? "text-success" : "text-text",
-                  )}
-                >
-                  {orders.readyToSettleCount}
-                </span>
-                <span className="text-2xs text-muted">ready to settle</span>
-              </div>
-            </div>
-          </div>
-        </Surface>
+        {!isComplete && <ProfileNudge filled={filled} total={optional.length} />}
       </div>
 
-      {/* What has actually happened, in order. */}
-      <Surface>
-        <SurfaceHeader
-          title="Activity"
-          description={
-            activity.length === 0 ? "Nothing yet today" : "Most recent first, today only"
-          }
-          actions={
-            <Link
-              href="/billing/history"
-              className="inline-flex items-center gap-1 rounded text-sm font-medium text-primary hover:underline"
-            >
-              Billing history
-              <ArrowRight className="size-3.5" aria-hidden="true" />
-            </Link>
-          }
-        />
-
-        {activity.length === 0 ? (
-          <p className="px-4 py-8 text-center text-sm text-muted">
-            Nothing has happened yet today. Orders, kitchen tickets and payments appear
-            here as they happen.
-          </p>
-        ) : (
-          <ul className="divide-y divide-border">
-            {activity.map((entry, position) => (
-              <li key={`${entry.orderId}-${entry.kind}-${position}`}>
-                <ActivityRow entry={entry} />
-              </li>
-            ))}
-          </ul>
-        )}
-      </Surface>
-
-      {/* Setup nudge, last, and only until it is done. */}
-      {!isComplete && (
-        <Surface>
-          <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-            <div className="flex min-w-0 items-start gap-2.5">
-              <ClipboardList
-                className="mt-0.5 size-4 shrink-0 text-muted"
-                aria-hidden="true"
-              />
-              <div className="flex min-w-0 flex-col gap-0.5">
-                <p className="text-sm font-medium text-text">
-                  Finish your restaurant profile
-                </p>
-                <p className="text-xs text-muted">
-                  {filled} of {optional.length} contact and location details added.
-                </p>
-              </div>
-            </div>
-            <LinkButton href="/settings/restaurant" variant="secondary" size="sm">
-              Complete profile
-            </LinkButton>
-          </div>
-        </Surface>
-      )}
+      <p className="px-1 text-2xs text-subtle">
+        {restaurant.name} · since {formatDayStart(today.startedAtUtc)} · read at{" "}
+        {formatTime(dashboard.generatedAtUtc)}
+      </p>
     </MotionConfig>
   );
 }
 
-/**
- * The rest of the product, one press away.
- *
- * Deliberately only the destinations nothing else on this screen already offers. The
- * three counts in the headline are themselves links to billing, the kitchen and the
- * floor, and repeating those here would make the row twice as long and no faster -
- * a launcher that lists everything is a second sidebar, and there is already a
- * sidebar.
- *
- * What is left is the work a manager does *between* services rather than during one:
- * checking tonight's bookings, pulling a dish that has run out, reading what guests
- * said, and the week's figures. Every one of those is currently two moves - open the
- * sidebar, find the row - and all of them start here.
- */
-function ManagerQuickNav() {
+/** The shape of the finished overview, so nothing jumps when the figures arrive. */
+function ManagerOverviewSkeleton() {
   return (
-    <Surface>
-      {/* Scrolls rather than wraps on a narrow screen. A manager holding a tablet in
-          one hand gets one row they can push along, not a block that reflows into
-          three and pushes the charts off the bottom. */}
-      <div className="flex gap-2 overflow-x-auto p-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {QUICK_LINKS.map((link) => (
-          <Link
-            key={link.href}
-            href={link.href}
-            className={cn(
-              "group flex min-w-[7.5rem] flex-1 shrink-0 flex-col gap-1.5 rounded-md border border-border px-3 py-2.5",
-              "transition-colors hover:border-primary-border hover:bg-primary-soft",
-              "focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
-            )}
-          >
-            <span className="flex items-center justify-between gap-2">
-              <link.icon
-                className="size-4 text-subtle transition-colors group-hover:text-primary"
-                aria-hidden="true"
-              />
-              <ArrowRight
-                className="size-3 text-subtle opacity-0 transition-opacity group-hover:opacity-100"
-                aria-hidden="true"
-              />
-            </span>
-            <span className="flex flex-col">
-              <span className="text-sm font-medium text-text transition-colors group-hover:text-primary">
-                {link.label}
-              </span>
-              <span className="text-2xs whitespace-nowrap text-subtle">{link.hint}</span>
-            </span>
-          </Link>
-        ))}
+    <>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <Skeleton className="h-32 rounded-2xl bg-accent/60" />
+        <Skeleton className="h-32 rounded-2xl" />
+        <Skeleton className="h-32 rounded-2xl" />
+        <Skeleton className="h-32 rounded-2xl" />
       </div>
-    </Surface>
+      <div className="grid grid-cols-1 gap-3 xl:grid-cols-3">
+        <Skeleton className="h-80 rounded-2xl xl:col-span-2" />
+        <Skeleton className="h-80 rounded-2xl bg-panel" />
+      </div>
+      <div className="grid grid-cols-1 gap-3 xl:grid-cols-3">
+        <Skeleton className="h-72 rounded-2xl xl:col-span-2" />
+        <Skeleton className="h-72 rounded-2xl" />
+      </div>
+    </>
   );
 }
-
-/** Where the row goes, and what each one is for. */
-const QUICK_LINKS: {
-  href: string;
-  label: string;
-  hint: string;
-  icon: LucideIcon;
-}[] = [
-  {
-    href: "/pass",
-    label: "Pass",
-    hint: "Plates waiting",
-    icon: ReceiptText,
-  },
-  {
-    href: "/reservations",
-    label: "Reservations",
-    hint: "Who is booked in",
-    icon: CalendarDays,
-  },
-  {
-    href: "/menu",
-    label: "Menu",
-    hint: "Pull or price a dish",
-    icon: UtensilsCrossed,
-  },
-  {
-    href: "/reviews",
-    label: "Reviews",
-    hint: "What guests said",
-    icon: Star,
-  },
-  {
-    href: "/reports",
-    label: "Reports",
-    hint: "Any range of days",
-    icon: ChartNoAxesColumn,
-  },
-  {
-    href: "/settings/restaurant",
-    label: "Settings",
-    hint: "Tables, staff, stock",
-    icon: Settings,
-  },
-];
 
 /**
  * The things worth interrupting a manager for, and nothing else.
  *
- * Each one is a sentence with a way to act on it, shown only while it is true. The
- * screen is quiet when the restaurant is fine, which is what makes it worth reading
- * when it is not.
+ * One strip rather than a card per alert: three full-width tinted cards at once took
+ * over the top of the screen. Each row is a sentence with a way to act on it, shown
+ * only while it is true, so the screen is quiet when the restaurant is fine.
  */
 function ManagerAlerts({
   orders,
@@ -768,12 +442,10 @@ function ManagerAlerts({
   }
 
   if (kitchen.oldestPendingAtUtc !== null) {
-    const waited = sinceLabel(kitchen.oldestPendingAtUtc, now);
-
     alerts.push({
       key: "kitchen-waiting",
       tone: "warning",
-      text: `A ticket has been waiting to be started for ${waited}.`,
+      text: `A ticket has been waiting to be started for ${sinceLabel(kitchen.oldestPendingAtUtc, now)}.`,
       href: "/kitchen",
       action: "Open kitchen",
     });
@@ -794,57 +466,184 @@ function ManagerAlerts({
   }
 
   return (
-    <div className="flex flex-col gap-2">
+    <Surface className="divide-y divide-border">
       {alerts.map((alert) => (
-        <Surface
-          key={alert.key}
-          className={cn(
-            "flex flex-wrap items-center justify-between gap-3 px-4 py-2.5",
-            alert.tone === "danger"
-              ? "border-danger-border bg-danger-soft"
-              : alert.tone === "warning"
-                ? "border-warning-border bg-warning-soft"
-                : "border-success-border bg-success-soft",
-          )}
-        >
-          <p
+        <div key={alert.key} className="flex flex-wrap items-center gap-3 px-3 py-2">
+          <span
             className={cn(
-              "flex min-w-0 items-start gap-2 text-sm",
-              alert.tone === "danger"
-                ? "text-danger"
-                : alert.tone === "warning"
-                  ? "text-warning"
-                  : "text-success",
+              "flex size-8 shrink-0 items-center justify-center rounded-xl",
+              ALERT_CHIPS[alert.tone],
             )}
+            aria-hidden="true"
           >
             {alert.tone === "success" ? (
-              <CircleCheck className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+              <CircleCheck className="size-4" />
             ) : (
-              <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+              <TriangleAlert className="size-4" />
             )}
-            {alert.text}
-          </p>
-          <LinkButton href={alert.href} variant="secondary" size="sm">
+          </span>
+          <p className="min-w-0 flex-1 text-sm font-medium text-text">{alert.text}</p>
+          <Link
+            href={alert.href}
+            className="inline-flex items-center gap-1 rounded-full bg-surface-2 px-3 py-1.5 text-xs font-semibold text-text transition-colors hover:bg-ink hover:text-surface"
+          >
             {alert.action}
-          </LinkButton>
-        </Surface>
+            <ArrowRight className="size-3" aria-hidden="true" />
+          </Link>
+        </div>
       ))}
+    </Surface>
+  );
+}
+
+const ALERT_CHIPS: Record<"warning" | "danger" | "success", string> = {
+  danger: "bg-danger-soft text-danger",
+  warning: "bg-warning-soft text-warning",
+  success: "bg-success-soft text-success",
+};
+
+/**
+ * The floor as a shape rather than a number, on the lavender panel.
+ *
+ * The bar and the legend under it read the same colours from one table - they used
+ * to disagree, with the legend naming amber and red for segments drawn indigo and grey.
+ */
+const FLOOR_PARTS = [
+  { key: "occupied", label: "occupied", colour: "var(--chart-1)" },
+  { key: "free", label: "free", colour: "var(--success)" },
+  { key: "out", label: "out of service", colour: "var(--border-strong)" },
+] as const;
+
+function FloorPanel({ floor }: { floor: Floor }) {
+  const counts = {
+    occupied: floor.occupiedCount,
+    free: floor.availableCount,
+    out: floor.outOfServiceCount,
+  };
+  const total = Math.max(floor.totalCount, 1);
+  const occupancy =
+    floor.inServiceCount > 0 ? Math.round((floor.occupiedCount / floor.inServiceCount) * 100) : 0;
+
+  return (
+    <div className="flex h-full flex-col gap-4 rounded-2xl bg-panel p-4 text-panel-fg">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex flex-col gap-0.5">
+          <h2 className="text-xl font-semibold tracking-tight">The floor</h2>
+          <p className="text-xs opacity-70">
+            {floor.occupiedCount} of {floor.inServiceCount} tables in service occupied
+          </p>
+        </div>
+        <Link
+          href="/floor"
+          className="inline-flex shrink-0 items-center gap-1 rounded-full bg-surface px-3 py-1.5 text-xs font-semibold text-text shadow-(--surface-shadow) transition-colors hover:bg-ink hover:text-surface"
+        >
+          Open floor
+          <ArrowRight className="size-3" aria-hidden="true" />
+        </Link>
+      </div>
+
+      <div className="flex flex-1 flex-col justify-center gap-3">
+        <p className="tabular text-5xl font-semibold tracking-tight">
+          {occupancy}
+          <span className="text-2xl opacity-60">%</span>
+        </p>
+
+        <div
+          className="flex h-3 gap-0.5 overflow-hidden rounded-full bg-surface/60"
+          role="img"
+          aria-label={`${floor.occupiedCount} occupied, ${floor.availableCount} free, ${floor.outOfServiceCount} out of service`}
+        >
+          {FLOOR_PARTS.map((part, index) =>
+            counts[part.key] > 0 ? (
+              <motion.span
+                key={part.key}
+                className="h-full rounded-full"
+                style={{ background: part.colour }}
+                initial={{ width: 0 }}
+                animate={{ width: `${(counts[part.key] / total) * 100}%` }}
+                transition={{ duration: 0.6, delay: index * 0.1, ease: [0.16, 1, 0.3, 1] }}
+              />
+            ) : null,
+          )}
+        </div>
+
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+          {FLOOR_PARTS.map((part) => (
+            <span key={part.key} className="inline-flex items-center gap-1.5">
+              <span aria-hidden="true" className="size-2 rounded-full" style={{ background: part.colour }} />
+              <span className="tabular font-semibold">{counts[part.key]}</span>
+              <span className="opacity-70">{part.label}</span>
+            </span>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2">
+        <div className="flex flex-col gap-0.5 rounded-xl bg-surface p-3 text-text">
+          <span className="tabular text-xl font-semibold">{floor.seatsInService}</span>
+          <span className="text-2xs text-muted">seats in service</span>
+        </div>
+        <div className="flex flex-col gap-0.5 rounded-xl bg-surface p-3 text-text">
+          <span className="tabular text-xl font-semibold">{floor.totalCount}</span>
+          <span className="text-2xs text-muted">tables in all</span>
+        </div>
+      </div>
     </div>
   );
 }
 
-/** How each kind of event is presented: its icon, its tone, and what it is called. */
-const ACTIVITY_LOOKS: Record<
-  ActivityKind,
-  { icon: LucideIcon; tone: string; label: string }
-> = {
-  OrderPlaced: { icon: ClipboardList, tone: "text-primary", label: "Order opened" },
-  SentToKitchen: { icon: ChefHat, tone: "text-primary", label: "Sent to kitchen" },
-  KitchenStarted: { icon: Flame, tone: "text-warning", label: "Cooking started" },
-  KitchenReady: { icon: CircleCheck, tone: "text-success", label: "Ready at the pass" },
-  OrderCompleted: { icon: ReceiptText, tone: "text-success", label: "Paid and closed" },
-  OrderCancelled: { icon: Ban, tone: "text-danger", label: "Cancelled" },
+/** How each kind of event is presented: its icon, its chip, and what it is called. */
+const ACTIVITY_LOOKS: Record<ActivityKind, { icon: LucideIcon; chip: string; label: string }> = {
+  OrderPlaced: { icon: ClipboardList, chip: "bg-primary-soft text-primary", label: "Order opened" },
+  SentToKitchen: { icon: ChefHat, chip: "bg-primary-soft text-primary", label: "Sent to kitchen" },
+  KitchenStarted: { icon: Flame, chip: "bg-warning-soft text-warning", label: "Cooking started" },
+  KitchenReady: { icon: CircleCheck, chip: "bg-success-soft text-success", label: "Ready at the pass" },
+  OrderCompleted: { icon: ReceiptText, chip: "bg-accent text-accent-fg", label: "Paid and closed" },
+  OrderCancelled: { icon: Ban, chip: "bg-danger-soft text-danger", label: "Cancelled" },
 };
+
+/** Today's latest events, capped; the full record is billing history. */
+function ActivityCard({ activity }: { activity: ActivityEntry[] }) {
+  const shown = activity.slice(0, ACTIVITY_LIMIT);
+
+  return (
+    <Surface className="flex h-full flex-col">
+      <SurfaceHeader
+        title="Activity"
+        description={
+          activity.length === 0
+            ? "Nothing yet today"
+            : activity.length > ACTIVITY_LIMIT
+              ? `Latest ${ACTIVITY_LIMIT} of ${activity.length} today`
+              : "Most recent first, today only"
+        }
+        actions={
+          <Link
+            href="/billing/history"
+            className="inline-flex items-center gap-1 rounded-full bg-surface-2 px-3 py-1.5 text-xs font-semibold text-text transition-colors hover:bg-ink hover:text-surface"
+          >
+            Billing history
+            <ArrowRight className="size-3" aria-hidden="true" />
+          </Link>
+        }
+      />
+
+      {activity.length === 0 ? (
+        <p className="flex flex-1 items-center justify-center px-4 py-8 text-center text-sm text-muted">
+          Orders, kitchen tickets and payments appear here as they happen.
+        </p>
+      ) : (
+        <ul className="flex flex-col gap-0.5 px-2 pb-2">
+          {shown.map((entry, position) => (
+            <li key={`${entry.orderId}-${entry.kind}-${position}`}>
+              <ActivityRow entry={entry} />
+            </li>
+          ))}
+        </ul>
+      )}
+    </Surface>
+  );
+}
 
 /**
  * One thing that happened.
@@ -860,48 +659,69 @@ function ActivityRow({ entry }: { entry: ActivityEntry }) {
   return (
     <Link
       href={`/billing/${entry.orderId}`}
-      className="flex items-start gap-3 px-4 py-2.5 transition-colors hover:bg-surface-3"
+      className="flex items-center gap-3 rounded-xl px-2 py-2 transition-colors hover:bg-surface-2"
     >
-      <Icon
-        className={cn("mt-0.5 size-4 shrink-0", look.tone)}
-        aria-hidden="true"
-      />
+      <span className={cn("flex size-9 shrink-0 items-center justify-center rounded-xl", look.chip)} aria-hidden="true">
+        <Icon className="size-4" />
+      </span>
 
-      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className="text-sm text-text">
-          <span className="font-medium">{look.label}</span>
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span className="truncate text-sm text-text">
+          <span className="font-semibold">{look.label}</span>
           <span className="text-muted">
             {" · "}
             {entry.tableName}
             {entry.ticketNumber !== null && ` · KOT #${entry.ticketNumber}`}
           </span>
         </span>
-
-        <span className="text-2xs text-subtle">
+        <span className="truncate text-2xs text-subtle">
           <span className="tabular">order #{entry.orderNumber}</span>
           {entry.method !== null && ` · ${entry.method}`}
           {entry.reason !== null && ` · ${entry.reason}`}
         </span>
-      </div>
+      </span>
 
-      <div className="flex shrink-0 flex-col items-end gap-0.5">
+      <span className="flex shrink-0 flex-col items-end gap-0.5">
         {entry.amount !== null && (
           <span
             className={cn(
               "tabular text-sm font-semibold",
-              entry.kind === "OrderCancelled"
-                ? "text-muted line-through"
-                : "text-text",
+              entry.kind === "OrderCancelled" ? "text-muted line-through" : "text-text",
             )}
           >
-            {entry.amount.toFixed(2)}
+            NPR {money(entry.amount, 2)}
           </span>
         )}
-        <span className="tabular text-2xs whitespace-nowrap text-subtle">
-          {formatTime(entry.atUtc)}
-        </span>
-      </div>
+        <span className="tabular text-2xs whitespace-nowrap text-subtle">{formatTime(entry.atUtc)}</span>
+      </span>
     </Link>
+  );
+}
+
+/** The setup prompt, in ink, only until the profile is done. */
+function ProfileNudge({ filled, total }: { filled: number; total: number }) {
+  return (
+    <div className="flex flex-col justify-between gap-4 rounded-2xl bg-contrast p-4 text-contrast-fg">
+      <div className="flex flex-col gap-1">
+        <span className="text-2xs font-semibold tracking-wider text-accent uppercase">Setup</span>
+        <h2 className="text-lg font-semibold tracking-tight">Finish your restaurant profile</h2>
+        <p className="text-xs text-contrast-muted">
+          {filled} of {total} contact and location details added. Guests and receipts use them.
+        </p>
+      </div>
+      <div className="flex flex-col gap-3">
+        <div className="h-1.5 overflow-hidden rounded-full bg-contrast-raised">
+          <span className="block h-full rounded-full bg-accent" style={{ width: `${(filled / total) * 100}%` }} />
+        </div>
+        <Link
+          href="/settings/restaurant"
+          className="inline-flex w-fit items-center gap-1 rounded-full bg-accent px-3 py-1.5 text-xs font-semibold text-accent-fg transition-transform hover:-translate-y-0.5"
+        >
+          Complete profile
+          <ArrowRight className="size-3" aria-hidden="true" />
+        </Link>
+      </div>
+    </div>
   );
 }
 

@@ -5,6 +5,8 @@ import Link from "next/link";
 import {
   ChevronDown,
   ChevronUp,
+  Eye,
+  EyeOff,
   ListPlus,
   Pencil,
   Plus,
@@ -35,6 +37,8 @@ import {
 } from "@/components/ui/states";
 import { apiAssetSrc } from "@/lib/api/asset-url";
 import { cn } from "@/lib/utils/cn";
+import { money } from "@/features/analytics/format";
+import { StatTile } from "@/components/ui/stat-tile";
 import { PageBody, PageHeader } from "@/components/layout/page-header";
 import { RequireAuth } from "@/features/auth/require-auth";
 import {
@@ -121,6 +125,11 @@ function MenuManager() {
   }, [search, categoryFilter]);
 
   const isFiltering = search.trim() !== "" || categoryFilter !== "";
+
+  // Counted from the categories rather than the item list, so the tiles do not change
+  // while somebody is searching.
+  const dishCount = (categories ?? []).reduce((sum, category) => sum + category.itemCount, 0);
+  const onMenuCount = (categories ?? []).reduce((sum, category) => sum + category.activeItemCount, 0);
   const hasCategories = categories !== null && categories.length > 0;
 
   /**
@@ -186,6 +195,39 @@ function MenuManager() {
           </Surface>
         )}
 
+        {categories !== null && categories.length > 0 && (
+          <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+            <StatTile
+              icon={Tags}
+              tone="indigo"
+              label="Categories"
+              value={categories.length}
+              footnote={`${categories.filter((category) => category.isActive).length} on the menu`}
+            />
+            <StatTile
+              icon={Utensils}
+              tone="peach"
+              label="Dishes"
+              value={dishCount}
+              footnote="across every category"
+            />
+            <StatTile
+              icon={Eye}
+              tone="teal"
+              label="On the menu"
+              value={onMenuCount}
+              footnote="guests can order these"
+            />
+            <StatTile
+              icon={EyeOff}
+              tone="rose"
+              label="Off the menu"
+              value={dishCount - onMenuCount}
+              footnote={dishCount - onMenuCount === 0 ? "Everything is available" : "hidden or in a hidden category"}
+            />
+          </div>
+        )}
+
         {/* Categories first: an item cannot exist without one. */}
         <Surface>
           <SurfaceHeader
@@ -211,7 +253,7 @@ function MenuManager() {
               {categories.map((category, index) => (
                 <article
                   key={category.id}
-                  className="flex flex-col overflow-hidden rounded-lg border border-border bg-surface-2"
+                  className="ui-surface flex flex-col overflow-hidden rounded-2xl border border-border bg-surface transition-all hover:-translate-y-0.5 hover:shadow-lg"
                 >
                   {/* The same shape as a dish card, so the two grids on this page
                       read as one thing. Guests see this cropped to a wide band with
@@ -401,7 +443,7 @@ function MenuManager() {
               {items.map((item) => (
                 <article
                   key={item.id}
-                  className="group flex flex-col overflow-hidden rounded-lg border border-border bg-surface-2 transition-shadow hover:shadow-md"
+                  className="group ui-surface flex flex-col overflow-hidden rounded-2xl border border-border bg-surface transition-all hover:-translate-y-0.5 hover:shadow-lg"
                 >
                   {/* The photograph, at the shape a guest is shown it. An item
                       without one gets the same box rather than a shorter card, so a
@@ -498,7 +540,7 @@ function CardSkeleton({
       {Array.from({ length: count }, (_, index) => (
         <div
           key={index}
-          className="overflow-hidden rounded-lg border border-border bg-surface-2"
+          className="overflow-hidden rounded-2xl border border-border bg-surface"
         >
           <Skeleton className="aspect-4/3 w-full rounded-none" />
           <div className="flex flex-col gap-2 p-3.5">
@@ -537,7 +579,7 @@ function ItemStatusBadge({ item }: { item: MenuItem }) {
 }
 
 function formatPrice(price: number): string {
-  return price.toFixed(2);
+  return `NPR ${money(price, 2)}`;
 }
 
 function firstError(

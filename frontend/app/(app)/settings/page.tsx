@@ -24,6 +24,9 @@ import { SETTINGS_SECTIONS } from "@/components/layout/settings-nav";
  *
  * Role is enforced by the layout, which wraps this and every screen in the area.
  */
+/** The console's tile colours, one per settings group. */
+const SECTION_TONES = ["var(--chart-1)", "var(--chart-3)", "var(--chart-6)"];
+
 export default function SettingsPage() {
   return (
     <>
@@ -33,8 +36,8 @@ export default function SettingsPage() {
       />
 
       <PageBody>
-        <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
-          {SETTINGS_SECTIONS.map((section) => (
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+          {SETTINGS_SECTIONS.map((section, sectionIndex) => (
             <section key={section.title} className="flex flex-col gap-2.5">
               {/* A heading in the page rather than a header on a panel. The grouping
                   is a way of thinking about the area - what the business is, the room
@@ -53,17 +56,23 @@ export default function SettingsPage() {
 
                   return (
                     <li key={link.href} className="flex">
-                      <Surface className="group flex flex-1 transition-colors hover:border-primary-border">
+                      <Surface className="group flex flex-1 transition-all hover:-translate-y-0.5 hover:border-ink hover:shadow-lg">
                         <Link
                           href={link.href}
-                          className="flex flex-1 flex-col gap-2.5 rounded-lg p-4 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                          className="flex flex-1 flex-col gap-2.5 rounded-2xl p-4 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
                         >
                           <span className="flex items-center gap-2.5">
                             {/* Tinted rather than grey. On a page that is entirely
                                 navigation, the glyphs are the only thing the eye can
                                 aim at, and six inert grey squares give it nothing. */}
                             <span
-                              className="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary-soft text-primary"
+                              className="flex size-9 shrink-0 items-center justify-center rounded-xl"
+                              style={{
+                                // One colour per group, so the three columns read as
+                                // three different kinds of thing at a glance.
+                                background: `color-mix(in srgb, ${SECTION_TONES[sectionIndex % SECTION_TONES.length]} 16%, transparent)`,
+                                color: SECTION_TONES[sectionIndex % SECTION_TONES.length],
+                              }}
                               aria-hidden="true"
                             >
                               <Icon className="size-4" />
@@ -77,7 +86,7 @@ export default function SettingsPage() {
                                 present, so nothing shifts and nothing appears from
                                 nowhere; it only stops being quiet. */}
                             <ArrowRight
-                              className="size-4 shrink-0 text-subtle transition-all group-hover:translate-x-0.5 group-hover:text-primary"
+                              className="size-4 shrink-0 text-subtle transition-all group-hover:translate-x-0.5 group-hover:text-text"
                               aria-hidden="true"
                             />
                           </span>

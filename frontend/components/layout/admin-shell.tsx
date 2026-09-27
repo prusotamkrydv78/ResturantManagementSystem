@@ -13,11 +13,16 @@ import { useAuth } from "@/features/auth/auth-context";
 import { useTheme } from "@/lib/theme/use-theme";
 import { useRealtimeStatus } from "@/lib/realtime/realtime-context";
 import { useAdminLiveUpdates } from "@/queries/admin";
+import { LiveUpdatesBanner } from "@/lib/realtime/live-updates-banner";
 import { THEMES, THEME_LABELS, type ThemePreference } from "@/lib/theme/theme";
 import { cn } from "@/lib/utils/cn";
 
 /**
- * The platform owner's frame: a floating sidebar and a slim bar across the top.
+ * The console frame: a floating ink sidebar and a slim bar across the top.
+ *
+ * Worn by the platform owner and, since the manager redesign, by restaurant
+ * managers too - the two roles that run a business from a screen rather than work
+ * a station on the floor. Waiters and chefs keep the dense operational shell.
  *
  * WHY A SEPARATE SHELL
  *
@@ -33,9 +38,7 @@ import { cn } from "@/lib/utils/cn";
  */
 export function AdminShell({ children }: { children: React.ReactNode }) {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-
-  // The console's figures follow the server's signals for as long as it is open.
-  useAdminLiveUpdates();
+  const { user } = useAuth();
 
   // A layout effect, so the surface is in place before the first paint rather than
   // flashing the operational look for a frame.
@@ -91,14 +94,28 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
+        {/* Says so when the live connection has been lost for a while. */}
+        <LiveUpdatesBanner />
         <main className="min-w-0 flex-1">{children}</main>
       </div>
+
+      {/* The platform figures follow the server's signals while the console is
+          open. Only the platform owner is sent those signals. */}
+      {user?.platformRole === "SuperAdmin" && <AdminLiveUpdates />}
     </div>
   );
 }
 
-/** The lime tile and the name. */
+function AdminLiveUpdates() {
+  useAdminLiveUpdates();
+
+  return null;
+}
+
+/** The lime tile and the name, and which console this is. */
 function AdminBrand() {
+  const { user } = useAuth();
+
   return (
     <div className="flex items-center gap-3 px-4 pt-4 pb-3">
       <BrandMark />
@@ -106,7 +123,9 @@ function AdminBrand() {
         <span className="truncate text-base font-semibold tracking-tight text-sidebar-fg">
           Restaurant OS
         </span>
-        <span className="truncate text-2xs text-sidebar-muted">Platform console</span>
+        <span className="truncate text-2xs text-sidebar-muted">
+          {user?.platformRole === "SuperAdmin" ? "Platform console" : "Restaurant console"}
+        </span>
       </span>
     </div>
   );

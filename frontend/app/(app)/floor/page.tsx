@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
   Armchair,
+  CalendarClock,
   ChefHat,
   CircleCheck,
   Flame,
@@ -12,12 +13,15 @@ import {
   RefreshCw,
   Search,
   TriangleAlert,
+  Users,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button, LinkButton } from "@/components/ui/button";
 import { FilterChip } from "@/components/ui/filter-chip";
 import { Input } from "@/components/ui/input";
 import { Surface } from "@/components/ui/surface";
+import { StatTile } from "@/components/ui/stat-tile";
+import { money } from "@/features/analytics/format";
 import { EmptyState, ErrorState, Skeleton } from "@/components/ui/states";
 import { PageBody, PageHeader } from "@/components/layout/page-header";
 import { RequireAuth } from "@/features/auth/require-auth";
@@ -195,15 +199,19 @@ function FloorOverviewScreen() {
             />
           </Surface>
         ) : floor === null ? (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {[0, 1, 2, 3, 4, 5].map((cell) => (
-              <Surface key={cell} className="flex flex-col gap-2 p-4">
-                <Skeleton className="h-6 w-24" />
-                <Skeleton className="h-4 w-32" />
-                <Skeleton className="h-4 w-20" />
-              </Surface>
-            ))}
-          </div>
+          <>
+            <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+              <Skeleton className="col-span-2 h-32 rounded-2xl bg-accent/60 xl:col-span-1" />
+              <Skeleton className="h-32 rounded-2xl" />
+              <Skeleton className="h-32 rounded-2xl" />
+              <Skeleton className="h-32 rounded-2xl" />
+            </div>
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
+              {[0, 1, 2, 3, 4, 5, 6, 7].map((cell) => (
+                <Skeleton key={cell} className="h-40 rounded-2xl" />
+              ))}
+            </div>
+          </>
         ) : floor.totalCount === 0 ? (
           <Surface>
             <EmptyState
@@ -225,44 +233,42 @@ function FloorOverviewScreen() {
           </Surface>
         ) : (
           <>
-            {/* The room in four figures, then the room itself.
-
-                The first cell is filled rather than outlined because it is the only
-                one that is money rather than furniture: three counts of tables and
-                one count of what is running on them do not deserve equal weight. */}
-            <div className="grid grid-cols-2 overflow-hidden rounded-lg border border-border lg:grid-cols-4">
-              <div className="flex flex-col gap-1 bg-primary-solid px-4 py-3.5 text-primary-fg">
-                <span className="flex items-center justify-between gap-2">
-                  <span className="text-2xs font-semibold tracking-wider uppercase opacity-80">
-                    On the floor
-                  </span>
-                  <ReceiptText className="size-4 opacity-80" aria-hidden="true" />
-                </span>
-                <span className="tabular text-2xl leading-8 font-semibold">
-                  {floor.openValue.toFixed(2)}
-                </span>
-                <span className="text-2xs opacity-80">
-                  {openOrderCount} {openOrderCount === 1 ? "order" : "orders"} open
-                </span>
-              </div>
-
-              <FloorStat
+            {/* The room in four tiles, then the room itself. The first is lime
+                because it is the only one that is money rather than furniture. */}
+            <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+              <StatTile
+                featured
+                className="col-span-2 xl:col-span-1"
+                icon={ReceiptText}
+                label="On the floor"
+                value={
+                  <>
+                    <span className="mr-1 text-lg font-medium opacity-70">NPR</span>
+                    {money(floor.openValue, 2)}
+                  </>
+                }
+                footnote={`${openOrderCount} ${openOrderCount === 1 ? "order" : "orders"} open`}
+              />
+              <StatTile
+                icon={Users}
+                tone="peach"
                 label="Occupied"
                 value={floor.occupiedCount}
-                tone="warning"
-                className="border-l border-border"
+                footnote={floor.occupiedCount === 0 ? "Nobody seated" : "tables with guests"}
               />
-              <FloorStat
+              <StatTile
+                icon={CalendarClock}
+                tone="indigo"
                 label="Reserved"
                 value={reservedCount}
-                tone="primary"
-                className="border-l border-border max-lg:border-t"
+                footnote={reservedCount === 0 ? "No holds right now" : "held for a booking"}
               />
-              <FloorStat
+              <StatTile
+                icon={Armchair}
+                tone="teal"
                 label="Available"
                 value={floor.availableCount}
-                tone="success"
-                className="border-l border-border max-lg:border-t"
+                footnote={floor.availableCount === 0 ? "The room is full" : "ready to seat"}
               />
             </div>
 
@@ -446,8 +452,9 @@ function TableCard({ table, isManager }: { table: FloorTable; isManager: boolean
           </span>
 
           {working ? (
-            <span className="tabular text-sm font-semibold text-primary">
-              {table.openValue.toFixed(2)}
+            <span className="tabular text-sm font-semibold text-text">
+              <span className="mr-0.5 text-2xs font-medium text-subtle">NPR</span>
+              {money(table.openValue, 2)}
             </span>
           ) : (
             <span
@@ -496,7 +503,7 @@ function TableCard({ table, isManager }: { table: FloorTable; isManager: boolean
   );
 
   const shell = cn(
-    "flex h-full min-h-[9.5rem] flex-col gap-3 rounded-lg border bg-surface p-3 transition-colors",
+    "ui-surface flex h-full min-h-[9.5rem] flex-col gap-3 rounded-2xl border bg-surface p-3 transition-all",
     !table.isActive && !stranded
       ? "border-border opacity-60"
       : flagged
@@ -509,7 +516,7 @@ function TableCard({ table, isManager }: { table: FloorTable; isManager: boolean
   return href === null ? (
     <div className={shell}>{body}</div>
   ) : (
-    <Link href={href} className={cn(shell, "hover:border-primary-border hover:bg-primary-soft/40")}>
+    <Link href={href} className={cn(shell, "hover:-translate-y-0.5 hover:border-ink hover:shadow-lg")}>
       {body}
     </Link>
   );
@@ -649,40 +656,6 @@ function formatTime(isoString: string): string {
 }
 
 /** One count in the strip along the top. */
-function FloorStat({
-  label,
-  value,
-  tone,
-  className,
-}: {
-  label: string;
-  value: number;
-  tone: "warning" | "primary" | "success";
-  className?: string;
-}) {
-  return (
-    <div className={cn("flex flex-col gap-1 bg-surface px-4 py-3.5", className)}>
-      <span className="text-2xs font-semibold tracking-wider text-subtle uppercase">
-        {label}
-      </span>
-      <span
-        className={cn(
-          "tabular text-2xl leading-8 font-semibold",
-          value === 0
-            ? "text-muted"
-            : tone === "warning"
-              ? "text-warning"
-              : tone === "primary"
-                ? "text-primary"
-                : "text-success",
-        )}
-      >
-        {value}
-      </span>
-    </div>
-  );
-}
-
 function formatAge(isoString: string): string {
   const minutes = minutesSince(isoString);
 

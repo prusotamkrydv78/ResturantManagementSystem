@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Ban, CircleCheck, FileText, Receipt, Search } from "lucide-react";
+import { Ban, Calculator, CircleCheck, FileText, Receipt, ReceiptText, Search, Wallet } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
@@ -20,6 +20,8 @@ import { NoRestaurantAssigned } from "@/features/restaurants/no-restaurant";
 import { getReportSummary } from "@/features/reports/api";
 import { isMissingRestaurant } from "@/lib/api/client";
 import { cn } from "@/lib/utils/cn";
+import { StatTile } from "@/components/ui/stat-tile";
+import { money } from "@/features/analytics/format";
 import { MAX_REPORT_DAYS } from "@/types/report";
 import type { ReportOrder, ReportSummary } from "@/types/report";
 
@@ -132,7 +134,7 @@ function Reports() {
                   setIsLoading(true);
                   setApplied(range);
                 }}
-                className="rounded-full border border-border px-3 py-1 text-xs font-medium text-muted transition-colors hover:bg-surface-2 hover:text-text focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                className="rounded-full bg-surface-2 px-3.5 py-1.5 text-xs font-semibold text-text transition-colors hover:bg-ink hover:text-surface focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
               >
                 {option.label}
               </button>
@@ -197,14 +199,15 @@ function Reports() {
             />
           </Surface>
         ) : report === null ? (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {[0, 1, 2, 3].map((cell) => (
-              <Surface key={cell} className="flex flex-col gap-2 p-4">
-                <Skeleton className="h-4 w-20" />
-                <Skeleton className="h-7 w-16" />
-              </Surface>
-            ))}
-          </div>
+          <>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <Skeleton className="h-32 rounded-2xl bg-accent/60" />
+              <Skeleton className="h-32 rounded-2xl" />
+              <Skeleton className="h-32 rounded-2xl" />
+              <Skeleton className="h-32 rounded-2xl" />
+            </div>
+            <Skeleton className="h-72 rounded-2xl" />
+          </>
         ) : (
           <>
             <p className="text-sm text-muted">
@@ -217,43 +220,57 @@ function Reports() {
             </p>
 
             {/* Money that arrived, then the counts, then money that did not. */}
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              <Figure
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <StatTile
+                featured
+                icon={Wallet}
                 label="Collected"
-                value={report.paymentTotal.toFixed(2)}
-                hint={`${report.paymentCount} ${report.paymentCount === 1 ? "payment" : "payments"}`}
-                emphasis
+                value={
+                  <>
+                    <span className="mr-1 text-lg font-medium opacity-70">NPR</span>
+                    {money(report.paymentTotal, 2)}
+                  </>
+                }
+                footnote={`${report.paymentCount} ${report.paymentCount === 1 ? "payment" : "payments"}`}
               />
-              <Figure
+              <StatTile
+                icon={ReceiptText}
+                tone="indigo"
                 label="Orders closed"
-                value={String(report.completedCount)}
-                hint="Paid for and completed"
+                value={report.completedCount}
+                footnote="Paid for and completed"
               />
-              <Figure
+              <StatTile
+                icon={Calculator}
+                tone="sky"
                 label="Average bill"
-                value={report.averageOrderValue.toFixed(2)}
-                hint={
-                  report.paymentCount === 0
-                    ? "No payments in this range"
-                    : "Collected over payments"
+                value={
+                  <>
+                    <span className="mr-1 text-lg font-medium text-subtle">NPR</span>
+                    {money(report.averageOrderValue, 2)}
+                  </>
                 }
+                footnote={report.paymentCount === 0 ? "No payments in this range" : "Collected over payments"}
               />
-              <Figure
+              <StatTile
+                icon={Ban}
+                tone="rose"
                 label="Cancelled"
-                value={String(report.cancelledCount)}
-                hint={
-                  report.cancelledValue > 0
-                    ? `${report.cancelledValue.toFixed(2)} not taken`
-                    : "Nothing cancelled"
+                value={report.cancelledCount}
+                footnote={
+                  report.cancelledValue > 0 ? (
+                    <span className="font-semibold text-danger">NPR {money(report.cancelledValue, 2)} not taken</span>
+                  ) : (
+                    "Nothing cancelled"
+                  )
                 }
-                tone={report.cancelledCount > 0 ? "danger" : "neutral"}
               />
             </div>
 
             {/* The spine: every day in the range, takings over bills. */}
             <ReportRangeCard days={report.days} />
 
-            <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+            <div className="grid grid-cols-1 gap-3 xl:grid-cols-3">
               <div className="xl:col-span-2">
                 <WeekdayCard byWeekday={report.byWeekday} />
               </div>
@@ -284,7 +301,7 @@ function Reports() {
                           {row.count} {row.count === 1 ? "order" : "orders"}
                         </span>
                         <span className="tabular text-sm font-medium text-warning">
-                          {row.value.toFixed(2)}
+                          {money(row.value, 2)}
                         </span>
                       </span>
                     </li>
@@ -293,7 +310,7 @@ function Reports() {
               </Surface>
             )}
 
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
               {/* By tender. Every method, always, so a zero reads as a zero. */}
               <Surface>
                 <SurfaceHeader
@@ -320,7 +337,7 @@ function Reports() {
                           row.total > 0 ? "text-text" : "text-subtle",
                         )}
                       >
-                        {row.total.toFixed(2)}
+                        {money(row.total, 2)}
                       </span>
                     </li>
                   ))}
@@ -328,7 +345,7 @@ function Reports() {
                 <div className="flex items-baseline justify-between border-t border-border bg-surface-2 px-4 py-3">
                   <span className="text-sm font-medium text-muted">Total collected</span>
                   <span className="tabular text-lg font-semibold text-text">
-                    {report.paymentTotal.toFixed(2)}
+                    {money(report.paymentTotal, 2)}
                   </span>
                 </div>
               </Surface>
@@ -349,7 +366,7 @@ function Reports() {
                 ) : (
                   <div className="flex flex-col gap-1 px-4 py-4">
                     <span className="tabular text-2xl font-semibold text-danger">
-                      {report.cancelledValue.toFixed(2)}
+                      {money(report.cancelledValue, 2)}
                     </span>
                     <span className="text-xs text-muted">
                       across {report.cancelledCount}{" "}
@@ -381,38 +398,6 @@ function Reports() {
         )}
       </PageBody>
     </>
-  );
-}
-
-function Figure({
-  label,
-  value,
-  hint,
-  emphasis = false,
-  tone = "neutral",
-}: {
-  label: string;
-  value: string;
-  hint: string;
-  emphasis?: boolean;
-  tone?: "neutral" | "danger";
-}) {
-  return (
-    <Surface className="flex flex-col gap-1 px-4 py-3.5">
-      <span className="text-2xs font-semibold tracking-wider text-subtle uppercase">
-        {label}
-      </span>
-      <span
-        className={cn(
-          "tabular font-semibold",
-          emphasis ? "text-[1.75rem] leading-9" : "text-2xl leading-8",
-          tone === "danger" ? "text-danger" : "text-text",
-        )}
-      >
-        {value}
-      </span>
-      <span className="text-xs text-muted">{hint}</span>
-    </Surface>
   );
 }
 
@@ -490,7 +475,7 @@ function OrderList({
                       : "text-text",
                   )}
                 >
-                  {order.amount.toFixed(2)}
+                  {money(order.amount, 2)}
                 </span>
                 {order.method === null ? (
                   <Badge tone="danger" dot>

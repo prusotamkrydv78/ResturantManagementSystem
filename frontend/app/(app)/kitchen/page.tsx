@@ -15,6 +15,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Surface } from "@/components/ui/surface";
+import { StatTile } from "@/components/ui/stat-tile";
 import { EmptyState, ErrorState, FormError, Skeleton } from "@/components/ui/states";
 import { PageBody, PageHeader } from "@/components/layout/page-header";
 import { RequireAuth } from "@/features/auth/require-auth";
@@ -484,15 +485,6 @@ function Kitchen() {
         description="Tickets sent through by the floor. Newest at the bottom of each group."
         actions={
           <div className="flex items-center gap-2">
-            <Badge tone={preparing.length > 0 ? "warning" : "neutral"} dot>
-              {preparing.length} on the stove
-            </Badge>
-            <Badge tone={pending.length > 0 ? "primary" : "neutral"} dot>
-              {pending.length} waiting
-            </Badge>
-            <Badge tone={atPass.length > 0 ? "success" : "neutral"} dot>
-              {atPass.length} at the pass
-            </Badge>
             <Button
               variant="secondary"
               onClick={() => setReloadKey((key) => key + 1)}
@@ -506,6 +498,34 @@ function Kitchen() {
 
       <PageBody>
         {actionError !== null && <FormError message={actionError} />}
+
+        {/* The rail in three tiles: what is being cooked, what is waiting for a
+            chef, and what has gone out and not yet been carried. */}
+        {tickets !== null && (
+          <div className="grid grid-cols-3 gap-3">
+            <StatTile
+              icon={Flame}
+              tone="peach"
+              label="On the stove"
+              value={preparing.length}
+              footnote={preparing.length === 0 ? "Nothing cooking" : "being cooked now"}
+            />
+            <StatTile
+              icon={Timer}
+              tone="indigo"
+              label="Waiting"
+              value={pending.length}
+              footnote={pending.length === 0 ? "All picked up" : "not started yet"}
+            />
+            <StatTile
+              icon={HandPlatter}
+              tone="teal"
+              label="At the pass"
+              value={atPass.length}
+              footnote={atPass.length === 0 ? "Nothing to carry" : "ready to carry"}
+            />
+          </div>
+        )}
 
         {/* Which part of the kitchen this screen is. Only shown when the menu is
             actually divided - a place with one course has nothing to choose between,
@@ -542,15 +562,18 @@ function Kitchen() {
             />
           </Surface>
         ) : tickets === null ? (
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            {[0, 1].map((row) => (
-              <Surface key={row} className="flex flex-col gap-3 p-5">
-                <Skeleton className="h-8 w-28" />
-                <Skeleton className="h-5 w-40" />
-                <Skeleton className="h-5 w-32" />
-              </Surface>
-            ))}
-          </div>
+          <>
+            <div className="grid grid-cols-3 gap-3">
+              <Skeleton className="h-32 rounded-2xl" />
+              <Skeleton className="h-32 rounded-2xl" />
+              <Skeleton className="h-32 rounded-2xl" />
+            </div>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {[0, 1, 2].map((cell) => (
+                <Skeleton key={cell} className="h-56 rounded-2xl" />
+              ))}
+            </div>
+          </>
         ) : working.length === 0 ? (
           <Surface>
             <EmptyState
@@ -588,16 +611,16 @@ function Kitchen() {
                 duller copy of the cards underneath it. A count of one tells a chef
                 nothing they cannot see; a count of three is the whole reason to look. */}
             {toCook.some((row) => row.units > 1) && (
-              <Surface className="flex flex-col gap-3 p-4">
+              <div className="flex flex-col gap-3 rounded-2xl bg-contrast p-4 text-contrast-fg">
                 <div className="flex items-center gap-2">
                   <span
                     aria-hidden="true"
-                    className="flex size-7 shrink-0 items-center justify-center rounded-md border border-border-strong bg-surface-3 text-muted"
+                    className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-accent text-accent-fg"
                   >
                     <UtensilsCrossed className="size-4" />
                   </span>
-                  <h2 className="text-lg font-semibold text-text">Still to cook</h2>
-                  <span className="tabular text-sm text-muted">
+                  <h2 className="text-lg font-semibold">Still to cook</h2>
+                  <span className="tabular text-sm text-contrast-muted">
                     across {preparing.length + pending.length}{" "}
                     {preparing.length + pending.length === 1 ? "ticket" : "tickets"}
                   </span>
@@ -607,13 +630,13 @@ function Kitchen() {
                   {toCook.map((row) => (
                     <li
                       key={`${row.label}-${row.note}`}
-                      className="flex items-center gap-2 rounded-md border border-border bg-surface-2 px-3 py-2"
+                      className="flex items-center gap-2.5 rounded-xl bg-contrast-raised px-3 py-2"
                     >
-                      <span className="tabular text-lg leading-5 font-bold text-text">
+                      <span className="tabular text-xl leading-5 font-bold text-accent">
                         {row.units}
                       </span>
                       <span className="flex min-w-0 flex-col">
-                        <span className="text-base leading-5 font-medium text-text">
+                        <span className="text-base leading-5 font-medium">
                           {row.label}
                         </span>
                         {row.note !== "" && (
@@ -623,7 +646,7 @@ function Kitchen() {
                     </li>
                   ))}
                 </ul>
-              </Surface>
+              </div>
             )}
 
             {/* On the stove. Prominent because someone is already standing over it. */}
@@ -779,15 +802,15 @@ function CourseTab({
       className={cn(
         "pressable flex min-h-11 shrink-0 items-center gap-2 rounded-full border px-4 text-sm font-medium transition-colors",
         active
-          ? "border-primary bg-primary-soft text-primary"
-          : "border-border-strong text-muted hover:bg-surface-3 hover:text-text",
+          ? "border-ink bg-ink text-surface"
+          : "border-border bg-surface text-muted hover:border-ink hover:text-text",
       )}
     >
       {label}
       <span
         className={cn(
           "tabular rounded-full px-1.5 text-2xs font-semibold",
-          active ? "bg-primary-solid text-primary-fg" : "bg-surface-3 text-muted",
+          active ? "bg-accent text-accent-fg" : "bg-surface-3 text-muted",
         )}
       >
         {count}
@@ -809,7 +832,7 @@ function MoreBehind({ count }: { count: number }) {
   }
 
   return (
-    <p className="rounded-lg border border-dashed border-border-strong px-4 py-3 text-center text-sm text-muted">
+    <p className="rounded-2xl border border-dashed border-border-strong px-4 py-3 text-center text-sm text-muted">
       <span className="tabular font-semibold text-text">{count}</span> more{" "}
       {count === 1 ? "ticket" : "tickets"} behind these. They appear as work is
       cleared.
@@ -832,7 +855,7 @@ function ZoneHeading({
     <div className="flex items-center gap-2">
       <span
         className={cn(
-          "flex size-7 shrink-0 items-center justify-center rounded-md border",
+          "flex size-8 shrink-0 items-center justify-center rounded-xl border",
           tone === "warning" && "border-warning-border bg-warning-soft text-warning",
           tone === "primary" && "border-primary-border bg-primary-soft text-primary",
           tone === "success" && "border-success-border bg-success-soft text-success",

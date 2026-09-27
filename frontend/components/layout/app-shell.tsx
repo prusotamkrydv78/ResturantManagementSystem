@@ -23,8 +23,9 @@ import { LiveUpdatesBanner } from "@/lib/realtime/live-updates-banner";
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
 
-  // The platform owner gets their own frame; see AdminShell for why.
-  if (user?.platformRole === "SuperAdmin") {
+  // The platform owner and restaurant managers get the console frame; see
+  // AdminShell for why. Waiters and chefs keep the operational one.
+  if (user?.platformRole === "SuperAdmin" || user?.platformRole === "RestaurantManager") {
     return <AdminShell>{children}</AdminShell>;
   }
 
