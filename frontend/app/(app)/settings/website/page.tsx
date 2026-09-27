@@ -2,10 +2,10 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowUpRight, ExternalLink } from "lucide-react";
+import { ArrowUpRight, ExternalLink, Globe } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button, LinkButton } from "@/components/ui/button";
-import { Surface, SurfaceHeader } from "@/components/ui/surface";
+import { Surface } from "@/components/ui/surface";
 import { ErrorState, Skeleton } from "@/components/ui/states";
 import { PageBody, PageHeader } from "@/components/layout/page-header";
 import { getSite, setSitePublished, type Site } from "@/features/website/api";
@@ -42,7 +42,7 @@ export default function WebsiteDesignsPage() {
     <>
       <PageHeader
         title="Website"
-        description="The designs your public page can be built on. Pick the one that looks like the restaurant you run — you will be able to change your mind later without losing a word."
+        description="Pick a design for your public page. You can switch later without losing a word."
       />
 
       <PageBody>
@@ -51,11 +51,10 @@ export default function WebsiteDesignsPage() {
         <SiteStatus />
 
         <p className="text-xs text-muted">
-          Four designs. Open any of them to see the whole page with your own name,
-          address and contact details; everything else in the preview is sample copy.
+          Open a design to preview it with your details.
         </p>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 2xl:grid-cols-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 2xl:grid-cols-4">
           {DESIGNS.map((design) => (
             <DesignCard key={design.id} design={design} />
           ))}
@@ -146,112 +145,122 @@ function SiteStatus() {
       ? ("behind" as const)
       : ("live" as const);
 
+  // One row: what the page is and where it lives on the left, what to do about it
+  // on the right. It was three bands - a header, an address, a footer of buttons -
+  // each with its own padding and rule, and most of the card was the gaps between.
   return (
-    <Surface className="flex flex-col">
-      <SurfaceHeader
-        title="Your website"
-        description={
-          design === undefined
-            ? "No design chosen yet. Open one below and save it to begin."
-            : `Built on ${design.name}.`
-        }
-        actions={
-          state === "live" ? (
-            <Badge tone="success" dot>
-              Live
-            </Badge>
-          ) : state === "behind" ? (
-            <Badge tone="warning" dot>
-              Changes not published
-            </Badge>
-          ) : (
-            <Badge tone="neutral" dot>
-              Not published
-            </Badge>
-          )
-        }
-      />
+    <Surface className="flex flex-col gap-3 p-4">
+      <Report action={action} />
 
-      <div className="flex flex-col gap-3 p-4">
-        <Report action={action} />
+      <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <span
+            aria-hidden="true"
+            className={cn(
+              "flex size-11 shrink-0 items-center justify-center rounded-xl",
+              state === "live"
+                ? "bg-accent text-accent-fg"
+                : state === "behind"
+                  ? "bg-warning-soft text-warning"
+                  : "bg-surface-2 text-muted",
+            )}
+          >
+            <Globe className="size-5" />
+          </span>
 
-        {site.isPublished ? (
-          <div className="flex flex-col gap-1">
-            <span className="text-2xs font-semibold tracking-wider text-subtle uppercase">
-              Address
+          <div className="flex min-w-0 flex-col gap-0.5">
+            <span className="flex flex-wrap items-center gap-2">
+              <span className="text-base font-semibold text-text">Your website</span>
+              {state === "live" ? (
+                <Badge tone="success" dot>
+                  Live
+                </Badge>
+              ) : state === "behind" ? (
+                <Badge tone="warning" dot>
+                  Changes not published
+                </Badge>
+              ) : (
+                <Badge tone="neutral" dot>
+                  Not published
+                </Badge>
+              )}
             </span>
-            <a
-              href={address.href}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex w-fit items-center gap-1.5 rounded font-mono text-sm text-primary hover:underline"
-            >
-              {address.label}
-              <ExternalLink className="size-3.5" aria-hidden="true" />
-            </a>
-            {!address.isSubdomain && (
-              // Said plainly rather than left as a shorter-looking URL. A manager
-              // who has been promised their own address should know why they have
-              // not got one, and that it is not theirs to fix.
+
+            <span className="flex min-w-0 flex-wrap items-center gap-x-2 text-sm text-muted">
+              <span>{design === undefined ? "No design chosen yet - open one below" : `Built on ${design.name}`}</span>
+              {site.isPublished && (
+                <>
+                  <span className="text-subtle">·</span>
+                  <a
+                    href={address.href}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex min-w-0 items-center gap-1 rounded font-mono text-primary hover:underline"
+                  >
+                    <span className="truncate">{address.label}</span>
+                    <ExternalLink className="size-3.5 shrink-0" aria-hidden="true" />
+                  </a>
+                </>
+              )}
+            </span>
+
+            {site.isPublished && !address.isSubdomain && (
+              // Said plainly rather than left as a shorter-looking URL. A manager who
+              // has been promised their own address should know why they have not got
+              // one, and that it is not theirs to fix.
               <span className="text-xs text-muted">
-                Your own web address has not been set up yet. Ask the platform
-                administrator for one.
+                Your own web address has not been set up yet. Ask the platform administrator for one.
+              </span>
+            )}
+            {!site.isPublished && (
+              <span className="text-xs text-muted">
+                Nobody outside the restaurant can see it yet. Publishing takes a copy of what you have saved.
               </span>
             )}
           </div>
-        ) : (
-          <p className="text-sm text-muted">
-            Nothing is published, so nobody outside the restaurant can see this page
-            yet. Publishing takes a copy of what you have saved.
-          </p>
-        )}
-      </div>
+        </div>
 
-      <div className="flex flex-wrap justify-end gap-2 border-t border-border px-4 py-3">
-        {design !== undefined && (
-          <LinkButton
-            href={`/website/${design.id}`}
-            variant="secondary"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Open the editor
-          </LinkButton>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {design !== undefined && (
+            <LinkButton href={`/website/${design.id}`} variant="secondary" target="_blank" rel="noreferrer">
+              Open the editor
+            </LinkButton>
+          )}
 
-        {site.isPublished && (
-          // Taking a page down is not the same as deleting it: the draft, the design
-          // and every word stay exactly where they are, and publishing again puts
-          // them back. Worth saying on the button rather than in a dialog.
+          {site.isPublished && (
+            // Taking a page down is not the same as deleting it: the draft, the design
+            // and every word stay exactly where they are, and publishing again puts
+            // them back. Worth saying on the button rather than in a dialog.
+            <Button
+              variant="secondary"
+              disabled={action.busy}
+              onClick={() =>
+                void action.run(async () => {
+                  setSite(await setSitePublished(false));
+                }, "Taken down. Your work is kept.")
+              }
+            >
+              Take it down
+            </Button>
+          )}
+
           <Button
-            variant="secondary"
-            disabled={action.busy}
+            disabled={action.busy || site.design === ""}
             onClick={() =>
               void action.run(async () => {
-                setSite(await setSitePublished(false));
-              }, "Taken down. Your work is kept.")
+                setSite(await setSitePublished(true));
+              }, site.isPublished ? "Published." : "Published. Your page is live.")
             }
           >
-            Take it down
+            {action.busy
+              ? "Publishing…"
+              : state === "behind"
+                ? "Publish changes"
+                : state === "live"
+                  ? "Publish again"
+                  : "Publish"}
           </Button>
-        )}
-
-        <Button
-          disabled={action.busy || site.design === ""}
-          onClick={() =>
-            void action.run(async () => {
-              setSite(await setSitePublished(true));
-            }, site.isPublished ? "Published." : "Published. Your page is live.")
-          }
-        >
-          {action.busy
-            ? "Publishing…"
-            : state === "behind"
-              ? "Publish changes"
-              : state === "live"
-                ? "Publish again"
-                : "Publish"}
-        </Button>
+        </div>
       </div>
     </Surface>
   );
@@ -282,11 +291,10 @@ function DesignCard({ design }: { design: Design }) {
           )}
         </div>
 
-        <p className="text-sm text-muted">{design.description}</p>
-
-        {/* Who it is for, before what it holds. A manager choosing a design is asking
-            which one is theirs, not which one has the most features. */}
-        <p className="text-xs text-subtle">{design.suitedTo}</p>
+        {/* Who it is for, before what it holds, and nothing longer: the sketch above
+            already shows how it lays a page out, so the paragraph describing that
+            was the same thing twice. */}
+        <p className="text-sm text-muted">{design.suitedTo}</p>
 
         <ul className="mt-auto flex flex-wrap gap-1.5 pt-1">
           {design.carries.map((section) => (

@@ -13,6 +13,7 @@ import { RequireAuth } from "@/features/auth/require-auth";
 import { getCustomer } from "@/features/customers/api";
 import type { CustomerDetail } from "@/types/customer";
 import type { OrderStatus } from "@/types/order";
+import { money } from "@/features/analytics/format";
 import type { ReservationStatus } from "@/types/reservation";
 
 /**
@@ -215,7 +216,9 @@ function CustomerView() {
                         <Th>Order</Th>
                         <Th>Table</Th>
                         <Th className="text-right">Items</Th>
-                        <Th className="text-right">Total</Th>
+                        {/* The food subtotal - the only amount this history carries - so it is
+                            named as that rather than as a total it is not. */}
+                        <Th className="text-right">Food (NPR)</Th>
                         <Th>Status</Th>
                         <Th className="text-right">When</Th>
                       </tr>
@@ -231,7 +234,7 @@ function CustomerView() {
                             {order.itemCount}
                           </Td>
                           <Td className="text-right tabular">
-                            {order.subtotal.toFixed(2)}
+                            {money(order.subtotal, 2)}
                           </Td>
                           <Td>
                             <Badge tone={orderTone(order.status)} dot>

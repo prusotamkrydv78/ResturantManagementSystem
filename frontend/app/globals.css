@@ -408,6 +408,17 @@
   background: var(--surface-2);
 }
 
+/* A focused field on the console: the field itself lights up - an ink border and a
+   soft lime glow - rather than the product-wide ring floating 2px outside it, which
+   on a bordered input read as a second border. Still unmistakable from a keyboard. */
+:root:is([data-surface="admin"], [data-surface="brand"]) .ui-control:focus-visible,
+:root:is([data-surface="admin"], [data-surface="brand"]) .ui-control:focus {
+  outline: none;
+  border-color: var(--ink);
+  background: var(--surface);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
 :root:is([data-surface="admin"], [data-surface="brand"]) .ui-chip {
   padding: 0.25rem 0.75rem;
 }
@@ -1303,4 +1314,74 @@ html.lenis body {
     -webkit-mask: conic-gradient(from 225deg at right, #0000, #000 1deg 89deg, #0000 90deg) 50% / 100% 14px;
     mask: conic-gradient(from 225deg at right, #0000, #000 1deg 89deg, #0000 90deg) 50% / 100% 14px;
   }
+}
+
+/* ---------------------------------------------------------------------------
+   The console's scrollbar.
+
+   Slim and quiet: an ink thumb on no track, hidden while nothing is moving, fading
+   in the moment the column is scrolled or pointed at, and lime while it is held or
+   hovered - the same colour that means "this one" everywhere else in the console.
+   The shell marks the column data-scrolling while it moves and for a beat after.
+
+   Standard properties, which Firefox and current Chromium both honour; the colour
+   is animatable, so the fade is a transition rather than a snap where supported.
+   --------------------------------------------------------------------------- */
+
+[data-scroll-root],
+.console-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+  scrollbar-gutter: stable;
+  transition: scrollbar-color 0.4s ease;
+}
+
+[data-scroll-root]:hover,
+[data-scroll-root][data-scrolling],
+.console-scroll:hover {
+  scrollbar-color: color-mix(in srgb, var(--ink) 28%, transparent) transparent;
+}
+
+[data-scroll-root][data-scrolling] {
+  scrollbar-color: color-mix(in srgb, var(--ink) 45%, transparent) transparent;
+}
+
+/* Older WebKit, which ignores the standard pair: the same look by hand, with a
+   thumb that widens and turns lime under the pointer. */
+@supports not (scrollbar-color: auto) {
+  [data-scroll-root]::-webkit-scrollbar,
+  .console-scroll::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  [data-scroll-root]::-webkit-scrollbar-track,
+  .console-scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  [data-scroll-root]::-webkit-scrollbar-thumb,
+  .console-scroll::-webkit-scrollbar-thumb {
+    border: 3px solid transparent;
+    border-radius: 999px;
+    background: transparent padding-box;
+  }
+
+  [data-scroll-root]:hover::-webkit-scrollbar-thumb,
+  [data-scroll-root][data-scrolling]::-webkit-scrollbar-thumb,
+  .console-scroll:hover::-webkit-scrollbar-thumb {
+    background: color-mix(in srgb, var(--ink) 35%, transparent) padding-box;
+  }
+
+  [data-scroll-root]::-webkit-scrollbar-thumb:hover,
+  .console-scroll::-webkit-scrollbar-thumb:hover {
+    border-width: 2px;
+    background: var(--accent) padding-box;
+  }
+}
+
+/* Held or hovered: lime, where the browser lets the thumb be told apart. */
+[data-scroll-root]:active,
+.console-scroll:active {
+  scrollbar-color: var(--accent) transparent;
 }

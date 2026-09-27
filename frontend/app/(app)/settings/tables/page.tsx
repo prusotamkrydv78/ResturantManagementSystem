@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { Armchair, Plus, SlidersHorizontal } from "lucide-react";
+import { Armchair, CircleCheck, LayoutGrid, Plus, QrCode, SlidersHorizontal } from "lucide-react";
+import { StatTile } from "@/components/ui/stat-tile";
 import { Badge } from "@/components/ui/badge";
 import { Button, LinkButton } from "@/components/ui/button";
 import { Card, CardGrid, CardGridSkeleton } from "@/components/ui/card-grid";
@@ -95,6 +96,27 @@ function Tables() {
       />
 
       <PageBody>
+        {tables !== null && tables.length > 0 && (
+          <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+            <StatTile icon={LayoutGrid} tone="indigo" label="Tables" value={tables.length} footnote="set up in this restaurant" />
+            <StatTile
+              icon={CircleCheck}
+              tone="teal"
+              label="In service"
+              value={activeCount}
+              footnote={tables.length > activeCount ? `${tables.length - activeCount} out of service` : "Every table is in use"}
+            />
+            <StatTile icon={Armchair} tone="peach" label="Seats in service" value={seats ?? 0} footnote="guests you can seat at once" />
+            <StatTile
+              icon={QrCode}
+              tone="sky"
+              label="Guest ordering"
+              value={tables.filter((table) => table.isOrderingEnabled).length}
+              footnote="tables where guests order by QR"
+            />
+          </div>
+        )}
+
         <Surface>
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-2.5">
             <p className="text-sm text-muted">

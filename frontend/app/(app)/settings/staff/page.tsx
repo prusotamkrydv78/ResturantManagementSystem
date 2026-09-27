@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { Search, SlidersHorizontal, UserPlus, Users } from "lucide-react";
+import { ChefHat, HandPlatter, Search, SlidersHorizontal, UserCheck, UserPlus, Users } from "lucide-react";
+import { StatTile } from "@/components/ui/stat-tile";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardGrid, CardGridSkeleton } from "@/components/ui/card-grid";
 import { Button, LinkButton } from "@/components/ui/button";
@@ -99,6 +100,35 @@ function StaffRoster() {
       />
 
       <PageBody>
+        {/* Only over the whole roster: while searching, the list is a subset and the
+            tiles would count the search rather than the team. */}
+        {staff !== null && staff.length > 0 && !isSearching && (
+          <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+            <StatTile icon={Users} tone="indigo" label="Team" value={staff.length} footnote="people on the roster" />
+            <StatTile
+              icon={UserCheck}
+              tone="teal"
+              label="Active"
+              value={activeCount}
+              footnote={staff.length > activeCount ? `${staff.length - activeCount} inactive` : "Everyone can sign in"}
+            />
+            <StatTile
+              icon={HandPlatter}
+              tone="sky"
+              label="Waiters"
+              value={staff.filter((member) => member.role === "Waiter" && member.isActive).length}
+              footnote="active on the floor"
+            />
+            <StatTile
+              icon={ChefHat}
+              tone="peach"
+              label="Chefs"
+              value={staff.filter((member) => member.role === "Chef" && member.isActive).length}
+              footnote="active in the kitchen"
+            />
+          </div>
+        )}
+
         <Surface>
           <div className="flex flex-col gap-3 border-b border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="relative sm:max-w-xs sm:flex-1">

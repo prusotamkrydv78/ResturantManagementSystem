@@ -360,36 +360,27 @@ function FloorOverviewScreen() {
 }
 
 /**
- * One table with something on it.
+ * One table, drawn as it sits in the room.
  *
- * Redesigned around a simple observation: on a forty-cover floor most tables are free,
- * and the old grid gave a free table exactly as much room as a working one. Three
- * quarters of the screen was cards saying "Nothing running", and the two tables that
- * needed somebody were the same size as the thirty that did not.
+ * A plan view rather than a badge on a box: a tabletop with the table's name on it,
+ * and a chair for every seat around it. The whole drawing takes the table's state -
+ * an outline when it is free, peach and filled chairs while guests are eating, lime
+ * once the kitchen has finished and the bill can be taken, indigo and dashed chairs
+ * while it is held for a booking, hatched grey when it is out of service. A floor
+ * is read by scanning it, so every card is the same size and the colour does the
+ * talking.
  *
- * So the working tables get a card and the rest get a tile, below. This is the card.
- *
- * The whole thing is the link when there is one order on the table, which is the usual
- * case. It used to end in a full-width button inside a tinted footer, which made every
- * table look like a form waiting to be submitted rather than a table with people at it.
- */
-/**
- * One table, drawn the way it sits in the room.
- *
- * Every card is the same size, and the state is carried by the pill, the ring and the
- * glyph rather than by how much space the card takes. That is deliberate: a floor is
- * read by scanning it, so the grid has to stay a grid.
- *
- * The whole card is the link when there is something to open. A free table has nowhere
- * to go for a manager - the API gates opening an order on the Waiter policy - so it
- * stays a plain card rather than a button that would be refused.
+ * The whole card is the link when there is something to open. A free table has
+ * nowhere to go for a manager - the API gates opening an order on the Waiter
+ * policy - so it stays a plain card rather than a button that would be refused.
  */
 function TableCard({ table, isManager }: { table: FloorTable; isManager: boolean }) {
   const working = table.openOrders.length > 0;
   const primary = table.openOrders[0];
   const phantom = isPhantom(table);
   const stranded = isStranded(table);
-  const flagged = phantom || stranded || table.unsubmittedItemCount > 0;
+  const state = stateOf(table);
+  const look = LOOKS[state];
 
   const href =
     working && primary !== undefined
@@ -402,21 +393,33 @@ function TableCard({ table, isManager }: { table: FloorTable; isManager: boolean
 
   const body = (
     <>
-      {/* The pill sits on its own line so the table can have the middle of the card
-          to itself. Laying them side by side pinned the table to the top-left corner
-          and left a hole under it, which on a grid of mostly-free tables is most of
-          what you are looking at. */}
-      <div className="flex justify-end">
-        <StatusPill table={table} />
+      {/* What it is, and what it is worth right now. */}
+      <div className="flex items-center justify-between gap-2">
+        <span className="flex items-center gap-1.5 text-xs font-semibold" style={{ color: look.ink }}>
+          <span className="relative flex size-2">
+            {state === "settle" && (
+              <span className="absolute inline-flex size-full animate-ping rounded-full opacity-60" style={{ background: look.ink }} />
+            )}
+            <span className="relative inline-flex size-2 rounded-full" style={{ background: look.ink }} />
+          </span>
+          {look.label}
+        </span>
+
+        {working ? (
+          <span className="tabular text-sm font-semibold text-text">
+            <span className="mr-0.5 text-2xs font-medium text-subtle">NPR</span>
+            {money(table.openValue, 2)}
+          </span>
+        ) : (
+          <span className="text-2xs font-medium text-subtle">{sizeOf(table.capacity)}</span>
+        )}
       </div>
 
-      <div className="flex flex-1 items-center justify-center py-1">
-        <TableGlyph name={table.name} capacity={table.capacity} state={stateOf(table)} />
+      <div className="flex flex-1 items-center justify-center py-2">
+        <TablePlan name={table.name} capacity={table.capacity} state={state} />
       </div>
 
       <div className="flex flex-col gap-1.5">
-        {/* Kitchen chips, only for what is actually there. They sit above the footer
-            so the footer line stays in the same place on every card in the grid. */}
         {working && (
           <div className="flex flex-wrap gap-1">
             {table.preparingTicketCount > 0 && (
@@ -442,48 +445,31 @@ function TableCard({ table, isManager }: { table: FloorTable; isManager: boolean
           </div>
         )}
 
-        <div className="flex items-baseline justify-between gap-2 border-t border-border pt-2">
-          <span className="flex min-w-0 items-baseline gap-1.5 text-2xs text-muted">
-            <span>{sizeOf(table.capacity)}</span>
-            <span className="text-subtle">·</span>
-            <span className="whitespace-nowrap">
-              {table.capacity} {table.capacity === 1 ? "person" : "people"}
+        <div className="flex items-center justify-between gap-2 text-2xs text-muted">
+          <span className="inline-flex items-center gap-1">
+            <Users className="size-3" aria-hidden="true" />
+            <span className="tabular">
+              {table.capacity} {table.capacity === 1 ? "seat" : "seats"}
             </span>
           </span>
 
-          {working ? (
-            <span className="tabular text-sm font-semibold text-text">
-              <span className="mr-0.5 text-2xs font-medium text-subtle">NPR</span>
-              {money(table.openValue, 2)}
-            </span>
-          ) : (
+          {/* How long they have been there, and whether that is a while. Not a
+              fault: plenty of tables are meant to sit ninety minutes, which is why
+              it colours a figure rather than raising a badge. */}
+          {working && table.seatedSinceUtc !== null ? (
             <span
               className={cn(
-                "text-2xs",
-                table.isActive ? "text-subtle" : "text-muted",
+                "tabular",
+                minutesSince(table.seatedSinceUtc) >= LONG_SEATED_MINUTES ? "font-semibold text-warning" : "text-subtle",
               )}
             >
-              {table.isActive ? "Free" : "Off"}
+              {formatAge(table.seatedSinceUtc)}
+              {table.openOrders.length > 1 && ` · ${table.openOrders.length} orders`}
             </span>
+          ) : (
+            <span className="text-subtle">{table.isActive ? "Ready to seat" : "Off the floor"}</span>
           )}
         </div>
-
-        {/* How long they have been there, and whether that is a while. Not a fault:
-            plenty of tables are meant to sit ninety minutes, which is why it colours
-            a figure rather than raising a badge. */}
-        {working && table.seatedSinceUtc !== null && (
-          <span
-            className={cn(
-              "text-2xs",
-              minutesSince(table.seatedSinceUtc) >= LONG_SEATED_MINUTES
-                ? "text-warning"
-                : "text-subtle",
-            )}
-          >
-            {formatAge(table.seatedSinceUtc)}
-            {table.openOrders.length > 1 && ` · ${table.openOrders.length} orders`}
-          </span>
-        )}
 
         {phantom && (
           <p className="flex items-start gap-1.5 text-2xs text-warning">
@@ -503,14 +489,12 @@ function TableCard({ table, isManager }: { table: FloorTable; isManager: boolean
   );
 
   const shell = cn(
-    "ui-surface flex h-full min-h-[9.5rem] flex-col gap-3 rounded-2xl border bg-surface p-3 transition-all",
-    !table.isActive && !stranded
-      ? "border-border opacity-60"
-      : flagged
-        ? "border-warning-border ring-1 ring-warning-border"
-        : table.canSettle
-          ? "border-success-border ring-1 ring-success-border"
-          : "border-border",
+    "ui-surface flex h-full min-h-[11.5rem] flex-col gap-1 rounded-2xl border bg-surface p-3 transition-all",
+    phantom || stranded || table.unsubmittedItemCount > 0
+      ? "border-warning-border ring-1 ring-warning-border"
+      : state === "settle"
+        ? "border-transparent ring-2 ring-accent"
+        : "border-border",
   );
 
   return href === null ? (
@@ -522,56 +506,8 @@ function TableCard({ table, isManager }: { table: FloorTable; isManager: boolean
   );
 }
 
-/**
- * The table itself, seen from above.
- *
- * A plan view rather than an icon, because the thing being listed is furniture in a
- * room and a person scanning this screen is picturing the room. The seats drawn are
- * the seats the table has, up to a point - past ten the pips stop being countable and
- * start being texture, so the number beside them does the work instead.
- */
-function TableGlyph({
-  name,
-  capacity,
-  state,
-}: {
-  name: string;
-  capacity: number;
-  state: TableState;
-}) {
-  const seats = Math.min(Math.max(capacity, 1), 10);
-  const perSide = Math.ceil(seats / 2);
-  const top = Array.from({ length: perSide }, (_, index) => index);
-  const bottom = Array.from({ length: seats - perSide }, (_, index) => index);
-
-  return (
-    <span className="flex flex-col items-center gap-1">
-      <span className="flex gap-0.5">
-        {top.map((seat) => (
-          <span key={seat} className={cn("h-1 w-2.5 rounded-sm", SEAT_TONES[state])} />
-        ))}
-      </span>
-
-      <span
-        className={cn(
-          "flex min-w-14 items-center justify-center rounded-md px-2 py-1.5 text-2xs font-semibold",
-          TABLE_TONES[state],
-        )}
-      >
-        {name}
-      </span>
-
-      <span className="flex gap-0.5">
-        {bottom.map((seat) => (
-          <span key={seat} className={cn("h-1 w-2.5 rounded-sm", SEAT_TONES[state])} />
-        ))}
-      </span>
-    </span>
-  );
-}
-
-/** What the glyph and the pill are colouring. */
-type TableState = "working" | "reserved" | "free" | "off";
+/** What the plan and the label are colouring. */
+type TableState = "working" | "settle" | "reserved" | "free" | "off";
 
 function stateOf(table: FloorTable): TableState {
   if (!table.isActive) {
@@ -579,54 +515,106 @@ function stateOf(table: FloorTable): TableState {
   }
 
   if (table.openOrders.length > 0) {
-    return "working";
+    return table.canSettle ? "settle" : "working";
   }
 
   return table.status === "Reserved" ? "reserved" : "free";
 }
 
-const SEAT_TONES: Record<TableState, string> = {
-  working: "bg-warning-border",
-  reserved: "bg-primary-border",
-  free: "bg-success-border",
-  off: "bg-border",
+/**
+ * Each state's look: the word, the colour it is said in, the tabletop, and the
+ * chairs. Colours come from the console's tokens, so dark mode follows.
+ */
+const LOOKS: Record<
+  TableState,
+  { label: string; ink: string; top: React.CSSProperties; name: string; chair: React.CSSProperties }
+> = {
+  free: {
+    label: "Free",
+    ink: "var(--chart-6)",
+    top: { background: "var(--surface-2)", border: "1.5px solid var(--border-strong)" },
+    name: "text-text",
+    chair: { border: "1.5px solid var(--border-strong)", background: "var(--surface)" },
+  },
+  working: {
+    label: "Occupied",
+    ink: "var(--chart-3)",
+    top: { background: "color-mix(in srgb, var(--chart-3) 18%, var(--surface))", border: "1.5px solid color-mix(in srgb, var(--chart-3) 55%, transparent)" },
+    name: "text-text",
+    chair: { background: "var(--chart-3)" },
+  },
+  settle: {
+    label: "Ready to settle",
+    ink: "var(--success)",
+    top: { background: "var(--accent)", border: "1.5px solid color-mix(in srgb, var(--accent-fg) 25%, transparent)" },
+    name: "text-accent-fg",
+    chair: { background: "var(--accent-fg)" },
+  },
+  reserved: {
+    label: "Reserved",
+    ink: "var(--chart-1)",
+    top: { background: "color-mix(in srgb, var(--chart-1) 12%, var(--surface))", border: "1.5px dashed var(--chart-1)" },
+    name: "text-text",
+    chair: { border: "1.5px dashed var(--chart-1)", background: "transparent" },
+  },
+  off: {
+    label: "Out of service",
+    ink: "var(--text-subtle)",
+    top: {
+      background:
+        "repeating-linear-gradient(135deg, var(--surface-2) 0 6px, var(--surface-3) 6px 12px)",
+      border: "1.5px solid var(--border)",
+    },
+    name: "text-muted",
+    chair: { background: "var(--border)" },
+  },
 };
 
-const TABLE_TONES: Record<TableState, string> = {
-  working: "bg-warning-soft text-warning",
-  reserved: "bg-primary-soft text-primary",
-  free: "bg-success-soft text-success",
-  off: "bg-surface-3 text-muted",
-};
+/**
+ * The table from above: the top, with the name on it, and the chairs around it.
+ *
+ * Chairs split along the two long sides, with one at each end once the table seats
+ * six or more - the way a long table is actually laid. Past twelve the pips stop
+ * being countable and start being texture, so the drawing stops there and the seat
+ * count under it does the work.
+ */
+function TablePlan({ name, capacity, state }: { name: string; capacity: number; state: TableState }) {
+  const look = LOOKS[state];
+  const seats = Math.min(Math.max(capacity, 1), 12);
+  const ends = seats >= 6 ? 2 : 0;
+  const sides = seats - ends;
+  const top = Math.ceil(sides / 2);
+  const bottom = sides - top;
+  const chair = "h-2 w-5 rounded-full";
 
-/** The state, in one word, in the corner where the reference puts it. */
-function StatusPill({ table }: { table: FloorTable }) {
-  if (!table.isActive) {
-    return <Badge tone="neutral">Out of service</Badge>;
-  }
+  return (
+    <span className="flex flex-col items-center gap-1.5" aria-hidden="true">
+      <span className="flex gap-1.5">
+        {Array.from({ length: top }, (_, index) => (
+          <span key={index} className={chair} style={look.chair} />
+        ))}
+      </span>
 
-  if (table.canSettle) {
-    return (
-      <Badge tone="success" dot>
-        Ready
-      </Badge>
-    );
-  }
+      <span className="flex items-center gap-1.5">
+        {ends > 0 && <span className="h-5 w-2 rounded-full" style={look.chair} />}
+        <span
+          className={cn(
+            "flex h-12 items-center justify-center rounded-2xl px-3 text-sm font-semibold transition-colors",
+            look.name,
+          )}
+          style={{ ...look.top, minWidth: `${Math.max(top, 2) * 1.625 + 0.75}rem` }}
+        >
+          <span className="truncate">{name}</span>
+        </span>
+        {ends > 0 && <span className="h-5 w-2 rounded-full" style={look.chair} />}
+      </span>
 
-  if (table.openOrders.length > 0) {
-    return (
-      <Badge tone="warning" dot>
-        Occupied
-      </Badge>
-    );
-  }
-
-  return table.status === "Reserved" ? (
-    <Badge tone="primary" dot>
-      Reserved
-    </Badge>
-  ) : (
-    <Badge tone="success">Available</Badge>
+      <span className="flex gap-1.5">
+        {Array.from({ length: bottom }, (_, index) => (
+          <span key={index} className={chair} style={look.chair} />
+        ))}
+      </span>
+    </span>
   );
 }
 

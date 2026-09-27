@@ -511,8 +511,10 @@ function StatStrip({
       : "text-text";
 
   return (
-    <div className="grid gap-px overflow-hidden rounded-lg border border-border bg-border sm:grid-cols-2 xl:grid-cols-4">
-      <Stat label="On the shelf">
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      {/* Lime while the shelf is healthy, the console's "look here first"; plain
+          once it is low or out, so the red and amber figure is what stands out. */}
+      <Stat label="On the shelf" featured={tone === "text-text"}>
         <span className={cn("text-3xl font-semibold tabular", tone)}>
           {formatQuantity(item.quantityInStock)}
         </span>
@@ -586,15 +588,22 @@ function StatStrip({
 function Stat({
   label,
   hint,
+  featured = false,
   children,
 }: {
   label: string;
   hint?: string;
+  featured?: boolean;
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-col gap-1 bg-surface px-4 py-3.5">
-      <span className="text-2xs font-medium tracking-wide text-muted uppercase">
+    <div
+      className={cn(
+        "flex flex-col gap-1 rounded-2xl p-4",
+        featured ? "bg-accent text-accent-fg [&_*]:text-inherit" : "ui-surface border border-border bg-surface",
+      )}
+    >
+      <span className={cn("text-2xs font-semibold tracking-wide uppercase", featured ? "opacity-70" : "text-muted")}>
         {label}
       </span>
       <span className="flex items-baseline">{children}</span>
@@ -944,7 +953,7 @@ function PhotoPanel({
           <img
             src={apiAssetSrc(item.imageUrl)}
             alt={item.name}
-            className="aspect-4/3 w-full rounded-md border border-border object-cover"
+            className="aspect-4/3 w-full rounded-xl border border-border object-cover"
           />
         )}
 

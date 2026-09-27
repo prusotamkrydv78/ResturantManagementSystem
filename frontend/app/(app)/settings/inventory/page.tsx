@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { Boxes, Plus, Search, SlidersHorizontal, TriangleAlert } from "lucide-react";
+import { Boxes, Package, PackageX, Plus, Search, SlidersHorizontal, TrendingDown, TriangleAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardGrid, CardGridSkeleton } from "@/components/ui/card-grid";
 import { Button, LinkButton } from "@/components/ui/button";
@@ -17,6 +17,7 @@ import { Field, describedBy } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Surface } from "@/components/ui/surface";
+import { StatTile } from "@/components/ui/stat-tile";
 import {
   EmptyState,
   ErrorState,
@@ -152,30 +153,6 @@ function InventoryList() {
         description="What is on the shelves. Stock moves through deliveries, corrections and cooking, never by editing a number."
         actions={
           <div className="flex items-center gap-2">
-            {/* Pressable, because a count nobody can act on is decoration. Each one
-                narrows the list to the rows it is counting. */}
-            {overview !== null && overview.outOfStockCount > 0 && (
-              <button
-                type="button"
-                onClick={() => setFilter("out")}
-                className="rounded-full"
-              >
-                <Badge tone="danger" dot>
-                  {overview.outOfStockCount} out
-                </Badge>
-              </button>
-            )}
-            {overview !== null && overview.lowStockCount > 0 && (
-              <button
-                type="button"
-                onClick={() => setFilter("low")}
-                className="rounded-full"
-              >
-                <Badge tone="warning" dot>
-                  {overview.lowStockCount} low
-                </Badge>
-              </button>
-            )}
             <AddItemDialog onSaved={refresh} />
           </div>
         }
@@ -186,6 +163,31 @@ function InventoryList() {
           <NoRestaurantAssigned area="Inventory" />
         ) : (
           <>
+            {/* The shelf in four tiles. Pressable, because a count nobody can act on is
+                decoration: each narrows the list to the rows it is counting. */}
+            {overview !== null && overview.items.length > 0 && (
+              <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+                {(
+                  [
+                    { key: "all", icon: Package, tone: "indigo", label: "Items", value: overview.items.filter((item) => item.isActive).length, note: "on the shelves" },
+                    { key: "attention", icon: TriangleAlert, tone: "peach", label: "Needs a look", value: overview.items.filter((item) => matchesFilter(item, "attention")).length, note: "low, out or below zero" },
+                    { key: "low", icon: TrendingDown, tone: "sky", label: "Low", value: overview.lowStockCount, note: "at or under the reorder level" },
+                    { key: "out", icon: PackageX, tone: "rose", label: "Out", value: overview.outOfStockCount, note: "nothing left" },
+                  ] as const
+                ).map((tile) => (
+                  <button
+                    key={tile.key}
+                    type="button"
+                    onClick={() => setFilter(tile.key)}
+                    aria-pressed={filter === tile.key}
+                    className={cn("flex rounded-2xl text-left", filter === tile.key && "ring-2 ring-ink")}
+                  >
+                    <StatTile className="w-full" icon={tile.icon} tone={tile.tone} label={tile.label} value={tile.value} footnote={tile.note} />
+                  </button>
+                ))}
+              </div>
+            )}
+
             {/* A balance below zero is a data problem, so it gets its own banner rather
                 than being counted among the empty shelves. */}
             {overview !== null && overview.negativeCount > 0 && (

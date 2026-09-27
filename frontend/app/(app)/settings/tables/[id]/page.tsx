@@ -350,7 +350,7 @@ function OrderingPanel({
         </p>
 
         {!table.isActive && table.isOrderingEnabled && (
-          <p className="rounded-md border border-warning-border bg-warning-soft px-2.5 py-2 text-sm text-warning">
+          <p className="rounded-xl border border-warning-border bg-warning-soft px-2.5 py-2 text-sm text-warning">
             This table is out of service, so the code will not work until you put it
             back.
           </p>
@@ -379,7 +379,7 @@ function OrderingPanel({
           <Notice state={state} />
         </div>
 
-        <div className="flex flex-col gap-4 rounded-md border border-border bg-surface-2 p-4 sm:flex-row sm:items-start">
+        <div className="flex flex-col gap-4 rounded-xl border border-border bg-surface-2 p-4 sm:flex-row sm:items-start">
           <QrCode
             value={link}
             size={160}

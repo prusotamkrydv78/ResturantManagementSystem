@@ -28,7 +28,7 @@ export function CardGrid({
   children: React.ReactNode;
 }) {
   return (
-    <div className={cn("grid gap-4 p-4", COLUMNS, className)}>{children}</div>
+    <div className={cn("grid gap-3 p-3", COLUMNS, className)}>{children}</div>
   );
 }
 
@@ -49,7 +49,7 @@ export function Card({
   return (
     <article
       className={cn(
-        "flex flex-col overflow-hidden rounded-lg border border-border bg-surface-2",
+        "ui-surface flex flex-col overflow-hidden rounded-2xl border border-border bg-surface transition-all hover:-translate-y-0.5 hover:shadow-lg",
         className,
       )}
     >

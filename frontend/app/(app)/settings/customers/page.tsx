@@ -4,9 +4,12 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
   Archive,
+  CalendarClock,
   ArchiveRestore,
   Contact,
+  Phone,
   Plus,
+  Repeat,
   Search,
   Trash2,
 } from "lucide-react";
@@ -23,6 +26,7 @@ import {
 import { Field, describedBy } from "@/components/ui/field";
 import { Input, Textarea } from "@/components/ui/input";
 import { Surface } from "@/components/ui/surface";
+import { StatTile } from "@/components/ui/stat-tile";
 import {
   EmptyState,
   ErrorState,
@@ -115,6 +119,17 @@ function CustomerList() {
         {noRestaurant ? (
           <NoRestaurantAssigned area="Customers" />
         ) : (
+          <>
+          {/* Over the whole book only: a search narrows the list, not the tiles. */}
+          {customers !== null && customers.length > 0 && applied === "" && (
+            <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+              <StatTile icon={Contact} tone="indigo" label="Customers" value={customers.filter((customer) => customer.isActive).length} footnote={archived > 0 ? `${archived} archived` : "in your book"} />
+              <StatTile icon={Repeat} tone="teal" label="Regulars" value={customers.filter((customer) => customer.orderCount >= 3).length} footnote="three orders or more" />
+              <StatTile icon={CalendarClock} tone="peach" label="Have booked" value={customers.filter((customer) => customer.reservationCount > 0).length} footnote="made a reservation" />
+              <StatTile icon={Phone} tone="sky" label="Reachable" value={customers.filter((customer) => customer.phone !== null || customer.email !== null).length} footnote="with a phone or email" />
+            </div>
+          )}
+
           <Surface>
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-2.5">
               <form
@@ -238,6 +253,7 @@ function CustomerList() {
               </CardGrid>
             )}
           </Surface>
+          </>
         )}
       </PageBody>
     </>

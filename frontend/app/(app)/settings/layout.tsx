@@ -93,7 +93,11 @@ function SettingsRail() {
     <aside
       onClick={expandOnEmptyClick}
       className={cn(
-        "ui-surface relative hidden shrink-0 overflow-hidden rounded-2xl border border-border bg-surface transition-[width] duration-200 ease-out lg:sticky lg:top-2 lg:my-2 lg:ml-2 lg:flex lg:h-[calc(100svh_-_1rem)] lg:flex-col",
+        // Sized to its links rather than to the window: a fixed window height, sat under
+        // the console bar, made every settings page taller than the screen and gave
+        // it a scrollbar. Sticky with a small offset, so it stays in view while a long
+        // list scrolls inside the content column, and never taller than it.
+        "ui-surface relative hidden shrink-0 self-start rounded-2xl border border-border bg-surface transition-[width] duration-200 ease-out lg:sticky lg:top-1 lg:mt-1 lg:ml-2 lg:flex lg:max-h-[calc(100svh_-_4.5rem)] lg:flex-col",
         isCollapsed ? "w-14 cursor-e-resize" : "w-56",
       )}
     >

@@ -1,12 +1,27 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Pencil, TriangleAlert } from "lucide-react";
+import {
+  Building2,
+  Check,
+  Copy,
+  Globe,
+  Hash,
+  Mail,
+  MapPin,
+  Pencil,
+  Phone,
+  Plus,
+  Store,
+  TriangleAlert,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import { cn } from "@/lib/utils/cn";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Field, describedBy } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { DetailRow, Surface, SurfaceHeader } from "@/components/ui/surface";
+import { Surface, SurfaceHeader } from "@/components/ui/surface";
 import {
   ErrorState,
   FormError,
@@ -295,6 +310,8 @@ function MyRestaurant() {
 
             {savedAt !== null && <FormSuccess message="Restaurant details saved." />}
 
+            {!isEditing && <IdentityCard restaurant={restaurant} />}
+
             <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(22rem,1fr)] xl:items-start">
               <div className="flex flex-col gap-4">
                 {isEditing && form !== null ? (
@@ -391,67 +408,27 @@ function MyRestaurant() {
                     </form>
                   </Surface>
                 ) : (
-                  <>
-                    <Surface>
-                      <SurfaceHeader title="Profile" description="Identity and location" />
-                      <dl className="divide-y divide-border">
-                        <DetailRow label="Name">{restaurant.name}</DetailRow>
-                        <DetailRow label="Slug" mono>
-                          {restaurant.slug}
-                        </DetailRow>
-                        <DetailRow label="Address">
-                          {restaurant.addressLine ?? <Unset />}
-                        </DetailRow>
-                        <DetailRow label="City">{restaurant.city ?? <Unset />}</DetailRow>
-                        <DetailRow label="Country">
-                          {restaurant.country ?? <Unset />}
-                        </DetailRow>
-                      </dl>
-                    </Surface>
-
-                    <Surface>
-                      <SurfaceHeader title="Contact" description="How guests reach you" />
-                      <dl className="divide-y divide-border">
-                        <DetailRow label="Email">
-                          {restaurant.contactEmail ?? <Unset />}
-                        </DetailRow>
-                        <DetailRow label="Phone">
-                          {restaurant.contactPhone ?? <Unset />}
-                        </DetailRow>
-                      </dl>
-                    </Surface>
-                  </>
+                  <Surface>
+                    <SurfaceHeader
+                      title="Details"
+                      description="What guests, receipts and your website show"
+                    />
+                    <ul className="flex flex-col gap-0.5 px-2 pb-2">
+                      <InfoRow icon={Store} label="Name" value={restaurant.name} onAdd={startEditing} />
+                      <InfoRow icon={Hash} label="Slug" value={restaurant.slug} mono note="Set by the platform admin" />
+                      <InfoRow icon={MapPin} label="Address" value={restaurant.addressLine} onAdd={startEditing} />
+                      <InfoRow icon={Building2} label="City" value={restaurant.city} onAdd={startEditing} />
+                      <InfoRow icon={Globe} label="Country" value={restaurant.country} onAdd={startEditing} />
+                      <InfoRow icon={Mail} label="Email" value={restaurant.contactEmail} onAdd={startEditing} />
+                      <InfoRow icon={Phone} label="Phone" value={restaurant.contactPhone} onAdd={startEditing} />
+                    </ul>
+                  </Surface>
                 )}
               </div>
 
               {/* Stays put through both modes. None of it is editable here, which is
                   exactly why it should not disappear the moment editing starts. */}
-              <Surface>
-                <SurfaceHeader title="Management" description="Set by the platform admin" />
-                <dl className="divide-y divide-border">
-                  <DetailRow label="Manager">
-                    {restaurant.manager === null ? (
-                      <Unset />
-                    ) : (
-                      <span className="flex flex-col">
-                        <span>{restaurant.manager.fullName}</span>
-                        <span className="text-xs text-muted">
-                          {restaurant.manager.email}
-                        </span>
-                      </span>
-                    )}
-                  </DetailRow>
-                  <DetailRow label="Restaurant ID" mono>
-                    {restaurant.id}
-                  </DetailRow>
-                  <DetailRow label="Created">
-                    {formatDateTime(restaurant.createdAtUtc)}
-                  </DetailRow>
-                  <DetailRow label="Last updated">
-                    {formatDateTime(restaurant.updatedAtUtc)}
-                  </DetailRow>
-                </dl>
-              </Surface>
+              <ManagementPanel restaurant={restaurant} />
             </div>
           </>
         )}
@@ -479,9 +456,229 @@ function PanelSkeleton({ rows }: { rows: number }) {
   );
 }
 
-/** Marks a field the backend has no value for, without inventing one. */
-function Unset() {
-  return <span className="text-subtle">Not set</span>;
+/** Profile completeness, counted from the optional fields rather than scored. */
+function completeness(restaurant: Restaurant) {
+  const fields = [
+    restaurant.addressLine,
+    restaurant.city,
+    restaurant.country,
+    restaurant.contactEmail,
+    restaurant.contactPhone,
+  ];
+
+  return { filled: fields.filter((value) => value !== null && value !== "").length, total: fields.length };
+}
+
+/**
+ * The restaurant as a guest meets it: the name, where it is, whether it is open, and
+ * the ways to reach it, on the console's ink card. Email and phone are live links, so
+ * the card doubles as a check that they actually work.
+ */
+function IdentityCard({ restaurant }: { restaurant: Restaurant }) {
+  const { filled, total } = completeness(restaurant);
+  const place = [restaurant.addressLine, restaurant.city, restaurant.country].filter(Boolean).join(", ");
+  const initial = restaurant.name.trim().charAt(0).toUpperCase() || "?";
+
+  return (
+    <div className="relative isolate flex flex-col gap-5 overflow-hidden rounded-2xl bg-contrast p-5 text-contrast-fg lg:flex-row lg:items-center lg:justify-between">
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute -top-24 -right-16 -z-10 size-72 rounded-full"
+        style={{ background: "radial-gradient(closest-side, color-mix(in srgb, var(--accent) 22%, transparent), transparent)" }}
+      />
+
+      <div className="flex min-w-0 items-center gap-4">
+        <span
+          aria-hidden="true"
+          className="flex size-16 shrink-0 items-center justify-center rounded-2xl bg-accent text-3xl font-semibold text-accent-fg"
+        >
+          {initial}
+        </span>
+        <div className="flex min-w-0 flex-col gap-1.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="truncate text-2xl font-semibold tracking-tight">{restaurant.name}</h2>
+            <span
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-2xs font-semibold",
+                restaurant.isActive ? "bg-success/20 text-success" : "bg-danger/20 text-danger",
+              )}
+            >
+              <span className={cn("size-1.5 rounded-full", restaurant.isActive ? "bg-success" : "bg-danger")} />
+              {restaurant.isActive ? "In service" : "Suspended"}
+            </span>
+          </div>
+          <p className="flex items-center gap-1.5 truncate text-sm text-contrast-muted">
+            <MapPin className="size-3.5 shrink-0" aria-hidden="true" />
+            {place === "" ? "No address yet" : place}
+          </p>
+          <div className="flex flex-wrap gap-1.5 pt-1">
+            {restaurant.contactEmail !== null && (
+              <ContactChip href={`mailto:${restaurant.contactEmail}`} icon={Mail} label={restaurant.contactEmail} />
+            )}
+            {restaurant.contactPhone !== null && (
+              <ContactChip href={`tel:${restaurant.contactPhone.replace(/\s+/g, "")}`} icon={Phone} label={restaurant.contactPhone} />
+            )}
+            {restaurant.subdomain !== null && (
+              <ContactChip href="/settings/website" icon={Globe} label={`${restaurant.subdomain} · website`} />
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="flex w-full shrink-0 flex-col gap-1.5 lg:w-56">
+        <div className="flex items-baseline justify-between text-xs">
+          <span className="text-contrast-muted">Profile</span>
+          <span className="tabular font-semibold">
+            {filled === total ? "Complete" : `${filled} of ${total}`}
+          </span>
+        </div>
+        <div className="h-1.5 overflow-hidden rounded-full bg-contrast-raised">
+          <span className="block h-full rounded-full bg-accent" style={{ width: `${(filled / total) * 100}%` }} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ContactChip({ href, icon: Icon, label }: { href: string; icon: LucideIcon; label: string }) {
+  return (
+    <a
+      href={href}
+      className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-contrast-raised px-3 py-1 text-xs font-medium transition-colors hover:bg-accent hover:text-accent-fg"
+    >
+      <Icon className="size-3.5 shrink-0" aria-hidden="true" />
+      <span className="truncate">{label}</span>
+    </a>
+  );
+}
+
+/**
+ * One detail, with its icon. Anything empty says so and offers to fill it in, which
+ * opens the editor - a grey "Not set" was a dead end.
+ */
+function InfoRow({
+  icon: Icon,
+  label,
+  value,
+  mono = false,
+  note,
+  onAdd,
+}: {
+  icon: LucideIcon;
+  label: string;
+  value: string | null;
+  mono?: boolean;
+  note?: string;
+  onAdd?: () => void;
+}) {
+  const empty = value === null || value === "";
+
+  return (
+    <li className="flex items-center gap-3 rounded-xl px-2 py-2.5">
+      <span
+        className={cn(
+          "flex size-9 shrink-0 items-center justify-center rounded-xl",
+          empty ? "bg-warning-soft text-warning" : "bg-panel text-panel-fg",
+        )}
+        aria-hidden="true"
+      >
+        <Icon className="size-4" />
+      </span>
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span className="text-2xs font-semibold tracking-wider text-subtle uppercase">{label}</span>
+        {empty ? (
+          <span className="text-sm text-muted">Not added yet</span>
+        ) : (
+          <span className={cn("truncate text-sm font-medium text-text", mono && "font-mono")}>{value}</span>
+        )}
+      </span>
+      {empty && onAdd !== undefined ? (
+        <button
+          type="button"
+          onClick={onAdd}
+          className="inline-flex shrink-0 items-center gap-1 rounded-full bg-accent px-3 py-1.5 text-xs font-semibold text-accent-fg transition-transform hover:-translate-y-0.5"
+        >
+          <Plus className="size-3" aria-hidden="true" />
+          Add
+        </button>
+      ) : note !== undefined ? (
+        <span className="shrink-0 text-2xs text-subtle">{note}</span>
+      ) : null}
+    </li>
+  );
+}
+
+/** What the platform admin sets, on the lavender panel. The id can be copied. */
+function ManagementPanel({ restaurant }: { restaurant: Restaurant }) {
+  const [copied, setCopied] = useState(false);
+  const manager = restaurant.manager;
+
+  async function copyId() {
+    try {
+      await navigator.clipboard.writeText(restaurant.id);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Clipboard refused (an insecure origin, a denied permission): the id is on
+      // screen and selectable, so there is nothing to recover.
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-4 rounded-2xl bg-panel p-4 text-panel-fg">
+      <div className="flex flex-col gap-0.5">
+        <h2 className="text-xl font-semibold tracking-tight">Management</h2>
+        <p className="text-xs opacity-70">Set by the platform admin</p>
+      </div>
+
+      <div className="flex items-center gap-3 rounded-xl bg-surface p-3 text-text">
+        <span
+          aria-hidden="true"
+          className="flex size-10 shrink-0 items-center justify-center rounded-full bg-accent text-sm font-semibold text-accent-fg"
+        >
+          {manager === null
+            ? "?"
+            : manager.fullName
+                .split(" ")
+                .filter(Boolean)
+                .slice(0, 2)
+                .map((part) => part.charAt(0).toUpperCase())
+                .join("")}
+        </span>
+        <span className="flex min-w-0 flex-col">
+          <span className="text-2xs font-semibold tracking-wider text-subtle uppercase">Manager</span>
+          <span className="truncate text-sm font-semibold">{manager?.fullName ?? "Nobody assigned"}</span>
+          {manager !== null && <span className="truncate text-xs text-muted">{manager.email}</span>}
+        </span>
+      </div>
+
+      <div className="flex flex-col gap-1 rounded-xl bg-surface p-3 text-text">
+        <span className="flex items-center justify-between gap-2">
+          <span className="text-2xs font-semibold tracking-wider text-subtle uppercase">Restaurant ID</span>
+          <button
+            type="button"
+            onClick={() => void copyId()}
+            className="inline-flex items-center gap-1 rounded-full bg-surface-2 px-2.5 py-1 text-2xs font-semibold transition-colors hover:bg-ink hover:text-surface"
+          >
+            {copied ? <Check className="size-3" aria-hidden="true" /> : <Copy className="size-3" aria-hidden="true" />}
+            {copied ? "Copied" : "Copy"}
+          </button>
+        </span>
+        <span className="font-mono text-xs break-all text-muted">{restaurant.id}</span>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2">
+        <div className="flex flex-col gap-0.5 rounded-xl bg-surface p-3 text-text">
+          <span className="text-2xs font-semibold tracking-wider text-subtle uppercase">Created</span>
+          <span className="text-xs font-medium">{formatDateTime(restaurant.createdAtUtc)}</span>
+        </div>
+        <div className="flex flex-col gap-0.5 rounded-xl bg-surface p-3 text-text">
+          <span className="text-2xs font-semibold tracking-wider text-subtle uppercase">Last updated</span>
+          <span className="text-xs font-medium">{formatDateTime(restaurant.updatedAtUtc)}</span>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function blankToNull(value: string): string | null {
