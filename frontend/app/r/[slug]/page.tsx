@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { designById } from "@/features/website/designs";
-import { readPublishedSite } from "@/features/website/published";
+import { readPublicMenu, readPublicReviews, readPublishedSite } from "@/features/website/published";
+import { photoSrc } from "@/features/website/photos";
 import { SiteView } from "./site-view";
 
 /**
@@ -40,10 +41,24 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     return { title: "Nothing here yet" };
   }
 
+  const where = [site.city, site.country].filter((part) => part !== null && part.trim() !== "").join(", ");
+  const written = typeof site.content.standfirst === "string" ? site.content.standfirst.trim() : "";
+  const description =
+    written !== ""
+      ? written
+      : `${site.restaurantName}${where === "" ? "" : ` in ${where}`}. See the menu, book a table or order online.`;
+  const hero = typeof site.content.heroPhoto === "string" ? site.content.heroPhoto : "room";
+  const image = photoSrc(hero, 1200, 630);
+  const title = where === "" ? site.restaurantName : `${site.restaurantName} · ${where}`;
+
+  // What a search result and a shared link show: the name and place, a real line
+  // about the restaurant, and its own photograph - so a link sent on WhatsApp or
+  // posted on Facebook arrives as a card rather than a bare address.
   return {
-    title: site.restaurantName,
-    description:
-      typeof site.content.standfirst === "string" ? site.content.standfirst : undefined,
+    title,
+    description,
+    openGraph: { title, description, type: "website", images: [{ url: image, width: 1200, height: 630 }] },
+    twitter: { card: "summary_large_image", title, description, images: [image] },
   };
 }
 
@@ -59,5 +74,43 @@ export default async function PublicSitePage({ params }: PageProps) {
     notFound();
   }
 
-  return <SiteView site={site} />;
+  // The live menu and the real reviews, beside the page. Either may be missing; the
+  // page then goes without it rather than showing anything invented.
+  const [menu, reviews] = await Promise.all([readPublicMenu(site.slug), readPublicReviews(site.slug)]);
+
+  // What a search engine reads about the restaurant: schema.org's Restaurant, built
+  // only from facts the product holds - never the sample page's words.
+  const structured = {
+    "@context": "https://schema.org",
+    "@type": "Restaurant",
+    name: site.restaurantName,
+    telephone: site.contactPhone ?? undefined,
+    email: site.contactEmail ?? undefined,
+    address:
+      site.addressLine !== null || site.city !== null
+        ? {
+            "@type": "PostalAddress",
+            streetAddress: site.addressLine ?? undefined,
+            addressLocality: site.city ?? undefined,
+            addressCountry: site.country ?? undefined,
+          }
+        : undefined,
+    acceptsReservations: true,
+    hasMenu: menu !== null && menu.menu.length > 0 ? "#menu" : undefined,
+    aggregateRating:
+      reviews !== null && reviews.count > 0 && reviews.averageRating !== null
+        ? { "@type": "AggregateRating", ratingValue: reviews.averageRating, reviewCount: reviews.count }
+        : undefined,
+  };
+
+  return (
+    <>
+      <script
+        type="application/ld+json"
+        // Escaped so nothing in a restaurant's name can close the script tag.
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(structured).replace(/</g, "\\u003c") }}
+      />
+      <SiteView site={site} menu={menu} reviews={reviews} />
+    </>
+  );
 }

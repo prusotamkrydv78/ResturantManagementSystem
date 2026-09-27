@@ -1,4 +1,6 @@
 import type { PublicSite } from "./api";
+import type { PublicReviews } from "@/features/public/api";
+import type { PublicRestaurant } from "@/types/public-ordering";
 
 /**
  * Reading a published restaurant page on the server.
@@ -85,6 +87,42 @@ export async function readPublishedSite(label: string): Promise<PublicSite | nul
     }
 
     return (await response.json()) as PublicSite;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The live menu and the real reviews, read on the server beside the page itself.
+ *
+ * The website's menu is the restaurant's menu - the same dishes, prices and
+ * availability the till and the guest ordering use - rather than a second copy typed
+ * into the editor that drifts the day a price changes. Reviews are the ones guests
+ * actually left. Either can fail on its own; the page then simply goes without it,
+ * which is honest, rather than falling back to anything invented.
+ */
+export async function readPublicMenu(slug: string): Promise<PublicRestaurant | null> {
+  return readPublicJson<PublicRestaurant>(`/api/public/restaurants/${encodeURIComponent(slug)}/menu`, 60);
+}
+
+export async function readPublicReviews(slug: string): Promise<PublicReviews | null> {
+  return readPublicJson<PublicReviews>(`/api/public/restaurants/${encodeURIComponent(slug)}/reviews?limit=6`, 300);
+}
+
+async function readPublicJson<T>(path: string, revalidate: number): Promise<T | null> {
+  const origin = apiOrigin();
+
+  if (origin === "") {
+    return null;
+  }
+
+  try {
+    const response = await fetch(`${origin}${path}`, {
+      next: { revalidate },
+      headers: { accept: "application/json" },
+    });
+
+    return response.ok ? ((await response.json()) as T) : null;
   } catch {
     return null;
   }

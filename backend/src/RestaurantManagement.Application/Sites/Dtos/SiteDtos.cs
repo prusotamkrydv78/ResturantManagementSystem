@@ -49,6 +49,10 @@ public sealed record SiteResponse(
 /// <param name="Country">Country, or null.</param>
 /// <param name="ContactPhone">Telephone number, or null.</param>
 /// <param name="ContactEmail">Email address, or null.</param>
+/// <param name="Slug">
+/// The restaurant's slug, so the page can reach its live menu, its ordering, its booking
+/// form and its reviews - which are keyed by slug - whichever address it was opened on.
+/// </param>
 public sealed record PublicSiteResponse(
     string RestaurantName,
     string Design,
@@ -57,7 +61,8 @@ public sealed record PublicSiteResponse(
     string? City,
     string? Country,
     string? ContactPhone,
-    string? ContactEmail);
+    string? ContactEmail,
+    string Slug);
 
 /// <summary>Saves the draft. Replaces it whole; there is no partial write.</summary>
 public sealed class SaveSiteDraftRequest

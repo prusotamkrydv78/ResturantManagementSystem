@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { BellRing, Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { askForPush, pushState, type PushState } from "@/lib/notify/push";
@@ -24,23 +24,31 @@ import { askForPush, pushState, type PushState } from "@/lib/notify/push";
  */
 const DISMISSED_KEY = "rms.push.dismissed";
 
+function noSubscription(): () => void {
+  return () => {};
+}
+
+/** Whether the card was dismissed before. Storage unavailable: show it. */
+function readDismissed(): boolean {
+  try {
+    return window.localStorage.getItem(DISMISSED_KEY) === "yes";
+  } catch {
+    return false;
+  }
+}
+
 export function StayConnected({ orderNumber }: { orderNumber: number }) {
-  const [state, setState] = useState<PushState>("unsupported");
-  const [dismissed, setDismissed] = useState(true);
+  // Both read from the browser through the external-store hook rather than set in an
+  // effect: neither exists on the server, which answers "unsupported" and "dismissed"
+  // so nothing flashes. What happens here overrides the stored answer.
+  const browserState = useSyncExternalStore(noSubscription, pushState, () => "unsupported" as PushState);
+  const storedDismissed = useSyncExternalStore(noSubscription, readDismissed, () => true);
+  const [chosenState, setState] = useState<PushState | null>(null);
+  const [chosenDismissed, setDismissed] = useState<boolean | null>(null);
+  const state = chosenState ?? browserState;
+  const dismissed = chosenDismissed ?? storedDismissed;
   const [asking, setAsking] = useState(false);
 
-  // Read on mount rather than during render: both of these touch the browser, and
-  // neither exists on the server.
-  useEffect(() => {
-    setState(pushState());
-
-    try {
-      setDismissed(window.localStorage.getItem(DISMISSED_KEY) === "yes");
-    } catch {
-      // Storage unavailable. Showing the card is the better failure.
-      setDismissed(false);
-    }
-  }, []);
 
   function dismiss() {
     setDismissed(true);

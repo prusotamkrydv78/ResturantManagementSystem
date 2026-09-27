@@ -40,6 +40,8 @@ export interface PublicSite {
   country: string | null;
   contactPhone: string | null;
   contactEmail: string | null;
+  /** The restaurant slug: its live menu, ordering, booking and reviews are keyed by it. */
+  slug: string;
 }
 
 /*

@@ -1412,3 +1412,12 @@ html.lenis body {
 html:root[data-surface="brand"] {
   color-scheme: light;
 }
+
+/* The console is a fixed frame: only its content column scrolls (see AdminShell).
+   The window itself never does, so nothing outside the frame - a toast region, a
+   stray tall element - can ever add a second, page-level scrollbar beside it. */
+:root[data-surface="admin"],
+:root[data-surface="admin"] body {
+  height: 100%;
+  overflow: hidden;
+}

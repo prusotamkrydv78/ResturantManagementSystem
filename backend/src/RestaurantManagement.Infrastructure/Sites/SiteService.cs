@@ -170,6 +170,7 @@ public sealed class SiteService : ISiteService
                 site.Restaurant.Country,
                 site.Restaurant.ContactPhone,
                 site.Restaurant.ContactEmail,
+                site.Restaurant.Slug,
                 site.PublishedDesign,
                 site.PublishedJson,
             })
@@ -188,7 +189,8 @@ public sealed class SiteService : ISiteService
             row.City,
             row.Country,
             row.ContactPhone,
-            row.ContactEmail));
+            row.ContactEmail,
+            row.Slug));
     }
 
     /// <summary>

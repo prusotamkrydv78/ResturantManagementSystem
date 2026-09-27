@@ -1,46 +1,73 @@
 "use client";
 
 import type { PublicSite } from "@/features/website/api";
+import type { PublicReviews } from "@/features/public/api";
+import type { PublicRestaurant } from "@/types/public-ordering";
 import { designById } from "@/features/website/designs";
 import { SiteRenderer } from "@/features/website/templates";
-import { conformContent } from "@/features/website/editor/conform";
+import { PublishedContent } from "@/features/website/editor/editable";
+import { publishedContent, sectionHasContent, withLiveData } from "@/features/website/public-content";
 import { sampleContent } from "@/features/website/sample-content";
+import { SiteDock } from "@/features/website/site-dock";
 
 /**
- * A restaurant's page, as a stranger sees it.
+ * A restaurant's live website.
  *
- * NOTHING OF THE EDITOR REACHES HERE
- *
- * No draft hook, no library, no editable wrappers, no toolbar. The templates render
- * their children bare when nobody is editing, so what a visitor downloads is the page
- * and not the machinery that made it. It is also why the content is conformed against
- * the sample before it is drawn: this copy was written by an older build of the editor
- * as often as not, and a missing field should cost a line of a page rather than the
- * page.
- *
- * It is a client component only because the designs animate. The deciding - whether
- * there is a page here at all - happened on the server before this was ever sent.
+ * Draws the design with only what is true of this restaurant: what its manager wrote,
+ * the live menu at its real prices, and the reviews guests actually left - never the
+ * sample restaurant the editor shows while a page is being built (see
+ * public-content.ts). Sections with nothing true to say are left out, and the dock at
+ * the foot of the screen gives every design the same working booking, ordering,
+ * menu and directions.
  */
-export function SiteView({ site }: { site: PublicSite }) {
+export function SiteView({
+  site,
+  menu,
+  reviews,
+}: {
+  site: PublicSite;
+  menu: PublicRestaurant | null;
+  reviews: PublicReviews | null;
+}) {
   const design = designById(site.design);
 
   if (design === undefined) {
     return null;
   }
 
+  const content = withLiveData(publishedContent(sampleContent(), site.content), {
+    name: site.restaurantName,
+    menu,
+    reviews,
+  });
+
+  const address = [site.addressLine, site.city, site.country]
+    .filter((part): part is string => part !== null && part.trim() !== "")
+    .join(", ");
+
   return (
-    <main className="site-page">
-      <SiteRenderer
-        design={design.id}
-        restaurant={{
-          name: site.restaurantName,
-          addressLine: site.addressLine,
-          city: site.city,
-          country: site.country,
-          contactPhone: site.contactPhone,
-          contactEmail: site.contactEmail,
-        }}
-        content={conformContent(sampleContent(), site.content)}
+    <main className="site-page pb-24">
+      <PublishedContent value={content}>
+        <SiteRenderer
+          design={design.id}
+          restaurant={{
+            name: site.restaurantName,
+            addressLine: site.addressLine,
+            city: site.city,
+            country: site.country,
+            contactPhone: site.contactPhone,
+            contactEmail: site.contactEmail,
+          }}
+          content={content}
+        />
+      </PublishedContent>
+
+      <SiteDock
+        slug={site.slug}
+        name={site.restaurantName}
+        address={address === "" ? null : address}
+        canOrder={menu?.isAcceptingOrders === true}
+        hasMenu={sectionHasContent("menu", content)}
       />
     </main>
   );

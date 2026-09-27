@@ -128,7 +128,7 @@ function Bar({ restaurant }: { restaurant: SiteIdentity }) {
         </nav>
 
         <a
-          href="#visit"
+          href="#book"
           className="shrink-0 rounded-full bg-[var(--navy)] px-5 py-2.5 text-[0.7rem] font-semibold tracking-[0.14em] text-[var(--paper)] uppercase transition-colors hover:bg-[var(--brass)]"
         >
           Reserve
@@ -178,7 +178,7 @@ function Opening({
 
           <div className="mt-10 flex flex-wrap items-center gap-3">
             <a
-              href="#visit"
+              href="#book"
               className="group inline-flex items-center gap-2.5 rounded-full bg-[var(--brass)] px-7 py-3.5 text-sm font-semibold text-[var(--navy)] transition-transform hover:scale-[1.03]"
             >
               Reserve a table
@@ -253,7 +253,7 @@ function Chapters({ content }: { content: SampleContent }) {
     },
     {
       kicker: "The fire",
-      title: "Everything meets the coals",
+      title: content.story.body[1] === undefined ? "" : "From the kitchen",
       body: content.story.body[1] ?? "",
       tone: "fire" as PhotoRef,
     },
@@ -263,7 +263,7 @@ function Chapters({ content }: { content: SampleContent }) {
       body: content.cellar.body,
       tone: "wine" as PhotoRef,
     },
-  ];
+  ].filter((chapter) => chapter.body.trim() !== "");
 
   const [active, setActive] = useState(0);
 
@@ -575,6 +575,10 @@ function Visit({
           </div>
 
           <div className="lg:col-span-7">
+            {/* Only the hours the restaurant wrote. None written, none shown - the page
+                never guesses when somebody is open. */}
+            {content.hours.length > 0 && (
+            <>
             <h3 className="inline-flex items-center gap-2 text-[0.65rem] font-semibold tracking-[0.18em] text-[var(--paper)]/55 uppercase">
               <Clock className="size-3.5 text-[var(--brass)]" aria-hidden="true" />
               Opening hours
@@ -600,9 +604,11 @@ function Visit({
                 </div>
               ))}
             </dl>
+            </>
+            )}
 
             <a
-              href={`tel:${restaurant.contactPhone ?? ""}`}
+              href="#book"
               className="group mt-9 inline-flex items-center gap-2.5 rounded-full bg-[var(--brass)] px-7 py-3.5 text-sm font-semibold text-[var(--navy)] transition-transform hover:scale-[1.03]"
             >
               Reserve a table

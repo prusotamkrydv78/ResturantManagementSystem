@@ -132,7 +132,7 @@ function Masthead({ restaurant }: { restaurant: SiteIdentity }) {
         </nav>
 
         <a
-          href="#visit"
+          href="#book"
           className="shrink-0 rounded-full bg-[var(--olive)] px-5 py-2.5 text-[0.7rem] font-semibold tracking-[0.14em] text-[var(--paper)] uppercase transition-transform hover:scale-[1.04]"
         >
           Book
@@ -196,7 +196,7 @@ function Opening({
 
               <div className="mt-6 flex flex-wrap items-center gap-3">
                 <a
-                  href="#visit"
+                  href="#book"
                   className="group inline-flex items-center gap-2 rounded-full bg-[var(--ink)] px-6 py-3 text-sm font-semibold text-[var(--paper)] transition-colors hover:bg-[var(--olive)]"
                 >
                   Book a table
@@ -573,6 +573,10 @@ function Visit({
             className="rounded-2xl p-7 sm:p-9"
             style={{ backgroundColor: "var(--sand)" }}
           >
+            {/* Only the hours the restaurant wrote. None written, none shown - the page
+                never guesses when somebody is open. */}
+            {content.hours.length > 0 && (
+            <>
             <h3 className="inline-flex items-center gap-2 text-[0.65rem] font-semibold tracking-[0.18em] text-[var(--muted)] uppercase">
               <Clock className="size-3.5 text-[var(--olive)]" aria-hidden="true" />
               Opening hours
@@ -598,6 +602,8 @@ function Visit({
                 </div>
               ))}
             </dl>
+            </>
+            )}
           </div>
         </div>
       </div>

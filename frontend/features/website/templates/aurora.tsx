@@ -228,7 +228,7 @@ function Hero({
         </nav>
 
         <a
-          href="#visit"
+          href="#book"
           className="rounded-full border border-white/70 bg-black/25 px-5 py-2 text-xs font-medium tracking-[0.14em] text-white uppercase backdrop-blur-sm transition-colors hover:bg-white hover:text-[var(--ink)]"
         >
           Book
@@ -654,7 +654,7 @@ function Visit({
           </dl>
 
           <a
-            href={`tel:${restaurant.contactPhone ?? ""}`}
+            href="#book"
             className="group mt-10 inline-flex items-center gap-2.5 rounded-full bg-[var(--ink)] px-7 py-3.5 text-sm font-medium text-[var(--paper)] transition-colors hover:bg-[var(--accent)]"
           >
             Reserve a table
@@ -667,6 +667,10 @@ function Visit({
 
         <div className="lg:col-span-7">
           <div className="border-t border-[var(--ink)]/10 pt-6">
+            {/* Only the hours the restaurant wrote. None written, none shown - the page
+                never guesses when somebody is open. */}
+            {content.hours.length > 0 && (
+            <>
             <h3 className="inline-flex items-center gap-2 text-[0.7rem] font-medium tracking-[0.2em] text-[var(--muted)] uppercase">
               <Clock className="size-3.5" aria-hidden="true" />
               Opening hours
@@ -696,6 +700,8 @@ function Visit({
                 </div>
               ))}
             </dl>
+            </>
+            )}
           </div>
         </div>
       </div>
@@ -734,7 +740,7 @@ function Footer({
             {content.closing.body}
           </p>
           <a
-            href="#visit"
+            href="#book"
             className="group mt-9 inline-flex items-center gap-2.5 rounded-full bg-[var(--paper)] px-7 py-3.5 text-sm font-medium text-[var(--ink)] transition-transform hover:scale-[1.02]"
           >
             Reserve a table

@@ -1,4 +1,5 @@
 import { env } from "@/lib/config/env";
+import { apiAssetSrc } from "@/lib/api/asset-url";
 
 /**
  * The pictures a design uses before a restaurant has uploaded any, and the one type
@@ -219,6 +220,12 @@ export function mediaSrc(id: string, variant: "full" | "thumb" = "full"): string
  */
 export function photoSrc(ref: string, width: number, height: number): string {
   const id = mediaIdOf(ref);
+
+  // A picture the product already serves - a dish photograph from the live menu -
+  // is used as it is, from wherever it lives.
+  if (ref.startsWith("/") || ref.startsWith("http")) {
+    return apiAssetSrc(ref);
+  }
 
   if (id !== null) {
     // The page, not a grid: the full picture. The editor's pickers ask for the small

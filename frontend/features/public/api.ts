@@ -165,3 +165,34 @@ export function placePublicOrder(
     },
   );
 }
+
+/** A table asked for from the restaurant website. Lands as a pending booking. */
+export interface PublicBookingPayload {
+  name: string;
+  phone: string;
+  reservedForUtc: string;
+  guestCount: number;
+  notes?: string;
+}
+
+export interface PublicBooking {
+  reference: string;
+  restaurantName: string;
+  reservedForUtc: string;
+  guestCount: number;
+}
+
+export function requestPublicBooking(slug: string, payload: PublicBookingPayload): Promise<PublicBooking> {
+  return apiFetch<PublicBooking>(`/api/public/restaurants/${encodeURIComponent(slug)}/reservations`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+    auth: false,
+  });
+}
+
+/** What guests have said, anonymous by construction. */
+export interface PublicReviews {
+  averageRating: number | null;
+  count: number;
+  reviews: { rating: number; comment: string; submittedAtUtc: string }[];
+}

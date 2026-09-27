@@ -8,6 +8,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
@@ -94,20 +95,31 @@ const TONE_VOICE: Record<ToastTone, ChimeTone> = {
  * Mounted once, inside the authenticated shell. The queue lives in state here rather
  * than in a module singleton so it is cleared on sign-out along with everything else.
  */
+/** Nothing to subscribe to: the value is read once per load. */
+function noSubscription(): () => void {
+  return () => {};
+}
+
+/** Whether sound is on, as stored. Storage unavailable means on, the useful default. */
+function readSound(): boolean {
+  try {
+    return window.localStorage.getItem(SOUND_KEY) !== "off";
+  } catch {
+    return true;
+  }
+}
+
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
-  const [soundOn, setSoundOnState] = useState(true);
+  // The stored choice, read through the external-store hook rather than set in an
+  // effect: storage exists only in the browser, and the server answers "on". A choice
+  // made here overrides it until the next load reads it back.
+  const storedSound = useSyncExternalStore(noSubscription, readSound, () => true);
+  const [chosenSound, setSoundOnState] = useState<boolean | null>(null);
+  const soundOn = chosenSound ?? storedSound;
   const nextId = useRef(1);
 
-  // Read once on mount rather than during render, because localStorage is neither
-  // available on the server nor a pure thing to touch while rendering.
   useEffect(() => {
-    try {
-      setSoundOnState(window.localStorage.getItem(SOUND_KEY) !== "off");
-    } catch {
-      // Storage unavailable. Sound stays on, which is the useful default.
-    }
-
     armChime();
   }, []);
 
@@ -194,9 +206,8 @@ function ToastViewport({
   toasts: Toast[];
   onDismiss: (id: number) => void;
 }) {
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => setMounted(true), []);
+  // False on the server and on the first client render, true after: portals need a body.
+  const mounted = useSyncExternalStore(noSubscription, () => true, () => false);
 
   if (!mounted) {
     return null;

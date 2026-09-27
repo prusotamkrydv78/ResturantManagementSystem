@@ -3,6 +3,8 @@
 import { createContext, useContext, useEffect, useRef } from "react";
 import { Pencil } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
+import { sectionHasContent } from "@/features/website/public-content";
+import type { SampleContent } from "@/features/website/sample-content";
 
 /**
  * Marks a part of a restaurant page as something a manager can change.
@@ -61,6 +63,16 @@ export function useEditor(): EditorState {
 export const SECTION_ATTRIBUTE = "data-site-section";
 
 /**
+ * The published page's content, when the page is the live site.
+ *
+ * Set only by the public site view. Outside the editor a section whose content is
+ * empty is then not drawn at all - the live site says only what the restaurant wrote
+ * (see public-content.ts). The editor and the previews leave it unset, so every
+ * section draws there and can be filled in.
+ */
+export const PublishedContent = createContext<SampleContent | null>(null);
+
+/**
  * One editable region of a page.
  *
  * Renders a bare fragment when nobody is editing, so a published page carries no
@@ -77,9 +89,10 @@ export function Editable({
   children: React.ReactNode;
 }) {
   const { isEditing, openSection, open, sight } = useEditor();
+  const published = useContext(PublishedContent);
 
   if (!isEditing) {
-    return children;
+    return published !== null && !sectionHasContent(id, published) ? null : children;
   }
 
   return (

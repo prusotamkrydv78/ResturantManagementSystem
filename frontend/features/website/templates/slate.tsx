@@ -181,7 +181,7 @@ function Spine({ restaurant }: { restaurant: SiteIdentity }) {
 
       <div className="mt-auto flex flex-col gap-4">
         <a
-          href="#visit"
+          href="#book"
           className="group inline-flex items-center justify-between gap-2 border border-[var(--gold)]/60 px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--gold)] uppercase transition-colors hover:bg-[var(--gold)] hover:text-[var(--page)]"
         >
           Reserve
@@ -209,7 +209,7 @@ function TopBar({ restaurant }: { restaurant: SiteIdentity }) {
       <div className="flex items-center justify-between gap-4 px-5 py-4">
         <span className="font-display truncate text-base">{restaurant.name}</span>
         <a
-          href="#visit"
+          href="#book"
           className="shrink-0 border border-[var(--gold)]/60 px-3 py-1.5 text-[0.65rem] font-medium tracking-[0.18em] text-[var(--gold)] uppercase"
         >
           Reserve
@@ -315,7 +315,7 @@ function Overture({
             <span className="h-px w-8 bg-[var(--gold)] transition-all group-hover:w-12" />
           </a>
           <a
-            href="#visit"
+            href="#book"
             className="text-sm tracking-[0.1em] text-[var(--muted)] uppercase transition-colors hover:text-[var(--ink)]"
           >
             Book a table
@@ -414,6 +414,7 @@ function Carte({ content }: { content: SampleContent }) {
             is not going to change their mind at the bottom of the page. Bordered in
             gold and given a price on its own line, because that is the one number
             somebody is looking for and burying it in a paragraph hides it. */}
+        {content.tasting.name.trim() !== "" && (
         <div className="mt-14 border border-[var(--gold)]/35 px-6 py-8 sm:px-10">
           <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-3">
             <h3 className="font-display text-2xl leading-none">
@@ -432,6 +433,7 @@ function Carte({ content }: { content: SampleContent }) {
             {content.tasting.terms}
           </p>
         </div>
+        )}
 
         <div className="mt-16 flex items-center gap-5">
           <span className="h-px flex-1 bg-[var(--line)]" aria-hidden="true" />
@@ -682,6 +684,10 @@ function Visit({
         </div>
 
         <div>
+          {/* Only the hours the restaurant wrote. None written, none shown - the page
+              never guesses when somebody is open. */}
+          {content.hours.length > 0 && (
+          <>
           <Kicker>Hours</Kicker>
           <dl className="mt-7 flex flex-col">
             {content.hours.map((row) => (
@@ -703,6 +709,8 @@ function Visit({
               </div>
             ))}
           </dl>
+          </>
+          )}
         </div>
 
         <div>
@@ -725,7 +733,7 @@ function Visit({
           </ul>
 
           <a
-            href={reach[0]?.href ?? "#visit"}
+            href="#book"
             className="group mt-9 inline-flex items-center justify-between gap-6 border border-[var(--gold)]/60 px-5 py-3.5 text-xs font-medium tracking-[0.18em] text-[var(--gold)] uppercase transition-colors hover:bg-[var(--gold)] hover:text-[var(--page)]"
           >
             Reserve a table
