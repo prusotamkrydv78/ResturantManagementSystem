@@ -3,8 +3,8 @@ import gsap from "gsap";
 /**
  * What a word landing looks like underneath it, for the page loader.
  *
- * A flash of light behind the word, a flattened shockwave rippling out along the
- * "ground" below it (two rings, the second wider and slower), and a spray of sparks
+ * A flash of light behind the word, optionally a flattened shockwave rippling out
+ * along the "ground" below it (two rings), and a spray of sparks
  * kicked up and out that fall as they fade. The pieces are built on the fly inside
  * the loader, so they go when the loader does.
  */
@@ -31,7 +31,8 @@ export function spotOf(stage: HTMLElement, element: HTMLElement): Spot {
   };
 }
 
-export function impact(stage: HTMLElement, spot: Spot, colour: string, strength = 1) {
+/** `rings` adds the shockwave rings; the loader goes without, the finale keeps them. */
+export function impact(stage: HTMLElement, spot: Spot, colour: string, strength = 1, rings = false) {
   const ground = spot.centre + spot.height * 0.42;
   const width = spot.width * 1.15;
   const burst = gsap.timeline({ onComplete: () => pieces.forEach((piece) => piece.remove()) });
@@ -61,13 +62,16 @@ export function impact(stage: HTMLElement, spot: Spot, colour: string, strength 
     { width: `${width}px`, height: `${width * 0.5}px`, background: `radial-gradient(closest-side, ${colour}, transparent)` },
     spot.centre,
   );
-  const ring = make("50%", { width: `${width}px`, height: `${width * 0.22}px`, border: `${2 * strength}px solid ${colour}` });
-  const echo = make("50%", { width: `${width}px`, height: `${width * 0.22}px`, border: `1px solid ${colour}` });
+  burst.fromTo(glow, { autoAlpha: 0.5, scale: 0.4 }, { autoAlpha: 0, scale: 1.4, duration: 0.6, ease: "power2.out" }, 0);
 
-  burst
-    .fromTo(glow, { autoAlpha: 0.5, scale: 0.4 }, { autoAlpha: 0, scale: 1.4, duration: 0.6, ease: "power2.out" }, 0)
-    .fromTo(ring, { autoAlpha: 1, scale: 0.2 }, { autoAlpha: 0, scale: 1.5 * strength, duration: 0.7, ease: "expo.out" }, 0)
-    .fromTo(echo, { autoAlpha: 0.7, scale: 0.2 }, { autoAlpha: 0, scale: 2.1 * strength, duration: 1, ease: "expo.out" }, 0.08);
+  if (rings) {
+    const ring = make("50%", { width: `${width}px`, height: `${width * 0.22}px`, border: `${2 * strength}px solid ${colour}` });
+    const echo = make("50%", { width: `${width}px`, height: `${width * 0.22}px`, border: `1px solid ${colour}` });
+
+    burst
+      .fromTo(ring, { autoAlpha: 1, scale: 0.2 }, { autoAlpha: 0, scale: 1.5 * strength, duration: 0.7, ease: "expo.out" }, 0)
+      .fromTo(echo, { autoAlpha: 0.7, scale: 0.2 }, { autoAlpha: 0, scale: 2.1 * strength, duration: 1, ease: "expo.out" }, 0.08);
+  }
 
   const sparks = Math.round(10 * strength);
 

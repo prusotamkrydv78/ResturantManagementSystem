@@ -7,6 +7,7 @@ import { SplitText } from "gsap/SplitText";
 import { useGSAP } from "@gsap/react";
 import Lenis from "lenis";
 import { impact, spotOf } from "./loader-impact";
+import { STORY } from "./service-story";
 
 gsap.registerPlugin(ScrollTrigger, SplitText, useGSAP);
 
@@ -51,7 +52,7 @@ export function LandingScroll({ children }: { children: React.ReactNode }) {
 
       media.add("(prefers-reduced-motion: reduce)", () => {
         gsap.set("[data-hero]", { autoAlpha: 1 });
-        gsap.set("[data-loader]", { display: "none" });
+        gsap.set("[data-loader], [data-progress-ring]", { display: "none" });
         document.documentElement.classList.add("no-scrollbar");
 
         return () => document.documentElement.classList.remove("no-scrollbar");
@@ -60,6 +61,17 @@ export function LandingScroll({ children }: { children: React.ReactNode }) {
       media.add("(prefers-reduced-motion: no-preference)", () => {
         const ease = "expo.out";
         const cleanups: Array<() => void> = [];
+
+        // GSAP cannot blend between `var(--token)` strings, so colours it tweens are
+        // resolved to real ones first, read off a probe inside the page.
+        const probe = document.createElement("span");
+        root.current?.appendChild(probe);
+        const colour = (token: string) => {
+          probe.style.color = `var(${token})`;
+          return getComputedStyle(probe).color;
+        };
+        const tone = { accent: colour("--accent"), fg: colour("--contrast-fg"), muted: colour("--contrast-muted") };
+        probe.remove();
 
         /* ------------------------------------------------------ lazy scroll --- */
 
@@ -290,6 +302,10 @@ export function LandingScroll({ children }: { children: React.ReactNode }) {
         gsap.utils.toArray<HTMLElement>("[data-section]").forEach((section) => {
           // Headings rise word by word out of a mask.
           section.querySelectorAll<HTMLElement>("h2").forEach((heading) => {
+            if (heading.closest("[data-story]")) {
+              return;
+            }
+
             SplitText.create(heading, {
               type: "words,lines",
               mask: "lines",
@@ -369,6 +385,294 @@ export function LandingScroll({ children }: { children: React.ReactNode }) {
             );
           }
         });
+
+        /* ------------------------------------------------- scroll progress --- */
+
+        // A ring in the corner fills with the page. It stays out of the way over
+        // the hero, pops in once the visitor is under way, and turns into an arrow
+        // back to the top at the end.
+        const ring = root.current?.querySelector<HTMLElement>("[data-progress-ring]");
+
+        if (ring) {
+          const arc = ring.querySelector<SVGElement>("[data-progress-arc]");
+          const label = ring.querySelector<HTMLElement>("[data-progress-label]");
+          let shown = false;
+
+          gsap.set(ring, { autoAlpha: 0, scale: 0.5 });
+
+          ScrollTrigger.create({
+            start: 0,
+            end: "max",
+            onUpdate: (self) => {
+              const progress = self.progress;
+
+              if (arc) {
+                gsap.to(arc, { strokeDashoffset: 100 - progress * 100, duration: 0.3, ease: "power2.out", overwrite: true });
+              }
+              if (label) {
+                label.textContent = progress > 0.98 ? "↑" : `${Math.round(progress * 100)}%`;
+              }
+
+              const show = progress > 0.04;
+              if (show !== shown) {
+                shown = show;
+                gsap.to(ring, { autoAlpha: show ? 1 : 0, scale: show ? 1 : 0.5, duration: 0.5, ease: show ? "back.out(2)" : "power2.in", overwrite: true });
+              }
+            },
+          });
+        }
+
+        /* --------------------------------------------------- service story --- */
+
+        // The section pins for one screen of scrolling per moment, and the scrub
+        // walks the evening forward: the time and words swap, tables fill and
+        // empty, the rail and the till count, and the clock on the left keeps up.
+        const story = root.current?.querySelector<HTMLElement>("[data-story]");
+
+        if (story) {
+          const frames = gsap.utils.toArray<HTMLElement>("[data-story-frame]", story);
+          const marks = gsap.utils.toArray<HTMLElement>("[data-story-mark]", story);
+          const tables = gsap.utils.toArray<HTMLElement>("[data-story-table]", story);
+          const meters = {
+            seated: story.querySelector<HTMLElement>('[data-story-meter="seated"]'),
+            tickets: story.querySelector<HTMLElement>('[data-story-meter="tickets"]'),
+            takings: story.querySelector<HTMLElement>('[data-story-meter="takings"]'),
+          };
+          const figures = { seated: 0, tickets: 0, takings: 0 };
+          const paint = () => {
+            if (meters.seated) meters.seated.textContent = String(Math.round(figures.seated));
+            if (meters.tickets) meters.tickets.textContent = String(Math.round(figures.tickets));
+            if (meters.takings) meters.takings.textContent = Math.round(figures.takings).toLocaleString("en-US");
+          };
+
+          gsap.set(frames.slice(1), { autoAlpha: 0, yPercent: 30 });
+          gsap.set(marks[0] ?? [], { color: tone.accent, x: 8 });
+
+          const night = gsap.timeline({
+            defaults: { ease: "power2.inOut", duration: 1 },
+            scrollTrigger: {
+              trigger: story,
+              start: "top 32px",
+              end: () => `+=${window.innerHeight * (STORY.length - 1) * 0.9}`,
+              pin: story.parentElement ?? story,
+              // The page body is a flex column, where GSAP turns pin spacing off by
+              // default - the next section would slide over the story mid-evening.
+              pinSpacing: true,
+              scrub: 0.8,
+              refreshPriority: 2,
+              invalidateOnRefresh: true,
+              onUpdate: (self) => gsap.set("[data-story-bar]", { scaleX: self.progress }),
+            },
+          });
+
+          STORY.slice(1).forEach((moment, index) => {
+            const at = index * 1.4;
+            const from = frames[index];
+            const to = frames[index + 1];
+
+            if (from && to) {
+              night
+                .to(from, { autoAlpha: 0, yPercent: -30, duration: 0.6 }, at)
+                .fromTo(to, { autoAlpha: 0, yPercent: 30 }, { autoAlpha: 1, yPercent: 0, duration: 0.6 }, at + 0.4);
+            }
+
+            night
+              .to(marks[index] ?? [], { color: tone.muted, x: 0, duration: 0.4 }, at)
+              .to(marks[index + 1] ?? [], { color: tone.accent, x: 8, duration: 0.4 }, at + 0.4);
+
+            tables.forEach((table, t) => {
+              const state = moment.tables[t] ?? 0;
+              night
+                .to(table.querySelector("[data-story-seated]"), { opacity: state === 1 ? 1 : 0, duration: 0.5 }, at + 0.2 + t * 0.03)
+                .to(table.querySelector("[data-story-paying]"), { opacity: state === 2 ? 1 : 0, duration: 0.5 }, at + 0.2 + t * 0.03);
+            });
+
+            night.to(
+              figures,
+              {
+                seated: moment.tables.filter((state) => state > 0).length,
+                tickets: moment.tickets,
+                takings: moment.takings,
+                duration: 1,
+                onUpdate: paint,
+              },
+              at + 0.2,
+            );
+          });
+
+          // A beat of stillness at the end, so "Close." can be read before release.
+          night.to({}, { duration: 0.6 });
+        }
+
+        /* ------------------------------------------------- screen gallery --- */
+
+        // The section pins and the strip slides sideways with the scrollbar, one
+        // screen-width of scrolling per screen. Each picture grows into place as it
+        // comes in from the right, and the counter and bar keep count.
+        const gallery = root.current?.querySelector<HTMLElement>("[data-gallery]");
+        const strip = gallery?.querySelector<HTMLElement>("[data-gallery-track]");
+
+        if (gallery && strip) {
+          const galleryCount = gallery.querySelector<HTMLElement>("[data-gallery-count]");
+          const panels = gsap.utils.toArray<HTMLElement>("[data-gallery-panel]", gallery);
+          const distance = () => Math.max(0, strip.scrollWidth - gallery.clientWidth);
+          const segments = gsap.utils.toArray<HTMLElement>("[data-gallery-seg]", gallery);
+          const segmentLabels = gsap.utils.toArray<HTMLElement>("[data-gallery-seg-label]", gallery);
+
+          const slide = gsap.to(strip, {
+            x: () => -distance(),
+            ease: "none",
+            scrollTrigger: {
+              trigger: gallery,
+              start: "top 32px",
+              end: () => `+=${distance()}`,
+              pin: gallery.parentElement ?? gallery,
+              pinSpacing: true,
+              scrub: 0.8,
+              invalidateOnRefresh: true,
+              // Measured before the triggers further down, which sit below its
+              // pin spacing and would otherwise fire a gallery-width too early.
+              refreshPriority: 1,
+              onUpdate: (self) => {
+                // Each segment fills over its own stretch of the slide; the label of
+                // the one filling now lights up.
+                segments.forEach((segment, index) => {
+                  const local = gsap.utils.clamp(0, 1, self.progress * segments.length - index);
+                  gsap.set(segment, { scaleX: local });
+                  const label = segmentLabels[index];
+                  if (label) {
+                    const current = local > 0 && local < 1 ? true : index === segments.length - 1 && local === 1;
+                    gsap.to(label, { color: current ? tone.accent : local === 1 ? tone.fg : tone.muted, duration: 0.3, overwrite: true });
+                  }
+                });
+                if (galleryCount) {
+                  const at = Math.min(panels.length, Math.floor(self.progress * panels.length) + 1);
+                  galleryCount.textContent = `${String(at).padStart(2, "0")} / ${String(panels.length).padStart(2, "0")}`;
+                }
+              },
+            },
+          });
+
+          panels.forEach((panel) => {
+            const picture = panel.querySelector<HTMLElement>("[data-gallery-picture]");
+
+            if (picture) {
+              gsap.fromTo(
+                picture,
+                { scale: 0.82, rotate: 3, autoAlpha: 0.35 },
+                {
+                  scale: 1,
+                  rotate: 0,
+                  autoAlpha: 1,
+                  ease: "none",
+                  scrollTrigger: {
+                    trigger: panel,
+                    containerAnimation: slide,
+                    start: "left right",
+                    end: "center center",
+                    scrub: true,
+                  },
+                },
+              );
+            }
+          });
+        }
+
+        /* ---------------------------------------------------------- finale --- */
+
+        // Arriving at the end should feel like the page opening up: the rings grow
+        // and the headline swells with the scrollbar, then the action lands with a
+        // burst - the same impact the loader opened with, closing the loop.
+        const finale = root.current?.querySelector<HTMLElement>("[data-finale]");
+
+        if (finale) {
+          gsap
+            .timeline({
+              scrollTrigger: { trigger: finale, start: "top bottom", end: "center center", scrub: 0.8 },
+            })
+            .fromTo("[data-finale-orb]", { scale: 0.2 }, { scale: 1, ease: "none", stagger: 0.1 }, 0)
+            .fromTo("[data-finale-title]", { scale: 0.45, autoAlpha: 0.2 }, { scale: 1, autoAlpha: 1, ease: "none" }, 0)
+            .fromTo("[data-finale-kicker]", { autoAlpha: 0, y: 30 }, { autoAlpha: 0.7, y: 0, ease: "none" }, 0.3);
+
+          const action = finale.querySelector<HTMLElement>("[data-finale-action]");
+          const button = action?.querySelector<HTMLElement>("a, button");
+
+          if (action) {
+            gsap.set(action, { autoAlpha: 0, y: 60 });
+            ScrollTrigger.create({
+              trigger: finale,
+              start: "center 60%",
+              once: true,
+              onEnter: () => {
+                gsap.to(action, { autoAlpha: 1, y: 0, duration: 0.9, ease: "back.out(1.6)" });
+                if (button) {
+                  gsap.delayedCall(0.25, () => impact(finale, spotOf(finale, button), "var(--accent-fg)", 1.4, true));
+                }
+              },
+            });
+          }
+        }
+
+        /* ---------------------------------------------------------- footer --- */
+
+        // The footer sits outside this component, so it is looked up on the
+        // document. The words rise in turn, and the receipt prints out of the
+        // slot with the scrollbar - fully out as the page reaches its end - while
+        // the printer's light blinks.
+        const footer = document.querySelector<HTMLElement>("[data-footer]");
+
+        if (footer) {
+          gsap.from(footer.querySelectorAll("[data-footer-col]"), {
+            autoAlpha: 0,
+            y: 40,
+            duration: 0.9,
+            ease,
+            stagger: 0.1,
+            scrollTrigger: { trigger: footer, start: "top 80%", once: true },
+          });
+
+          const receipt = footer.querySelector<HTMLElement>("[data-receipt]");
+          const led = footer.querySelector<HTMLElement>("[data-footer-led]");
+
+          if (receipt) {
+            const blink = led ? gsap.to(led, { opacity: 0.2, duration: 0.25, repeat: -1, yoyo: true, paused: true }) : null;
+
+            const parts = receipt.children;
+            const printing = {
+              trigger: footer,
+              start: "top 75%",
+              end: "bottom bottom",
+              scrub: 0.6,
+              onUpdate: (self: ScrollTrigger) => {
+                // Blinks while paper is moving, steady once it is out.
+                if (!blink) return;
+                if (self.progress > 0 && self.progress < 1 && self.isActive) {
+                  blink.play();
+                } else {
+                  blink.pause(0);
+                }
+              },
+            };
+
+            // Left to right out of the printer on a desktop, each section of the
+            // strip following the paper out in turn; downward on a phone. Its own
+            // media switch, so resizing the window swaps the direction too.
+            const direction = gsap.matchMedia();
+
+            direction.add("(min-width: 64rem)", () => {
+              gsap
+                .timeline({ scrollTrigger: printing })
+                .fromTo(receipt, { xPercent: -100 }, { xPercent: 0, ease: "none", duration: 1 }, 0)
+                .fromTo(parts, { x: -60, autoAlpha: 0 }, { x: 0, autoAlpha: 1, ease: "power2.out", duration: 0.35, stagger: 0.14 }, 0.15);
+            });
+
+            direction.add("(max-width: 63.99rem)", () => {
+              gsap.fromTo(receipt, { yPercent: -100 }, { yPercent: 0, ease: "none", scrollTrigger: printing });
+            });
+
+            cleanups.push(() => direction.revert());
+          }
+        }
 
         /* --------------------------------------------------------- marquee --- */
 

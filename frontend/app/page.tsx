@@ -1,7 +1,6 @@
 import Link from "next/link";
 import {
   WorkspaceLink,
-  WorkspaceTextLink,
 } from "@/features/auth/workspace-link";
 import {
   BadgeCheck,
@@ -14,6 +13,9 @@ import {
 import { SurfaceScope } from "@/components/layout/surface-scope";
 import { HeroFloaters } from "@/features/landing/hero-floaters";
 import { PageLoader } from "@/features/landing/page-loader";
+import { ScreenGallery } from "@/features/landing/screen-gallery";
+import { HeaderShell, SectionNav } from "@/features/landing/site-nav";
+import { ServiceStory } from "@/features/landing/service-story";
 import { LandingScroll } from "@/features/landing/landing-scroll";
 import { EasingMarquee } from "@/features/landing/easing-marquee";
 import { FeatureShowcase } from "@/features/landing/feature-showcase";
@@ -53,6 +55,34 @@ export default function HomePage() {
       <LandingMotion>
         <LandingScroll>
           <PageLoader />
+          {/* How far down the page the visitor is, filled by LandingScroll; a
+              click glides back to the top. */}
+          <a
+            href="#top"
+            data-progress-ring
+            aria-label="Back to the top"
+            className="group fixed right-5 bottom-5 z-[60] grid size-14 place-items-center rounded-full bg-contrast text-contrast-fg shadow-xl ring-1 ring-white/10 transition-transform hover:scale-110"
+          >
+            <svg viewBox="0 0 56 56" className="absolute inset-0 size-full -rotate-90" aria-hidden="true">
+              <circle cx="28" cy="28" r="24" fill="none" stroke="var(--contrast-raised)" strokeWidth="3" />
+              <circle
+                data-progress-arc
+                cx="28"
+                cy="28"
+                r="24"
+                fill="none"
+                stroke="var(--accent)"
+                strokeWidth="3"
+                strokeLinecap="round"
+                pathLength={100}
+                strokeDasharray="100"
+                strokeDashoffset="100"
+              />
+            </svg>
+            <span data-progress-label className="tabular relative font-mono text-[0.65rem] font-semibold group-hover:text-accent">
+              0%
+            </span>
+          </a>
         <main className="flex flex-1 flex-col gap-3 px-3 pb-3 sm:px-4">
           <Hero />
           <SectionReveal>
@@ -65,6 +95,12 @@ export default function HomePage() {
             <Features />
           </SectionReveal>
           <SectionReveal>
+            <ServiceStory />
+          </SectionReveal>
+          <SectionReveal>
+            <ScreenGallery />
+          </SectionReveal>
+          <SectionReveal>
             <Roles />
           </SectionReveal>
           <SectionReveal>
@@ -74,7 +110,7 @@ export default function HomePage() {
             <Access />
           </SectionReveal>
           <SectionReveal>
-            <Closing />
+            <Finale />
           </SectionReveal>
         </main>
         </LandingScroll>
@@ -150,33 +186,28 @@ function Wordmark() {
 const NAV = [
   { label: "How it works", href: "#how-it-works" },
   { label: "Features", href: "#features" },
+  { label: "Story", href: "#story" },
+  { label: "Screens", href: "#screens" },
   { label: "Roles", href: "#roles" },
   { label: "Access", href: "#access" },
 ] as const;
 
 function SiteHeader() {
   return (
-    <header className="sticky top-0 z-40 px-3 pt-3 sm:px-4">
-      <Well className="ui-surface flex h-14 items-center justify-between gap-6 rounded-2xl border border-border bg-surface/85 px-3 backdrop-blur-md sm:px-4">
+    <HeaderShell>
+      {/* At the top a full-width bar attached to the edge; once the page moves it
+          pulls in from the sides and drops into a floating pill. Plain classes
+          rather than Well, whose max width would fight the ones here. */}
+      <div className="ui-surface mx-auto flex h-16 w-full max-w-[100vw] items-center justify-between gap-6 rounded-none border-b border-border bg-surface/90 px-5 backdrop-blur-md transition-[max-width,height,border-radius,background-color,box-shadow,padding,margin] duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] sm:px-10 group-data-[raised]/header:mt-3 group-data-[raised]/header:h-12 group-data-[raised]/header:max-w-5xl group-data-[raised]/header:rounded-2xl group-data-[raised]/header:border group-data-[raised]/header:bg-surface/95 group-data-[raised]/header:px-3 group-data-[raised]/header:shadow-xl sm:group-data-[raised]/header:px-4">
         <Link href="/" className="rounded-md">
           <Wordmark />
         </Link>
 
-        <nav aria-label="Sections" className="hidden items-center gap-1 lg:flex">
-          {NAV.map((item) => (
-            <a
-              key={item.href}
-              href={item.href}
-              className="rounded-lg px-3 py-2 text-sm font-medium text-muted transition-colors hover:bg-surface-2 hover:text-text"
-            >
-              {item.label}
-            </a>
-          ))}
-        </nav>
+        <SectionNav items={NAV} />
 
         <WorkspaceLink size="sm" />
-      </Well>
-    </header>
+      </div>
+    </HeaderShell>
   );
 }
 
@@ -193,7 +224,7 @@ const FACTS = [
 
 function Hero() {
   return (
-    <section data-hero="panel" className="relative isolate mt-3 overflow-hidden rounded-[2rem] bg-contrast text-contrast-fg">
+    <section id="top" data-hero="panel" className="relative isolate mt-3 overflow-hidden rounded-[2rem] bg-contrast text-contrast-fg">
       {/* A faint dot grid and two lime glows: depth without anything that reads as a picture. */}
       <div
         aria-hidden="true"
@@ -474,25 +505,52 @@ function Access() {
 /* Closing                                                                    */
 /* -------------------------------------------------------------------------- */
 
-function Closing() {
+/**
+ * The end of the tour, and the reason for it.
+ *
+ * A full screen of lime. As it scrolls in, a ring of ink grows behind the words and
+ * the headline swells from small to enormous, tied to the scrollbar, so arriving
+ * here feels like the page opening up rather than running out. Then the one action
+ * the page exists for, and a way back to the top for anybody who wants another look.
+ */
+function Finale() {
   return (
-    <section data-panel className="relative isolate overflow-hidden rounded-[2rem] bg-accent text-accent-fg">
-      <span aria-hidden="true" className="pointer-events-none absolute -top-24 -right-24 -z-10 size-80 rounded-full bg-white/30" />
-      <span aria-hidden="true" className="pointer-events-none absolute -bottom-32 left-1/4 -z-10 size-72 rounded-full bg-white/20" />
+    <section
+      id="finale"
+      data-finale
+      className="relative isolate flex min-h-svh flex-col items-center justify-center overflow-hidden rounded-[2rem] bg-accent px-6 py-24 text-center text-accent-fg sm:px-10"
+    >
+      <span
+        data-finale-orb
+        aria-hidden="true"
+        className="pointer-events-none absolute top-1/2 left-1/2 -z-10 size-[70vmax] -translate-x-1/2 -translate-y-1/2 rounded-full border-[1.5rem] border-accent-fg/10"
+      />
+      <span
+        data-finale-orb
+        aria-hidden="true"
+        className="pointer-events-none absolute top-1/2 left-1/2 -z-10 size-[45vmax] -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/25"
+      />
 
-      <Well className="flex flex-col items-start gap-8 px-6 py-16 sm:px-10 md:flex-row md:items-end md:justify-between">
-        <div className="flex max-w-2xl flex-col gap-3">
-          <h2 className="text-4xl leading-[1.05] font-semibold tracking-tight sm:text-6xl">
-            Open the room.
-            <br />
-            Get on with service.
-          </h2>
-          <p className="text-base opacity-80 sm:text-lg">
-            Use the account your administrator gave you.
-          </p>
-        </div>
-        <WorkspaceLink className="h-14 shrink-0 px-8 text-base" />
-      </Well>
+      <p data-finale-kicker className="font-mono text-xs font-semibold tracking-[0.2em] uppercase opacity-70">
+        That is the whole tour
+      </p>
+
+      <p
+        data-finale-title
+        className="mt-6 text-[clamp(3.5rem,13vw,12rem)] leading-[0.9] font-semibold tracking-tighter"
+      >
+        Get on with
+        <br />
+        service.
+      </p>
+
+      <div data-finale-action className="mt-12 flex flex-col items-center gap-5">
+        <WorkspaceLink className="h-16 px-10 text-lg" />
+        <p className="text-sm opacity-75">Use the account your administrator gave you.</p>
+        <a href="#top" className="text-sm font-semibold underline-offset-4 hover:underline">
+          Back to the top ↑
+        </a>
+      </div>
     </section>
   );
 }
@@ -501,26 +559,175 @@ function Closing() {
 /* Footer                                                                     */
 /* -------------------------------------------------------------------------- */
 
-function SiteFooter() {
-  return (
-    <footer className="px-3 pb-6 sm:px-4">
-      <Well className="flex flex-col gap-4 px-3 pt-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-        <div className="flex items-center gap-4">
-          <Wordmark />
-          <p className="hidden text-sm text-muted md:block">
-            Restaurant operations, from the table to the till.
-          </p>
-        </div>
+const RECEIPT_ITEMS = ["QR table ordering", "Kitchen display", "Bills with VAT", "Recipes & stock", "Bookings", "Your own website"];
 
-        <nav aria-label="Sections" className="flex flex-wrap items-center gap-x-4 gap-y-2">
-          {NAV.map((item) => (
-            <a key={item.href} href={item.href} className="rounded text-sm text-muted transition-colors hover:text-text">
-              {item.label}
-            </a>
-          ))}
-          <WorkspaceTextLink />
-        </nav>
-      </Well>
+const RECEIPT_REVISIT = [
+  { label: "How it works", href: "#how-it-works" },
+  { label: "Features", href: "#features" },
+  { label: "One evening", href: "#story" },
+  { label: "Every screen", href: "#screens" },
+  { label: "Roles", href: "#roles" },
+  { label: "Access", href: "#access" },
+];
+
+/** Bar widths for the receipt's barcode: decoration, fixed so the server and browser agree. */
+const BARCODE = [3, 1, 2, 1, 1, 3, 1, 2, 2, 1, 3, 1, 1, 2, 1, 3, 2, 1, 1, 2, 3, 1, 2, 1, 1, 3, 1, 2, 1, 2, 3, 1, 1, 2, 1, 3];
+
+/**
+ * The end of the tour is a bill.
+ *
+ * The product's favourite moment is a table paying and the bill adding itself up,
+ * so the page ends the same way: a receipt printer on the counter, and as the
+ * visitor scrolls into the footer the receipt prints out of its slot, tied to the
+ * scrollbar (LandingScroll). On it, everything in the box - all included - the
+ * sections worth another look, and a total paid with the visitor's attention.
+ *
+ * Nothing on it is invented: no prices, no figures, no accounts we do not have.
+ */
+function SiteFooter() {
+  const today = new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+
+  return (
+    <footer className="px-3 pb-3 sm:px-4 sm:pb-4">
+      <div data-footer className="relative isolate overflow-hidden rounded-[2rem] bg-contrast text-contrast-fg">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 -z-10 opacity-[0.06]"
+          style={{ backgroundImage: "radial-gradient(currentColor 1px, transparent 1px)", backgroundSize: "22px 22px" }}
+        />
+
+        <Well className="flex flex-col gap-12 px-6 pt-16 sm:px-10">
+          {/* The words. */}
+          <div className="flex flex-col items-start gap-6 lg:flex-row lg:items-end lg:justify-between">
+            <div className="flex flex-col items-start gap-6">
+              <span data-footer-col className="font-mono text-xs tracking-[0.2em] text-accent uppercase">
+                End of the tour
+              </span>
+              <h2 data-footer-col className="text-5xl leading-[0.95] font-semibold tracking-tighter sm:text-7xl">
+                Thank you for scrolling.
+              </h2>
+              <p data-footer-col className="max-w-md text-lg text-contrast-muted">
+                Here is your bill. Everything on it comes in the box.
+              </p>
+            </div>
+            <div data-footer-col className="flex flex-wrap items-center gap-4">
+              <WorkspaceLink variant="accent" className="h-12 px-6 text-base" />
+              <a href="#top" className="text-sm font-semibold text-contrast-muted transition-colors hover:text-accent">
+                Back to the top ↑
+              </a>
+            </div>
+          </div>
+
+          {/* The printer, and the receipt coming out of it: a tall slip printing
+              downward on a phone; on a desktop a long landscape strip feeding out
+              to the right, its sections laid side by side. */}
+          <div className="mx-auto flex w-full max-w-[22rem] flex-col items-center lg:max-w-none lg:flex-row lg:items-stretch">
+            <div className="relative z-10 flex h-12 w-[calc(100%+2rem)] shrink-0 items-center justify-between rounded-2xl bg-contrast-raised px-4 shadow-2xl ring-1 ring-white/5 lg:h-auto lg:w-12 lg:flex-col lg:px-0 lg:py-5">
+              <span className="font-mono text-2xs tracking-[0.2em] text-contrast-muted uppercase lg:rotate-180 lg:[writing-mode:vertical-rl]">
+                Printing
+              </span>
+              <span data-footer-led className="size-2 rounded-full bg-accent shadow-[0_0_10px_var(--accent)]" />
+              {/* The slot the paper leaves through. */}
+              <span className="absolute inset-x-5 -bottom-px h-1 rounded-full bg-black lg:inset-x-auto lg:inset-y-5 lg:-right-px lg:bottom-auto lg:h-auto lg:w-1" />
+            </div>
+
+            <div className="relative -mt-1 w-full min-w-0 overflow-hidden lg:mt-0 lg:-ml-1 lg:py-3">
+              <div
+                data-receipt
+                className="receipt-edge flex flex-col bg-surface px-6 pt-7 pb-10 font-mono text-[0.72rem] leading-relaxed text-text shadow-xl lg:flex-row lg:gap-0 lg:py-6 lg:pr-12 lg:pl-8"
+              >
+                <ReceiptPart className="items-center text-center lg:min-w-0 lg:flex-[0.8] lg:justify-center">
+                  <span className="flex size-9 items-center justify-center rounded-xl bg-contrast text-accent" aria-hidden="true">
+                    <UtensilsCrossed className="size-4" />
+                  </span>
+                  <span className="mt-2 text-sm font-bold tracking-[0.2em]">RESTAURANT OS</span>
+                  <span className="text-muted">From table to till</span>
+                  <span className="text-muted">Built for Nepal</span>
+                </ReceiptPart>
+
+                <ReceiptPart className="lg:min-w-0 lg:flex-1">
+                  <p className="mb-1 font-bold">ORDER</p>
+                  <Line left="Guest" right="You" />
+                  <Line left="Order" right="#0001" />
+                  <Line left="Date" right={today} />
+                </ReceiptPart>
+
+                <ReceiptPart className="lg:min-w-0 lg:flex-[1.2]">
+                  <p className="mb-1 font-bold">IN THE BOX</p>
+                  {RECEIPT_ITEMS.map((item) => (
+                    <Line key={item} left={`1  ${item}`} right="incl." />
+                  ))}
+                </ReceiptPart>
+
+                <ReceiptPart className="lg:min-w-0 lg:flex-1">
+                  <p className="mb-1 font-bold">WORTH ANOTHER LOOK</p>
+                  {RECEIPT_REVISIT.map((link) => (
+                    <a
+                      key={link.href}
+                      href={link.href}
+                      className="-mx-1 flex justify-between gap-3 rounded px-1 transition-colors hover:bg-accent hover:text-accent-fg"
+                    >
+                      <span>{link.label}</span>
+                      <span aria-hidden="true">→</span>
+                    </a>
+                  ))}
+                </ReceiptPart>
+
+                <ReceiptPart className="lg:min-w-0 lg:flex-[1.2] lg:justify-between">
+                  <div>
+                    <div className="flex justify-between gap-3 text-sm font-bold">
+                      <span>TOTAL</span>
+                      <span>Everything</span>
+                    </div>
+                    <Line left="Paid with" right="Your attention" />
+                    <Line left="Change due" right="How you run service" />
+                  </div>
+                  <div className="mt-4 flex flex-col items-center">
+                    <div className="flex h-10 items-stretch justify-center gap-px" aria-hidden="true">
+                      {BARCODE.map((width, index) => (
+                        <span key={index} className={index % 2 === 0 ? "bg-text" : "bg-transparent"} style={{ width: `${width * 1.5}px` }} />
+                      ))}
+                    </div>
+                    <p className="mt-3 text-center">*** Thank you - visit again ***</p>
+                  </div>
+                </ReceiptPart>
+              </div>
+            </div>
+          </div>
+        </Well>
+
+        <Well className="mt-12 flex flex-col gap-2 border-t border-contrast-raised px-6 py-5 text-xs text-contrast-muted sm:flex-row sm:items-center sm:justify-between sm:px-10">
+          <span>© {new Date().getFullYear()} Restaurant OS</span>
+          <span>Accounts are issued by your platform administrator.</span>
+        </Well>
+      </div>
     </footer>
+  );
+}
+
+/**
+ * One section of the receipt. On the tall slip each is set off by a dashed rule
+ * above it; on the landscape strip, by a dashed rule to its left.
+ */
+function ReceiptPart({ className, children }: { className?: string; children: React.ReactNode }) {
+  return (
+    <div
+      className={cn(
+        "flex flex-col border-dashed border-border-strong not-first:mt-3 not-first:border-t not-first:pt-3 lg:not-first:mt-0 lg:not-first:ml-5 lg:not-first:border-t-0 lg:not-first:border-l lg:not-first:pt-0 lg:not-first:pl-5",
+        className,
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
+/** One line of the receipt: a label on the left, its value on the right. */
+function Line({ left, right }: { left: string; right: string }) {
+  return (
+    <div className="flex justify-between gap-3">
+      <span className="min-w-0 truncate whitespace-pre">{left}</span>
+      <span className="shrink-0 text-right">{right}</span>
+    </div>
   );
 }

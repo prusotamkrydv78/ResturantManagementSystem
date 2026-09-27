@@ -1290,3 +1290,17 @@ html.lenis body {
 .lenis.lenis-stopped {
   overflow: clip;
 }
+
+/* The footer receipt's torn edge: along the bottom while it prints downward on a
+   phone, along the right once it feeds out sideways on a desktop. */
+.receipt-edge {
+  -webkit-mask: conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) 50% / 14px 100%;
+  mask: conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) 50% / 14px 100%;
+}
+
+@media (min-width: 64rem) {
+  .receipt-edge {
+    -webkit-mask: conic-gradient(from 225deg at right, #0000, #000 1deg 89deg, #0000 90deg) 50% / 100% 14px;
+    mask: conic-gradient(from 225deg at right, #0000, #000 1deg 89deg, #0000 90deg) 50% / 100% 14px;
+  }
+}
